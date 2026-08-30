@@ -1,5 +1,5 @@
-import { DepthAction } from "@learnloop/schemas";
-import type { CardDepthT } from "@learnloop/schemas";
+import { DepthAction } from "@interestled/schemas";
+import type { CardDepthT } from "@interestled/schemas";
 
 /**
  * Where a depth button lands. Only two of the five actually move the depth

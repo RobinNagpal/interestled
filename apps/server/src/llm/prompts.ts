@@ -1,5 +1,5 @@
-import { DepthAction, DrillKind } from "@learnloop/schemas";
-import type { CardContentT, LearningNodeT, TopicT } from "@learnloop/schemas";
+import { DepthAction, DrillKind } from "@interestled/schemas";
+import type { CardContentT, LearningNodeT, TopicT } from "@interestled/schemas";
 
 /**
  * Rules that hold for every generation. These are the design documents in

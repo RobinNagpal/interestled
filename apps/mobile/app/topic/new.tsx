@@ -2,9 +2,9 @@ import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
-import { useCreateTopic } from "@learnloop/api";
-import { Button, ErrorState, Input } from "@learnloop/ui";
-import { TimeBudget } from "@learnloop/schemas";
+import { useCreateTopic } from "@interestled/api";
+import { Button, ErrorState, Input } from "@interestled/ui";
+import { TimeBudget } from "@interestled/schemas";
 import { messageOf } from "../../lib/errors";
 import { ChipRow } from "../../components/ChipRow";
 

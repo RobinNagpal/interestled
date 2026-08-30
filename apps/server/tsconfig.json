@@ -1,5 +1,5 @@
 {
-  "extends": "@learnloop/config/tsconfig.base.json",
+  "extends": "@interestled/config/tsconfig.base.json",
   "compilerOptions": {
     "types": ["node"],
     "lib": ["es2023"]

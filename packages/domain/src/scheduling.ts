@@ -1,5 +1,5 @@
-import { ReviewGrade } from "@learnloop/schemas";
-import type { AtomT } from "@learnloop/schemas";
+import { ReviewGrade } from "@interestled/schemas";
+import type { AtomT } from "@interestled/schemas";
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 

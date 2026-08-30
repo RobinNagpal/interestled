@@ -1,4 +1,4 @@
-# LearnLoop
+# Interest Led
 
 A learning app built on one idea: now that an LLM can generate any explanation on
 demand, content is no longer the expensive part. What is still hard is showing the

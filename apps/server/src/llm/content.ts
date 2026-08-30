@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CardContent, GeneratedAtom, GeneratedMap, Verdict } from "@learnloop/schemas";
+import { CardContent, GeneratedAtom, GeneratedMap, Verdict } from "@interestled/schemas";
 import type {
   CardContentT,
   DrillKind,
@@ -8,7 +8,7 @@ import type {
   LearningNodeT,
   TopicT,
   VerdictT,
-} from "@learnloop/schemas";
+} from "@interestled/schemas";
 import { generateJson } from "./json";
 import { atomsPrompt, cardPrompt, drillPrompt, mapPrompt, SYSTEM, verdictPrompt } from "./prompts";
 import type { LlmProvider } from "./types";

@@ -5,9 +5,9 @@ import {
   TopicCreateInput,
   TopicStatus,
   newId,
-} from "@learnloop/schemas";
-import type { GeneratedMapT, TopicT } from "@learnloop/schemas";
-import { summarise } from "@learnloop/domain";
+} from "@interestled/schemas";
+import type { GeneratedMapT, TopicT } from "@interestled/schemas";
+import { summarise } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";

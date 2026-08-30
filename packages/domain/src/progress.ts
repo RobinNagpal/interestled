@@ -1,5 +1,5 @@
-import { NodeStatus, VerdictLabel } from "@learnloop/schemas";
-import type { LearningNodeT, VerdictT } from "@learnloop/schemas";
+import { NodeStatus, VerdictLabel } from "@interestled/schemas";
+import type { LearningNodeT, VerdictT } from "@interestled/schemas";
 
 /** Statuses that mean the learner has demonstrated something, not read something. */
 const EARNED: readonly NodeStatus[] = [NodeStatus.Explained, NodeStatus.Verified, NodeStatus.Due];

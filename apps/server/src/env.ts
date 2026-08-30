@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
-import { LlmProviderId, LlmProviderIdSchema } from "@learnloop/schemas";
+import { LlmProviderId, LlmProviderIdSchema } from "@interestled/schemas";
 
 /**
  * Provider keys are all optional here and checked when the provider is actually

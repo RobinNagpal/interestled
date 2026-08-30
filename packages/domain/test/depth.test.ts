@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DepthAction } from "@learnloop/schemas";
+import { DepthAction } from "@interestled/schemas";
 import { depthAfter, nextDefaultDepth } from "../src/depth";
 
 describe("depthAfter", () => {

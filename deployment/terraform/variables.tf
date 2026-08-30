@@ -1,7 +1,7 @@
 variable "app_name" {
   description = "Prefix for every resource name."
   type        = string
-  default     = "learnloop"
+  default     = "interestled"
 }
 
 variable "aws_region" {
@@ -15,6 +15,8 @@ variable "domain_name" {
     Apex domain, which must ALREADY have a Route 53 hosted zone in this account
     — the certificate is DNS-validated against it. No default on purpose: a
     wrong value here fails ten minutes into the first apply.
+
+    For this project: interestled.com
   EOT
   type        = string
 }

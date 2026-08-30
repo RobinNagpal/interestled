@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { Id, NodeStatus, newId } from "@learnloop/schemas";
-import { composeSession, contractLine, isEarned, summarise } from "@learnloop/domain";
+import { Id, NodeStatus, newId } from "@interestled/schemas";
+import { composeSession, contractLine, isEarned, summarise } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { NotFoundError } from "./errors";

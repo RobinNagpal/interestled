@@ -1,5 +1,5 @@
 {
-  "name": "@learnloop/ui",
+  "name": "@interestled/ui",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@learnloop/schemas": "workspace:*"
+    "@interestled/schemas": "workspace:*"
   },
   "peerDependencies": {
     "nativewind": "*",
@@ -18,7 +18,7 @@
     "react-native": "*"
   },
   "devDependencies": {
-    "@learnloop/config": "workspace:*",
+    "@interestled/config": "workspace:*",
     "@types/react": "~19.1.10",
     "eslint": "^9.34.0",
     "nativewind": "^4.2.1",

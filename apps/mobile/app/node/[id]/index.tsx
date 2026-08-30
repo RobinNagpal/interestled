@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router, useLocalSearchParams } from "expo-router";
-import { useCard } from "@learnloop/api";
-import { Button, ErrorState, JargonList, SectionTitle, Skeleton } from "@learnloop/ui";
-import { DepthAction } from "@learnloop/schemas";
-import type { CardDepthT } from "@learnloop/schemas";
+import { useCard } from "@interestled/api";
+import { Button, ErrorState, JargonList, SectionTitle, Skeleton } from "@interestled/ui";
+import { DepthAction } from "@interestled/schemas";
+import type { CardDepthT } from "@interestled/schemas";
 import { messageOf } from "../../../lib/errors";
 
 const DEPTH_BUTTONS: { action: DepthAction; label: string }[] = [

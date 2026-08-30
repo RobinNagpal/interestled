@@ -1,4 +1,4 @@
-# LearnLoop — local shortcuts. Deployment happens in GitHub Actions
+# Interest Led — local shortcuts. Deployment happens in GitHub Actions
 # (.github/workflows/deploy.yml); nothing here touches AWS.
 
 .PHONY: help install dev api web check migrate lambda clean

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { LoginInput, RegisterInput, User, newId } from "@learnloop/schemas";
+import { LoginInput, RegisterInput, User, newId } from "@interestled/schemas";
 import type { Db } from "./db";
 import { hashPassword, verifyPassword } from "./password";
 

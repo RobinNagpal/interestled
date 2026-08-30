@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { AtomKind, ReviewGrade } from "@learnloop/schemas";
-import type { AtomT } from "@learnloop/schemas";
+import { AtomKind, ReviewGrade } from "@interestled/schemas";
+import type { AtomT } from "@interestled/schemas";
 import { DAY_MS, dueNow, reschedule } from "../src/scheduling";
 
 const NOW = new Date("2026-03-01T09:00:00Z");

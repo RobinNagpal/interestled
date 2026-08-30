@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bundles apps/server into deployment/dist/lambda.zip for the learnloop-api
+# Bundles apps/server into deployment/dist/lambda.zip for the interestled-api
 # Lambda function (nodejs22.x, arm64). Run from anywhere; requires pnpm.
 set -euo pipefail
 

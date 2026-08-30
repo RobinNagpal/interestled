@@ -6,7 +6,7 @@ import {
   ResumePoint,
   StudySession,
   Topic,
-} from "@learnloop/schemas";
+} from "@interestled/schemas";
 import type {
   AtomT,
   ConceptCardT,
@@ -15,7 +15,7 @@ import type {
   ResumePointT,
   StudySessionT,
   TopicT,
-} from "@learnloop/schemas";
+} from "@interestled/schemas";
 
 /**
  * Prisma rows carry plain strings where the app has enums, and Json where it has

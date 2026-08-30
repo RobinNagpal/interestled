@@ -1,7 +1,7 @@
 import { Text, View } from "react-native";
 import type { ReactElement } from "react";
-import { VerdictLabel } from "@learnloop/schemas";
-import type { VerdictItemT } from "@learnloop/schemas";
+import { VerdictLabel } from "@interestled/schemas";
+import type { VerdictItemT } from "@interestled/schemas";
 
 /**
  * The got/vague/missing/wrong diff. No score and no percentage: a number invites

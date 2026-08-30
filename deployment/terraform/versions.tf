@@ -16,9 +16,9 @@ terraform {
   # deployment/scripts/bootstrap-state-bucket.sh (the state records every
   # resource here, including the deployer's secret key). The bucket name is
   # account-specific, so init with:
-  #   terraform init -backend-config="bucket=learnloop-tfstate-<account-id>"
+  #   terraform init -backend-config="bucket=interestled-tfstate-<account-id>"
   backend "s3" {
-    key     = "learnloop/terraform.tfstate"
+    key     = "interestled/terraform.tfstate"
     region  = "us-east-1"
     encrypt = true
   }

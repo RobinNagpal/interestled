@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "LearnLoop",
-    "slug": "learnloop",
+    "name": "Interest Led",
+    "slug": "interestled",
     "version": "1.0.0",
-    "scheme": "learnloop",
+    "scheme": "interestled",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.robinnagpal.learnloop"
+      "bundleIdentifier": "com.robinnagpal.interestled"
     },
     "android": {
       "edgeToEdgeEnabled": true,
-      "package": "com.robinnagpal.learnloop"
+      "package": "com.robinnagpal.interestled"
     },
     "web": {
       "bundler": "metro",

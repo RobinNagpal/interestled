@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const TOKEN_KEY = "learnloop.token";
+const TOKEN_KEY = "interestled.token";
 
 export async function readToken(): Promise<string | null> {
   return AsyncStorage.getItem(TOKEN_KEY);

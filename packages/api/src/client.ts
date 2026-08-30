@@ -12,7 +12,7 @@ import {
   Topic,
   User,
   Verdict,
-} from "@learnloop/schemas";
+} from "@interestled/schemas";
 import type {
   AtomT,
   AttemptInputT,
@@ -27,7 +27,7 @@ import type {
   ReviewInputT,
   TopicCreateInputT,
   TopicT,
-} from "@learnloop/schemas";
+} from "@interestled/schemas";
 
 export interface ClientConfig {
   /** API origin, no trailing slash. */

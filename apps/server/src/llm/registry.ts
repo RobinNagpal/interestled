@@ -1,4 +1,4 @@
-import { LlmProviderId } from "@learnloop/schemas";
+import { LlmProviderId } from "@interestled/schemas";
 import { getEnv } from "../env";
 import { GenerationError } from "../errors";
 import { createGeminiProvider } from "./gemini";

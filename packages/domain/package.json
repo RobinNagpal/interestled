@@ -1,5 +1,5 @@
 {
-  "name": "@learnloop/domain",
+  "name": "@interestled/domain",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,10 +11,10 @@
     "lint": "eslint src test"
   },
   "dependencies": {
-    "@learnloop/schemas": "workspace:*"
+    "@interestled/schemas": "workspace:*"
   },
   "devDependencies": {
-    "@learnloop/config": "workspace:*",
+    "@interestled/config": "workspace:*",
     "eslint": "^9.34.0",
     "typescript": "~5.9.2",
     "vitest": "^3.2.4"
