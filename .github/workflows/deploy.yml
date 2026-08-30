@@ -1,0 +1,106 @@
+# Deploys on every push to main:
+#   web  → Expo static export synced to S3, then a CloudFront invalidation
+#   api  → esbuild bundle pushed to the learnloop-api Lambda
+#
+# Needs (created by deployment/terraform, values in its outputs):
+#   secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY   (the learnloop-deployer user)
+#            DATABASE_URL                               (same Postgres the Lambda uses)
+#   vars:    S3_BUCKET, CLOUDFRONT_DISTRIBUTION_ID, SITE_URL
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  S3_BUCKET: ${{ vars.S3_BUCKET }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+  LAMBDA_FUNCTION: learnloop-api
+
+jobs:
+  # Cheap gate: a red typecheck or test must not reach production, and it costs
+  # about a minute against a deploy that takes ten.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm lint
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Export web app
+        working-directory: apps/mobile
+        env:
+          # Same origin as the app: CloudFront serves both, so there is no CORS.
+          EXPO_PUBLIC_API_URL: ${{ vars.SITE_URL }}
+        run: pnpm exec expo export --platform web --output-dir dist
+
+      - name: Sync web app to S3
+        run: |
+          # Hashed assets are cached forever; index.html must always revalidate
+          # so a new deploy is picked up immediately.
+          aws s3 sync apps/mobile/dist "s3://$S3_BUCKET" \
+            --delete \
+            --exclude index.html \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp apps/mobile/dist/index.html "s3://$S3_BUCKET/index.html" \
+            --cache-control "no-cache"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*"
+
+      # Runs before the new code, so a deploy that adds a migration applies it.
+      - name: Run database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm --filter server exec prisma migrate deploy
+
+      - name: Build Lambda bundle
+        run: bash deployment/scripts/build-lambda.sh
+
+      - name: Update Lambda code
+        run: |
+          aws lambda update-function-code \
+            --function-name "$LAMBDA_FUNCTION" \
+            --zip-file fileb://deployment/dist/lambda.zip \
+            --publish

@@ -1,0 +1,211 @@
+// Database naming: tables are plural snake_case, columns are snake_case
+// (@@map / @map), so no identifier ever needs quoting in raw SQL. Prisma model
+// and field names stay PascalCase/camelCase — the mapping is the only place the
+// two conventions meet. See CLAUDE.md.
+generator client {
+  provider      = "prisma-client-js"
+  // "native" for local dev; the second target is the arm64 Lambda runtime
+  // (Amazon Linux 2023) — deployment/scripts/build-lambda.sh ships its engine.
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id
+  email        String        @unique
+  // scrypt output, "scrypt$N$r$p$salt$hash". Excluded globally via the Prisma
+  // client's `omit` config so it can never reach an API response.
+  passwordHash String        @map("password_hash")
+  // Sticky depth, 1-5. Follows the learner across topics rather than resetting.
+  defaultDepth Int           @default(2) @map("default_depth")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  sessions     AuthSession[]
+  topics       Topic[]
+  attempts     Attempt[]
+  atoms        Atom[]
+  studies      StudySession[]
+  resumePoints ResumePoint[]
+
+  @@map("users")
+}
+
+/**
+ * Bearer sessions. Without expiresAt a leaked token stayed valid forever and
+ * the table grew by one row per login with nothing ever removing them.
+ */
+model AuthSession {
+  token     String   @id
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model Topic {
+  id           String         @id
+  userId       String         @map("user_id")
+  title        String
+  goal         String         @default("")
+  // TopicArchetype, stored as a plain string — the enum lives in
+  // packages/schemas, so a new archetype needs no migration.
+  archetype    String
+  timeBudget   String         @map("time_budget")
+  knownDomains String[]       @map("known_domains")
+  status       String         @default("generating")
+  error        String?
+  createdAt    DateTime       @default(now()) @map("created_at")
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodes        LearningNode[]
+  studies      StudySession[]
+  resumePoints ResumePoint[]
+
+  @@index([userId])
+  @@map("topics")
+}
+
+model LearningNode {
+  id            String             @id
+  topicId       String             @map("topic_id")
+  title         String
+  claim         String
+  minutes       Int
+  archetype     String
+  orderIndex    Int                @map("order_index")
+  status        String             @default("untouched")
+  capability    String
+  createdAt     DateTime           @default(now()) @map("created_at")
+  topic         Topic              @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  cards         ConceptCard[]
+  drills        Drill[]
+  atoms         Atom[]
+  // Advisory edges only: the app shows them as a note and never gates on them.
+  prerequisites NodePrerequisite[] @relation("NodeToPrerequisite")
+  requiredBy    NodePrerequisite[] @relation("PrerequisiteToNode")
+
+  @@index([topicId, orderIndex])
+  @@map("learning_nodes")
+}
+
+model NodePrerequisite {
+  nodeId         String       @map("node_id")
+  prerequisiteId String       @map("prerequisite_id")
+  node           LearningNode @relation("NodeToPrerequisite", fields: [nodeId], references: [id], onDelete: Cascade)
+  prerequisite   LearningNode @relation("PrerequisiteToNode", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+
+  @@id([nodeId, prerequisiteId])
+  @@index([prerequisiteId])
+  @@map("node_prerequisites")
+}
+
+/**
+ * Cards are cached per (node, depth, variant) and shared across learners, which
+ * is what lets a depth button respond instantly. "variant" is "base" or a
+ * DepthAction that does not change the depth number (more_concrete, why_it_matters,
+ * where_this_breaks).
+ */
+model ConceptCard {
+  id        String       @id
+  nodeId    String       @map("node_id")
+  depth     Int
+  variant   String       @default("base")
+  content   Json
+  createdAt DateTime     @default(now()) @map("created_at")
+  node      LearningNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, depth, variant])
+  @@map("concept_cards")
+}
+
+model Drill {
+  id              String       @id
+  nodeId          String       @map("node_id")
+  kind            String
+  prompt          String
+  completionTest  String       @map("completion_test")
+  referencePoints String[]     @map("reference_points")
+  hints           String[]
+  createdAt       DateTime     @default(now()) @map("created_at")
+  node            LearningNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  attempts        Attempt[]
+
+  @@index([nodeId, kind])
+  @@map("drills")
+}
+
+model Attempt {
+  id        String   @id
+  drillId   String   @map("drill_id")
+  userId    String   @map("user_id")
+  response  String
+  verdict   Json
+  hintsUsed Int      @default(0) @map("hints_used")
+  createdAt DateTime @default(now()) @map("created_at")
+  drill     Drill    @relation(fields: [drillId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("attempts")
+}
+
+model Atom {
+  id           String       @id
+  nodeId       String       @map("node_id")
+  userId       String       @map("user_id")
+  kind         String
+  prompt       String
+  answer       String
+  intervalDays Int          @default(0) @map("interval_days")
+  ease         Float        @default(2.5)
+  lapses       Int          @default(0)
+  dueAt        DateTime     @map("due_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  node         LearningNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dueAt])
+  @@map("atoms")
+}
+
+model StudySession {
+  id             String    @id
+  userId         String    @map("user_id")
+  topicId        String    @map("topic_id")
+  contract       String
+  plannedMinutes Int       @map("planned_minutes")
+  nodesCompleted Int       @default(0) @map("nodes_completed")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  endedAt        DateTime? @map("ended_at")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic          Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@map("study_sessions")
+}
+
+/**
+ * One restore point per (user, topic). Saved on every keystroke so leaving
+ * mid-sentence costs nothing, and re-entry can show the half-written answer
+ * rather than a summary of what is already done.
+ */
+model ResumePoint {
+  userId      String   @map("user_id")
+  topicId     String   @map("topic_id")
+  nodeId      String   @map("node_id")
+  drillId     String?  @map("drill_id")
+  draft       String   @default("")
+  lastThought String   @default("") @map("last_thought")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic       Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicId])
+  @@map("resume_points")
+}
