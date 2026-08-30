@@ -6,7 +6,7 @@ set -euo pipefail
 
 region="${AWS_DEFAULT_REGION:-us-east-1}"
 account_id="$(aws sts get-caller-identity --query Account --output text)"
-bucket="learnloop-tfstate-$account_id"
+bucket="interestled-tfstate-$account_id"
 
 if aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
   echo "Bucket $bucket already exists — skipping creation."

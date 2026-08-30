@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { NodeStatus, TopicArchetype, VerdictLabel } from "@learnloop/schemas";
-import type { LearningNodeT, VerdictT } from "@learnloop/schemas";
+import { NodeStatus, TopicArchetype, VerdictLabel } from "@interestled/schemas";
+import type { LearningNodeT, VerdictT } from "@interestled/schemas";
 import { advance, afterLapse, orderVerdict, summarise } from "../src/progress";
 import { masteryDrill } from "../src/session";
-import { DrillKind } from "@learnloop/schemas";
+import { DrillKind } from "@interestled/schemas";
 
 const pass: VerdictT = {
   items: [{ label: VerdictLabel.Got, point: "p", note: "" }],

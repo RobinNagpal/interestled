@@ -4,5 +4,5 @@ module.exports = {
     "./components/**/*.{ts,tsx}",
     "../../packages/ui/src/**/*.{ts,tsx}",
   ],
-  presets: [require("nativewind/preset"), require("@learnloop/config/tailwind-preset")],
+  presets: [require("nativewind/preset"), require("@interestled/config/tailwind-preset")],
 };

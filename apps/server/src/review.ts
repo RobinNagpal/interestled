@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { NodeStatusSchema, ReviewGrade, ReviewInput } from "@learnloop/schemas";
-import { afterLapse, dueNow, reschedule } from "@learnloop/domain";
+import { NodeStatusSchema, ReviewGrade, ReviewInput } from "@interestled/schemas";
+import { afterLapse, dueNow, reschedule } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { NotFoundError } from "./errors";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DrillKind, NodeStatus, TopicArchetype } from "@learnloop/schemas";
-import type { LearningNodeT } from "@learnloop/schemas";
+import { DrillKind, NodeStatus, TopicArchetype } from "@interestled/schemas";
+import type { LearningNodeT } from "@interestled/schemas";
 import { StepKind, composeSession, contractLine, masteryDrill, missingPrerequisites, nextNode } from "../src/session";
 
 function node(overrides: Partial<LearningNodeT> = {}): LearningNodeT {

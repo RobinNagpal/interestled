@@ -12,9 +12,9 @@ import {
   NodeStatus,
   NodeStatusSchema,
   newId,
-} from "@learnloop/schemas";
-import type { CardContentT, LearningNodeT, TopicT } from "@learnloop/schemas";
-import { advance, depthAfter, masteryDrill, missingPrerequisites, nextDefaultDepth } from "@learnloop/domain";
+} from "@interestled/schemas";
+import type { CardContentT, LearningNodeT, TopicT } from "@interestled/schemas";
+import { advance, depthAfter, masteryDrill, missingPrerequisites, nextDefaultDepth } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { NotFoundError } from "./errors";

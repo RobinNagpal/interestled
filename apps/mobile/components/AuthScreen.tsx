@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
-import { Button, ErrorState, Input } from "@learnloop/ui";
+import { Button, ErrorState, Input } from "@interestled/ui";
 import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
 
@@ -33,7 +33,7 @@ export function AuthScreen(): ReactElement {
   return (
     <ScrollView contentContainerClassName="flex-1 justify-center gap-6 bg-surface-sunken p-6">
       <View className="gap-2">
-        <Text className="text-3xl font-bold text-ink">LearnLoop</Text>
+        <Text className="text-3xl font-bold text-ink">Interest Led</Text>
         <Text className="text-base text-ink-soft">
           Pick a topic, get a map of it, and prove you know each piece.
         </Text>

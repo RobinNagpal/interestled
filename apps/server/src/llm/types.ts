@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { LlmProviderId } from "@learnloop/schemas";
+import type { LlmProviderId } from "@interestled/schemas";
 
 export interface GenerateRequest {
   /** Stable role and rules. Kept separate so a provider can use a system slot. */

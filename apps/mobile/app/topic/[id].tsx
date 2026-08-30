@@ -1,10 +1,10 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router, useLocalSearchParams } from "expo-router";
-import { useRetryTopic, useSetNodeStatus, useTopic } from "@learnloop/api";
-import { Button, ErrorState, Minutes, NodeStatusDot, SectionTitle, Skeleton, statusLabel } from "@learnloop/ui";
-import { NodeStatus, TopicStatus } from "@learnloop/schemas";
-import type { LearningNodeT } from "@learnloop/schemas";
+import { useRetryTopic, useSetNodeStatus, useTopic } from "@interestled/api";
+import { Button, ErrorState, Minutes, NodeStatusDot, SectionTitle, Skeleton, statusLabel } from "@interestled/ui";
+import { NodeStatus, TopicStatus } from "@interestled/schemas";
+import type { LearningNodeT } from "@interestled/schemas";
 import { messageOf } from "../../lib/errors";
 
 /**

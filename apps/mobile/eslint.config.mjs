@@ -1,1 +1,1 @@
-export { default } from "@learnloop/config/eslint";
+export { default } from "@interestled/config/eslint";

@@ -1,4 +1,4 @@
-import { LlmProviderId } from "@learnloop/schemas";
+import { LlmProviderId } from "@interestled/schemas";
 import { z } from "zod";
 import { GenerationError } from "../errors";
 import type { GenerateRequest, LlmProvider } from "./types";

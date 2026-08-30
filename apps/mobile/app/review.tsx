@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
-import { useGradeReview, useReview } from "@learnloop/api";
-import { Button, EmptyState, ErrorState, SectionTitle, Skeleton } from "@learnloop/ui";
-import { ReviewGrade } from "@learnloop/schemas";
-import type { AtomT } from "@learnloop/schemas";
+import { useGradeReview, useReview } from "@interestled/api";
+import { Button, EmptyState, ErrorState, SectionTitle, Skeleton } from "@interestled/ui";
+import { ReviewGrade } from "@interestled/schemas";
+import type { AtomT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
 
 /**

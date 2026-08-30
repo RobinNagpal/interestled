@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { LlmProviderId } from "@learnloop/schemas";
+import { LlmProviderId } from "@interestled/schemas";
 import { createGeminiProvider } from "../src/llm/gemini";
 import { generateJson, stripFence } from "../src/llm/json";
 import type { LlmProvider } from "../src/llm/types";

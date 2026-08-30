@@ -1,5 +1,5 @@
 {
-  "name": "@learnloop/schemas",
+  "name": "@interestled/schemas",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@learnloop/config": "workspace:*",
+    "@interestled/config": "workspace:*",
     "eslint": "^9.34.0",
     "typescript": "~5.9.2",
     "vitest": "^3.2.4"

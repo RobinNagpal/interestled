@@ -1,4 +1,4 @@
-# LearnLoop — Working Agreements
+# Interest Led — Working Agreements
 
 The product is the interface: an LLM can generate any explanation on demand, so
 what is scarce is showing the right thing in the right order and making it stay.

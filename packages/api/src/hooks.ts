@@ -12,7 +12,7 @@ import type {
   ReviewInputT,
   TopicCreateInputT,
   TopicT,
-} from "@learnloop/schemas";
+} from "@interestled/schemas";
 import { useApi } from "./context";
 import { keys } from "./keys";
 import type {

@@ -1,9 +1,9 @@
 import { Pressable, ScrollView, Text } from "react-native";
 import type { ReactElement } from "react";
 import { Link, router } from "expo-router";
-import { useReview, useTopics } from "@learnloop/api";
-import { Button, EmptyState, ErrorState, Skeleton } from "@learnloop/ui";
-import { TopicStatus } from "@learnloop/schemas";
+import { useReview, useTopics } from "@interestled/api";
+import { Button, EmptyState, ErrorState, Skeleton } from "@interestled/ui";
+import { TopicStatus } from "@interestled/schemas";
 import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
 

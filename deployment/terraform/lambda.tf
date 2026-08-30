@@ -70,7 +70,7 @@ resource "aws_lambda_function" "api" {
 }
 
 # The stable public URL. It never changes for the lifetime of the function
-# URL resource; CloudFront fronts it so clients only ever see learnloop.com.
+# URL resource; CloudFront fronts it so clients only ever see interestled.com.
 resource "aws_lambda_function_url" "api" {
   function_name      = aws_lambda_function.api.function_name
   authorization_type = "NONE"

@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createApiClient } from "@learnloop/api";
-import type { ApiClient } from "@learnloop/api";
-import type { LoginInputT, RegisterInputT, UserT } from "@learnloop/schemas";
+import { createApiClient } from "@interestled/api";
+import type { ApiClient } from "@interestled/api";
+import type { LoginInputT, RegisterInputT, UserT } from "@interestled/schemas";
 import { API_URL } from "./config";
 import { readToken, writeToken } from "./storage";
 

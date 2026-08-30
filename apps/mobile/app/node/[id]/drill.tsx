@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router, useLocalSearchParams } from "expo-router";
-import { useDrill, useSaveResume, useSubmitAttempt } from "@learnloop/api";
-import { Button, ErrorState, Input, SectionTitle, Skeleton, VerdictView } from "@learnloop/ui";
-import { DrillKind, MAX_RESPONSE_LENGTH } from "@learnloop/schemas";
-import type { VerdictT } from "@learnloop/schemas";
+import { useDrill, useSaveResume, useSubmitAttempt } from "@interestled/api";
+import { Button, ErrorState, Input, SectionTitle, Skeleton, VerdictView } from "@interestled/ui";
+import { DrillKind, MAX_RESPONSE_LENGTH } from "@interestled/schemas";
+import type { VerdictT } from "@interestled/schemas";
 import { messageOf } from "../../../lib/errors";
 
 /**

@@ -1,5 +1,5 @@
-import { DrillKind, NodeStatus, TopicArchetype } from "@learnloop/schemas";
-import type { LearningNodeT } from "@learnloop/schemas";
+import { DrillKind, NodeStatus, TopicArchetype } from "@interestled/schemas";
+import type { LearningNodeT } from "@interestled/schemas";
 import { isEarned } from "./progress";
 
 /** Screen shapes the composer rotates between. Two in a row is a bug. */

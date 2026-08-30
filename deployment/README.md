@@ -1,9 +1,9 @@
 # Deployment
 
-Everything runs on AWS under one domain:
+Everything runs on AWS under one domain — **interestled.com**:
 
 ```
-<your-domain> (Route 53 → CloudFront, ACM cert)
+interestled.com (Route 53 → CloudFront, ACM cert)
 ├── /*      → S3 bucket           (Expo web export, private, read via OAC)
 └── /api/*  → Lambda Function URL (Hono server, nodejs22.x arm64)
 ```
@@ -49,10 +49,10 @@ Run Terraform with **admin** credentials (your own, not the deployer's) from
 bucket; create it first, then init pointing at it:
 
 ```sh
-bash deployment/scripts/bootstrap-state-bucket.sh   # learnloop-tfstate-<account-id>
+bash deployment/scripts/bootstrap-state-bucket.sh   # interestled-tfstate-<account-id>
 cd deployment/terraform
-terraform init -backend-config="bucket=learnloop-tfstate-<account-id>"
-terraform apply -var="domain_name=example.com"
+terraform init -backend-config="bucket=interestled-tfstate-<account-id>"
+terraform apply -var="domain_name=interestled.com"
 ```
 
 `domain_name` has no default on purpose — it must already have a Route 53
@@ -60,8 +60,8 @@ hosted zone in this account, because the certificate is DNS-validated against
 it, and a wrong value fails ten minutes into the apply.
 
 That creates the bucket, distribution, certificate, Route 53 records for the
-apex and `www`, the `learnloop-api` Lambda with its Function URL, and a
-`learnloop-deployer` IAM user whose policy is scoped to exactly: sync that
+apex and `www`, the `interestled-api` Lambda with its Function URL, and a
+`interestled-deployer` IAM user whose policy is scoped to exactly: sync that
 bucket, invalidate that distribution, update that function's code.
 
 > The first apply takes ~5–10 minutes (certificate validation + CloudFront).
@@ -76,7 +76,7 @@ from the Terraform outputs:
 | Secret | `DATABASE_URL` | your Postgres connection string |
 | Variable | `S3_BUCKET` | `terraform output -raw web_bucket` |
 | Variable | `CLOUDFRONT_DISTRIBUTION_ID` | `terraform output -raw cloudfront_distribution_id` |
-| Variable | `SITE_URL` | `https://<your-domain>` |
+| Variable | `SITE_URL` | `https://interestled.com` |
 
 `DATABASE_URL` is a secret because the workflow runs `prisma migrate deploy`
 with it before pushing new Lambda code, so a deploy that adds a migration

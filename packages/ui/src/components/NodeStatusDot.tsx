@@ -1,6 +1,6 @@
 import { Text, View } from "react-native";
 import type { ReactElement } from "react";
-import { NodeStatus } from "@learnloop/schemas";
+import { NodeStatus } from "@interestled/schemas";
 
 /**
  * The status dots are the progress bar. Nothing here can be advanced by

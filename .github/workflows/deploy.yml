@@ -1,9 +1,9 @@
 # Deploys on every push to main:
 #   web  → Expo static export synced to S3, then a CloudFront invalidation
-#   api  → esbuild bundle pushed to the learnloop-api Lambda
+#   api  → esbuild bundle pushed to the interestled-api Lambda
 #
 # Needs (created by deployment/terraform, values in its outputs):
-#   secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY   (the learnloop-deployer user)
+#   secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY   (the interestled-deployer user)
 #            DATABASE_URL                               (same Postgres the Lambda uses)
 #   vars:    S3_BUCKET, CLOUDFRONT_DISTRIBUTION_ID, SITE_URL
 name: Deploy
@@ -24,7 +24,7 @@ env:
   AWS_REGION: us-east-1
   S3_BUCKET: ${{ vars.S3_BUCKET }}
   CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
-  LAMBDA_FUNCTION: learnloop-api
+  LAMBDA_FUNCTION: interestled-api
 
 jobs:
   # Cheap gate: a red typecheck or test must not reach production, and it costs

@@ -16,15 +16,15 @@
   "dependencies": {
     "@hono/node-server": "^1.19.1",
     "@hono/zod-validator": "^0.7.2",
-    "@learnloop/domain": "workspace:*",
-    "@learnloop/schemas": "workspace:*",
+    "@interestled/domain": "workspace:*",
+    "@interestled/schemas": "workspace:*",
     "@prisma/client": "^6.16.1",
     "dotenv": "^17.2.1",
     "hono": "^4.9.6",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@learnloop/config": "workspace:*",
+    "@interestled/config": "workspace:*",
     "@types/node": "^22.10.0",
     "esbuild": "^0.25.0",
     "eslint": "^9.34.0",

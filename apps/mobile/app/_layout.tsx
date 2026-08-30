@@ -3,8 +3,8 @@ import type { ReactElement, ReactNode } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { ApiProvider, createAppQueryClient } from "@learnloop/api";
-import { LoadingState } from "@learnloop/ui";
+import { ApiProvider, createAppQueryClient } from "@interestled/api";
+import { LoadingState } from "@interestled/ui";
 import { AuthProvider, useAuth } from "../lib/auth";
 import { AuthScreen } from "../components/AuthScreen";
 

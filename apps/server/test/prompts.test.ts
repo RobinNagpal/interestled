@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DrillKind, NodeStatus, TopicArchetype, TimeBudget, TopicStatus } from "@learnloop/schemas";
-import type { CardContentT, LearningNodeT, TopicT } from "@learnloop/schemas";
+import { DrillKind, NodeStatus, TopicArchetype, TimeBudget, TopicStatus } from "@interestled/schemas";
+import type { CardContentT, LearningNodeT, TopicT } from "@interestled/schemas";
 import { SYSTEM, cardPrompt, drillPrompt, mapPrompt, verdictPrompt } from "../src/llm/prompts";
 
 const topic: TopicT = {

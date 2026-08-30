@@ -1,4 +1,4 @@
 {
-  "extends": "@learnloop/config/tsconfig.base.json",
+  "extends": "@interestled/config/tsconfig.base.json",
   "include": ["src", "test"]
 }

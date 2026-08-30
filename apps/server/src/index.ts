@@ -6,5 +6,5 @@ import { getEnv } from "./env";
 const db = createDb();
 
 serve({ fetch: createApp(db).fetch, port: getEnv().PORT }, (info) => {
-  console.log(`LearnLoop API listening on http://localhost:${info.port}`);
+  console.log(`Interest Led API listening on http://localhost:${info.port}`);
 });

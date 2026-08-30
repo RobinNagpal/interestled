@@ -1,5 +1,5 @@
 {
-  "name": "@learnloop/api",
+  "name": "@interestled/api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@learnloop/domain": "workspace:*",
-    "@learnloop/schemas": "workspace:*",
+    "@interestled/domain": "workspace:*",
+    "@interestled/schemas": "workspace:*",
     "@tanstack/react-query": "^5.90.2",
     "zod": "^3.25.76"
   },
@@ -19,7 +19,7 @@
     "react": "*"
   },
   "devDependencies": {
-    "@learnloop/config": "workspace:*",
+    "@interestled/config": "workspace:*",
     "@types/react": "~19.1.10",
     "eslint": "^9.34.0",
     "react": "19.1.0",

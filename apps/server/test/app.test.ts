@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LlmProviderId } from "@learnloop/schemas";
+import { LlmProviderId } from "@interestled/schemas";
 import { createApp } from "../src/app";
 import type { Db } from "../src/db";
 import type { LlmProvider } from "../src/llm/types";
