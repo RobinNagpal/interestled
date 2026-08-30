@@ -42,6 +42,18 @@ export function useCreateTopic(): UseMutationResult<TopicT, Error, TopicCreateIn
   });
 }
 
+export function useRetryTopic(): UseMutationResult<TopicT, Error, string> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.retryTopic(id),
+    onSuccess: (topic) => {
+      void client.invalidateQueries({ queryKey: keys.topics });
+      void client.invalidateQueries({ queryKey: keys.topic(topic.id) });
+    },
+  });
+}
+
 export function useCard(
   nodeId: string,
   options: { depth?: CardDepthT; action?: DepthAction } = {},

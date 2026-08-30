@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useGradeReview, useReview } from "@learnloop/api";
 import { Button, EmptyState, ErrorState, SectionTitle, Skeleton } from "@learnloop/ui";
 import { ReviewGrade } from "@learnloop/schemas";
+import type { AtomT } from "@learnloop/schemas";
 import { messageOf } from "../lib/errors";
 
 /**
@@ -17,8 +18,20 @@ export default function ReviewScreen(): ReactElement {
   const grade = useGradeReview();
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  /**
+   * The batch is frozen when it arrives. Grading an item makes it no longer due,
+   * so reading the live query would shrink the list under the index and skip
+   * the item after every answer.
+   */
+  const [batch, setBatch] = useState<AtomT[] | null>(null);
 
-  if (review.isPending) {
+  useEffect(() => {
+    if (batch === null && review.data !== undefined) {
+      setBatch(review.data.atoms);
+    }
+  }, [batch, review.data]);
+
+  if (review.isPending || (batch === null && !review.isError)) {
     return <Skeleton lines={4} />;
   }
   if (review.isError) {
@@ -29,7 +42,7 @@ export default function ReviewScreen(): ReactElement {
     );
   }
 
-  const atoms = review.data.atoms;
+  const atoms = batch ?? [];
   const atom = atoms[index];
 
   if (atom === undefined) {

@@ -3,12 +3,15 @@ import {
   Atom,
   AuthResult,
   CardContent,
+  CardDepth,
   Drill,
   LearningNode,
+  NodeStatusSchema,
   ResumePoint,
   StudySession,
   Topic,
   User,
+  Verdict,
 } from "@learnloop/schemas";
 import type {
   AtomT,
@@ -24,7 +27,6 @@ import type {
   ReviewInputT,
   TopicCreateInputT,
   TopicT,
-  VerdictT,
 } from "@learnloop/schemas";
 
 export interface ClientConfig {
@@ -46,13 +48,13 @@ export class ApiError extends Error {
 
 const ErrorBody = z.object({ error: z.string() });
 
-async function request<T>(
+/** Sends the request and throws on anything that is not a 2xx. */
+async function send(
   config: ClientConfig,
   path: string,
   method: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown> | null,
   body?: object,
-): Promise<T> {
+): Promise<Response> {
   const token = config.getToken();
   const response = await fetch(`${config.baseUrl}${path}`, {
     method,
@@ -73,10 +75,31 @@ async function request<T>(
       parsed.success ? parsed.data.error : `Request failed (${response.status})`,
     );
   }
-  if (schema === null) {
-    return undefined as T;
-  }
-  return schema.parse(await response.json());
+  return response;
+}
+
+/** A call whose body is parsed. */
+async function request<T>(
+  config: ClientConfig,
+  path: string,
+  method: string,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  body?: object,
+): Promise<T> {
+  return schema.parse(await (await send(config, path, method, body)).json());
+}
+
+/**
+ * A call with no response body. Separate from request rather than passing a
+ * null schema, which would need a cast to produce a T out of nothing.
+ */
+async function requestVoid(
+  config: ClientConfig,
+  path: string,
+  method: string,
+  body?: object,
+): Promise<void> {
+  await send(config, path, method, body);
 }
 
 const Progress = z.object({
@@ -98,15 +121,17 @@ export const TopicDetail = z.object({
 
 export const CardView = z.object({
   node: LearningNode,
-  depth: z.number(),
+  depth: CardDepth,
   variant: z.string(),
   content: CardContent,
   missingPrerequisites: z.array(NodeRef),
 });
 
 export const AttemptResult = z.object({
-  attempt: z.object({ id: z.string(), verdict: z.custom<VerdictT>() }),
-  status: z.string(),
+  // Verdict, not z.custom: a custom schema with no validator accepts anything,
+  // which is the one thing parsing at the boundary is supposed to prevent.
+  attempt: z.object({ id: z.string(), verdict: Verdict }),
+  status: NodeStatusSchema,
   capability: z.string(),
 });
 
@@ -142,6 +167,7 @@ export interface ApiClient {
   listTopics(): Promise<TopicT[]>;
   createTopic(input: TopicCreateInputT): Promise<TopicT>;
   getTopic(id: string): Promise<TopicDetailT>;
+  retryTopic(id: string): Promise<TopicT>;
   deleteTopic(id: string): Promise<void>;
 
   getCard(nodeId: string, options?: { depth?: CardDepthT; action?: DepthAction }): Promise<CardViewT>;
@@ -168,20 +194,21 @@ export function createApiClient(config: ClientConfig): ApiClient {
     request(config, path, "GET", schema);
   const post = <T>(
     path: string,
-    schema: z.ZodType<T, z.ZodTypeDef, unknown> | null,
+    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
     body?: object,
   ): Promise<T> => request(config, path, "POST", schema, body);
 
   return {
     register: (input) => post("/api/auth/register", AuthResult, input),
     login: (input) => post("/api/auth/login", AuthResult, input),
-    logout: () => post("/api/auth/session/logout", null),
+    logout: () => requestVoid(config, "/api/auth/session/logout", "POST"),
     me: () => get("/api/auth/session/me", User),
 
     listTopics: () => get("/api/topics", z.array(Topic)),
     createTopic: (input) => post("/api/topics", Topic, input),
     getTopic: (id) => get(`/api/topics/${id}`, TopicDetail),
-    deleteTopic: (id) => request(config, `/api/topics/${id}`, "DELETE", null),
+    retryTopic: (id) => post(`/api/topics/${id}/retry`, Topic),
+    deleteTopic: (id) => requestVoid(config, `/api/topics/${id}`, "DELETE"),
 
     getCard: (nodeId, options) => {
       const query = new URLSearchParams();
@@ -201,11 +228,11 @@ export function createApiClient(config: ClientConfig): ApiClient {
       request(config, `/api/nodes/${nodeId}/status`, "PUT", LearningNode, { status }),
 
     getReview: () => get("/api/review", ReviewBatch),
-    gradeReview: (input) => post("/api/review", null, input),
+    gradeReview: (input) => requestVoid(config, "/api/review", "POST", input),
 
     startSession: (topicId, minutes) => post("/api/sessions", SessionPlan, { topicId, minutes }),
     endSession: (sessionId) => post(`/api/sessions/${sessionId}/end`, SessionSummaryView),
-    saveResume: (input) => request(config, "/api/sessions/resume", "PUT", null, input),
+    saveResume: (input) => requestVoid(config, "/api/sessions/resume", "PUT", input),
   };
 }
 

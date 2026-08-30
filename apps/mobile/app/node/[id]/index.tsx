@@ -91,7 +91,7 @@ export default function NodeCardScreen(): ReactElement {
               key={button.action}
               accessibilityRole="button"
               onPress={() => {
-                setDepth(card.data.depth as CardDepthT);
+                setDepth(card.data.depth);
                 setAction(button.action);
               }}
               className="rounded-full border border-ink-faint/40 bg-surface px-3 py-2"

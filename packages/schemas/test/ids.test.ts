@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { Id, newId } from "../src/ids";
 import { Email, Password } from "../src/auth";
 import { CardContent } from "../src/cards";
+import { GeneratedMap } from "../src/nodes";
+import { TopicArchetype } from "../src/topics";
 
 describe("newId", () => {
   it("produces ids the schema accepts", () => {
@@ -61,5 +63,32 @@ describe("CardContent", () => {
   it("requires the misconception — the slot exists to force it to be written", () => {
     const { misconception: _omitted, ...without } = valid;
     expect(CardContent.safeParse(without).success).toBe(false);
+  });
+});
+
+describe("GeneratedMap", () => {
+  const node = (key: string) => ({
+    key,
+    title: "T",
+    claim: "c",
+    minutes: 3,
+    capability: "do it",
+    prerequisiteKeys: [],
+  });
+  const map = (keys: string[]) => ({
+    archetype: TopicArchetype.Tool,
+    nodes: keys.map(node),
+  });
+
+  it("accepts a map with unique keys", () => {
+    expect(GeneratedMap.safeParse(map(["a", "b", "c", "d", "e", "f"])).success).toBe(true);
+  });
+
+  it("rejects duplicate keys, which would map two nodes onto one row", () => {
+    expect(GeneratedMap.safeParse(map(["a", "b", "c", "d", "e", "a"])).success).toBe(false);
+  });
+
+  it("rejects a map too small to be worth showing", () => {
+    expect(GeneratedMap.safeParse(map(["a", "b"])).success).toBe(false);
   });
 });

@@ -16,6 +16,17 @@ const Env = z.object({
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
 });
 
-export const env = Env.parse(process.env);
-
 export type EnvT = z.infer<typeof Env>;
+
+let parsed: EnvT | null = null;
+
+/**
+ * Parsed on first use rather than at import. Parsing at import time makes the
+ * environment a load-order dependency: importing anything that transitively
+ * reaches this file — createApp does, through the LLM registry — would throw
+ * before a single line ran. Lazily, a missing variable fails the request that
+ * needed it, which is what the Lambda entry point promises.
+ */
+export function getEnv(): EnvT {
+  return (parsed ??= Env.parse(process.env));
+}

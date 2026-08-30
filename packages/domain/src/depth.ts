@@ -20,7 +20,7 @@ export function depthAfter(current: CardDepthT, action: DepthAction): CardDepthT
 }
 
 function clamp(value: number): CardDepthT {
-  return Math.min(5, Math.max(1, value)) as CardDepthT;
+  return Math.min(5, Math.max(1, value));
 }
 
 /**

@@ -13,7 +13,7 @@ import type { Db } from "./db";
 import { NotFoundError } from "./errors";
 import { generateMap } from "./llm";
 import type { LlmProvider } from "./llm";
-import { toNode, toTopic } from "./rows";
+import { toNode, toResumePoint, toTopic } from "./rows";
 
 /** Persist a generated map. Keys become ids here, so edges can be resolved. */
 async function saveMap(db: Db, topic: TopicT, map: GeneratedMapT): Promise<void> {
@@ -48,6 +48,31 @@ async function saveMap(db: Db, topic: TopicT, map: GeneratedMapT): Promise<void>
   ]);
 }
 
+/**
+ * Generate and store the map. Returns null on success, or the message to show
+ * the learner — the topic row always survives, so a failure is visible and
+ * retryable rather than the create silently vanishing.
+ */
+async function buildMap(db: Db, provider: LlmProvider, topic: TopicT): Promise<string | null> {
+  try {
+    const map = await generateMap(provider, {
+      title: topic.title,
+      goal: topic.goal,
+      timeBudget: topic.timeBudget,
+      knownDomains: topic.knownDomains,
+    });
+    await saveMap(db, topic, map);
+    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Generation failed";
+    await db.topic.update({
+      where: { id: topic.id },
+      data: { status: TopicStatus.Failed, error: message },
+    });
+    return message;
+  }
+}
+
 export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
 
@@ -79,26 +104,33 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
         status: TopicStatus.Generating,
       },
     });
-    const topic = toTopic(created);
-    try {
-      const map = await generateMap(provider(), {
-        title: topic.title,
-        goal: topic.goal,
-        timeBudget: topic.timeBudget,
-        knownDomains: topic.knownDomains,
-      });
-      await saveMap(db, topic, map);
-    } catch (error) {
-      // The topic row survives so the failure is visible and retryable, rather
-      // than the create silently vanishing.
-      const message = error instanceof Error ? error.message : "Generation failed";
-      await db.topic.update({
-        where: { id: topic.id },
-        data: { status: TopicStatus.Failed, error: message },
-      });
-      return c.json({ error: message, topicId: topic.id }, 502);
+    const failure = await buildMap(db, provider(), toTopic(created));
+    if (failure !== null) {
+      return c.json({ error: failure, topicId: created.id }, 502);
     }
-    return c.json(toTopic(await db.topic.findUniqueOrThrow({ where: { id: topic.id } })), 201);
+    return c.json(toTopic(await db.topic.findUniqueOrThrow({ where: { id: created.id } })), 201);
+  });
+
+  /** Re-run generation for a topic whose map failed to build. */
+  router.post("/:id/retry", async (c) => {
+    const topic = await db.topic.findFirst({
+      where: { id: c.req.param("id"), userId: c.get("userId") },
+    });
+    if (topic === null) {
+      throw new NotFoundError("Topic not found");
+    }
+    // Nodes from a partially-saved run would collide with the new ones, and the
+    // cascade takes their cards and drills with them.
+    await db.learningNode.deleteMany({ where: { topicId: topic.id } });
+    await db.topic.update({
+      where: { id: topic.id },
+      data: { status: TopicStatus.Generating, error: null },
+    });
+    const failure = await buildMap(db, provider(), toTopic(topic));
+    if (failure !== null) {
+      return c.json({ error: failure, topicId: topic.id }, 502);
+    }
+    return c.json(toTopic(await db.topic.findUniqueOrThrow({ where: { id: topic.id } })));
   });
 
   /** The map, its progress, and the restore point — everything the topic screen needs. */
@@ -122,7 +154,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
       topic: toTopic(topic),
       nodes,
       progress: summarise(nodes),
-      resume: resume === null ? null : { ...resume },
+      resume: resume === null ? null : toResumePoint(resume),
     });
   });
 

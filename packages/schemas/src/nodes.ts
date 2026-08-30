@@ -46,10 +46,17 @@ export const GeneratedNode = z.object({
   prerequisiteKeys: z.array(z.string().min(1).max(60)).max(6),
 });
 
-export const GeneratedMap = z.object({
-  archetype: TopicArchetypeSchema,
-  nodes: z.array(GeneratedNode).min(6).max(40),
-});
+export const GeneratedMap = z
+  .object({
+    archetype: TopicArchetypeSchema,
+    nodes: z.array(GeneratedNode).min(6).max(40),
+  })
+  // Keys become node ids, so a duplicate would map two nodes onto one row and
+  // fail the insert. Refusing it here lets generateJson's retry fix it instead.
+  .refine((map) => new Set(map.nodes.map((node) => node.key)).size === map.nodes.length, {
+    message: "every node key must be unique",
+    path: ["nodes"],
+  });
 
 export type LearningNodeT = z.infer<typeof LearningNode>;
 export type GeneratedNodeT = z.infer<typeof GeneratedNode>;

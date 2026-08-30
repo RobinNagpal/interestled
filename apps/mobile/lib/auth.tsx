@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createApiClient } from "@learnloop/api";
 import type { ApiClient } from "@learnloop/api";
 import type { LoginInputT, RegisterInputT, UserT } from "@learnloop/schemas";
@@ -20,6 +21,7 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }): ReactElement {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<UserT | null>(null);
+  const queryClient = useQueryClient();
   // A ref, not state: the client reads the token on every request and must not
   // be rebuilt (and so invalidate every query) each time it changes.
   const token = useRef<string | null>(null);
@@ -28,7 +30,10 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     token.current = null;
     setUser(null);
     void writeToken(null);
-  }, []);
+    // The QueryClient outlives the session, so without this the next person to
+    // sign in on this device sees the previous one's cached topics and answers.
+    queryClient.clear();
+  }, [queryClient]);
 
   const client = useMemo(
     () =>

@@ -20,7 +20,7 @@ import type { Db } from "./db";
 import { NotFoundError } from "./errors";
 import { generateAtoms, generateCard, generateDrill, gradeAttempt } from "./llm";
 import type { LlmProvider } from "./llm";
-import { toCard, toDrill, toNode, toTopic } from "./rows";
+import { toDrill, toNode, toTopic } from "./rows";
 
 /** Variants that ask the same depth a different way, so they cache separately. */
 const BASE_VARIANT = "base";
@@ -67,8 +67,13 @@ async function cardFor(
     return CardContent.parse(cached.content);
   }
   const content = await generateCard(provider, { topic, node, depth, variant });
-  await db.conceptCard.create({
-    data: { id: newId(), nodeId: node.id, depth, variant, content },
+  // Two concurrent readers of the same uncached card both generate, and the
+  // slower insert would collide on the unique key. The row is identical either
+  // way, so treat the collision as the cache hit it effectively is.
+  await db.conceptCard.upsert({
+    where: { nodeId_depth_variant: { nodeId: node.id, depth, variant } },
+    create: { id: newId(), nodeId: node.id, depth, variant, content },
+    update: {},
   });
   return content;
 }
@@ -187,7 +192,12 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
     if (verdict.passed) {
       const existing = await db.atom.count({ where: { nodeId: node.id, userId } });
       if (existing === 0) {
-        await createAtoms(db, provider(), userId, topic, node);
+        // Deliberately swallowed: the answer is already graded and the node has
+        // already moved, so a model failure here must not turn a successful
+        // attempt into an error the learner sees. The next pass retries it.
+        await createAtoms(db, provider(), userId, topic, node).catch((error: unknown) => {
+          console.error("atom extraction failed", error);
+        });
       }
     }
     return c.json({ attempt: { ...attempt, verdict }, status, capability: node.capability }, 201);
@@ -219,14 +229,8 @@ async function createAtoms(
   topic: TopicT,
   node: LearningNodeT,
 ): Promise<void> {
-  const depth = 2;
-  const cached = await db.conceptCard.findUnique({
-    where: { nodeId_depth_variant: { nodeId: node.id, depth, variant: BASE_VARIANT } },
-  });
-  const content =
-    cached === null
-      ? await cardFor(db, provider, topic, node, depth, BASE_VARIANT)
-      : CardContent.parse(cached.content);
+  // cardFor already reads the cache, so this is a hit in the normal case.
+  const content = await cardFor(db, provider, topic, node, 2, BASE_VARIANT);
   const atoms = await generateAtoms(provider, { node, card: content });
   const now = new Date();
   await db.atom.createMany({
@@ -242,5 +246,3 @@ async function createAtoms(
     })),
   });
 }
-
-export { toCard };

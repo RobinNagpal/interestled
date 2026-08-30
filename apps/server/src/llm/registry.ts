@@ -1,5 +1,5 @@
 import { LlmProviderId } from "@learnloop/schemas";
-import { env } from "../env";
+import { getEnv } from "../env";
 import { GenerationError } from "../errors";
 import { createGeminiProvider } from "./gemini";
 import type { LlmProvider } from "./types";
@@ -10,6 +10,7 @@ import type { LlmProvider } from "./types";
  * the choice is a plain string, so there is no migration either.
  */
 export function createProvider(): LlmProvider {
+  const env = getEnv();
   switch (env.LLM_PROVIDER) {
     case LlmProviderId.Gemini: {
       if (env.GEMINI_API_KEY === undefined) {

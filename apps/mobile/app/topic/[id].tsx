@@ -1,9 +1,9 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router, useLocalSearchParams } from "expo-router";
-import { useSetNodeStatus, useTopic } from "@learnloop/api";
+import { useRetryTopic, useSetNodeStatus, useTopic } from "@learnloop/api";
 import { Button, ErrorState, Minutes, NodeStatusDot, SectionTitle, Skeleton, statusLabel } from "@learnloop/ui";
-import { NodeStatus } from "@learnloop/schemas";
+import { NodeStatus, TopicStatus } from "@learnloop/schemas";
 import type { LearningNodeT } from "@learnloop/schemas";
 import { messageOf } from "../../lib/errors";
 
@@ -17,6 +17,7 @@ export default function TopicScreen(): ReactElement {
   const topicId = id ?? "";
   const topic = useTopic(topicId);
   const setStatus = useSetNodeStatus(topicId);
+  const retry = useRetryTopic();
 
   if (topic.isPending) {
     return <Skeleton lines={6} />;
@@ -30,6 +31,26 @@ export default function TopicScreen(): ReactElement {
   }
 
   const { nodes, progress, resume } = topic.data;
+
+  // Generation is one model call and it does fail — a bad key, a quota, a
+  // response the schema refused twice. Without this the topic is a dead end.
+  if (topic.data.topic.status === TopicStatus.Failed) {
+    return (
+      <View className="gap-4 p-4">
+        <Text className="text-2xl font-bold text-ink">{topic.data.topic.title}</Text>
+        <ErrorState
+          message={topic.data.topic.error ?? "The map could not be built."}
+          hint="Nothing was lost — retrying regenerates the map from the same answers."
+        />
+        <Button
+          label="Try again"
+          onPress={() => retry.mutate(topicId)}
+          busy={retry.isPending}
+        />
+        {retry.isError ? <ErrorState message={messageOf(retry.error)} /> : null}
+      </View>
+    );
+  }
   const shaky = nodes.filter((node) => node.status === NodeStatus.Shaky);
   const next = nodes.find((node) => node.status === NodeStatus.Untouched);
 
