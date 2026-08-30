@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "LearnLoop",
+    "slug": "learnloop",
+    "version": "1.0.0",
+    "scheme": "learnloop",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.robinnagpal.learnloop"
+    },
+    "android": {
+      "edgeToEdgeEnabled": true,
+      "package": "com.robinnagpal.learnloop"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": ["expo-router"]
+  }
+}
