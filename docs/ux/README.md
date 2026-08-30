@@ -1,20 +1,24 @@
 # UX for Learning Any Topic Fast
 
-How to design a learning app when an LLM backend can generate any content on demand.
+Content used to be the expensive part of a learning product. With an LLM backend it is
+not — you can generate any explanation, at any depth, for any learner, on demand. What
+stays hard is showing the right thing, in the right order, and making sure it lasts.
+Those are interface problems, so **the UX is now the product.**
 
-Content used to be the expensive part, and it no longer is. What is still hard is
-showing the right thing, in the right order, and making sure it stays. Those are
-interface problems, not content problems — which means the UX is now the product.
+**In here:** what we are fixing, 8 ideals, the loop, 18 building blocks (each with a
+site you can go and look at), 5 topic archetypes, 5 worked examples, a coverage table,
+and the backend contracts. About 25 minutes end to end, and every section stands alone
+if you only want one.
 
-This document has a companion, [adhd-learning-guidelines.md](./adhd-learning-guidelines.md),
-which sets out what keeps an ADHD learner engaged and what loses them. Everything
-here is built to satisfy it, and the [coverage table](#how-this-covers-the-adhd-guidelines)
-shows point by point where each requirement is met. That constraint turns out to
-improve the product for everyone: designing for the least forgiving attention in the
-room is a good way to find out what was never working well for anyone.
-
-Throughout, **W1–W20** refers to the twenty things that work in that document, and
+Its companion, [adhd-learning-guidelines.md](./adhd-learning-guidelines.md), sets out
+what keeps an ADHD learner engaged and what loses them. Everything here is built to
+satisfy it, and the [coverage table](#how-this-covers-the-adhd-guidelines) shows where
+each of its 40 points is met. **W1–W20** refers to its twenty things that work,
 **A1–A20** to the twenty that do not.
+
+That constraint improves the product for everyone. Designing against the least
+forgiving attention in the room is a good way to find what was never really working
+for anybody.
 
 ---
 
@@ -40,33 +44,168 @@ mechanics of flashcards.
 
 ## The ideals
 
-These are medium-independent. They would hold for a textbook, a private tutor or a
-classroom, and none of them depends on having an LLM — the LLM only makes them cheap
-enough to do for everyone.
+These eight are the load-bearing decisions. They are medium-independent — each would
+hold for a textbook, a private tutor or a classroom, and none of them needs an LLM.
+The LLM only makes them cheap enough to do for every learner instead of for one.
 
-1. **The learner can always see the whole and where they are in it.** Knowing what
-   exists and what remains converts a vague intention into a finite, shrinking list,
-   and it speeds people up more than better explanations do.
-2. **One thing is in front of them at a time.** Anything else on the page is competing
-   for the attention the material needed. *(W13, A13)*
-3. **They produce, rather than receive.** Reading feels like knowing, so every unit
-   ends in something written, said, chosen or built. *(W8)*
-4. **They commit before they are told.** A guess made first creates the gap the
-   explanation lands in; told first, it lands on nothing. *(W14)*
-5. **Depth is theirs to set, sentence by sentence.** The same material has to serve a
-   five-minute skim and a deep dive, and only the learner knows which they want right
-   now. *(W17, A4)*
-6. **Level is measured, not asked.** People judge their own level badly, so read it
-   from what they write instead of from a dropdown. *(W18)*
-7. **Nothing important lives only in their head.** Rules, goals and values stay on the
-   page where they are used. *(W9, A11, A12)*
-8. **Speed is a feature of understanding, not of engineering.** A plain screen that
-   arrives instantly beats a beautiful one that takes eight seconds, because
-   exploration only happens when it is cheap. *(A10)*
+Each ideal below states what it rules out, because an ideal you cannot violate-test is
+decoration. If a screen breaks one of these, that is a bug rather than a trade-off.
+
+### 1. The learner can always see the whole, and where they are in it
+
+Ask someone studying alone what they do not know yet and they cannot tell you, which is
+the actual problem — you can only ask about gaps you can already see. A visible map
+solves that in one move, because it turns "I should learn Kubernetes" into twenty-four
+named things, six of which are already done. The finiteness is doing most of the work
+here: a shrinking list behaves completely differently from an open-ended intention.
+
+It also makes the *shape* of the subject visible, and knowing the shape of a field is a
+large part of what expertise actually is. The catch is that the map has to be honest,
+because the moment progress can be faked by scrolling, the whole thing becomes
+decoration.
+
+- *Rules out:* any indicator that advances on consumption, and any "68% complete" of a
+  total the learner cannot see.
+- *Seen in the wild:* **Google Maps' route view.** The whole journey and your position
+  on it, permanently, and it is the *remaining* distance that tells you whether to
+  stop for petrol.
+- *Covers:* W7 (move freely), W19 (concrete progress), A16 (vague numbers).
+
+### 2. One thing is in front of them at a time
+
+A screen holding a map, a chat, a quiz and a diagram looks generous and reads as noise.
+Everything visible competes to be selected, and that selection cost comes straight out
+of the attention the material needed.
+
+The counter-intuitive part is which extras cost the most — the interesting ones, because
+they win the competition, which is why dropping something fun into a dense explanation
+usually makes the explanation worse. So: one concept, one visual, one action, and
+everything else collapses or dims until it is wanted.
+
+- *Rules out:* related-links panels during a node, badge counters, tip boxes, and any
+  second visual whose job is to "support" the first.
+- *Seen in the wild:* **iA Writer's focus mode**, which dims every sentence except the
+  one you are working on. Nothing is removed — it is simply made to stop competing.
+- *Covers:* W13 (one thing at a time), A13 (clutter), A1 (long unbroken text).
+
+### 3. They produce rather than receive
+
+Reading a good explanation and understanding it feel identical from the inside, and that
+is the most expensive illusion in learning — it holds right up until you have to
+generate a sentence and discover you cannot. Production breaks the tie, because it
+forces retrieval and retrieval is what actually strengthens the memory.
+
+So every node ends in something written, said, chosen or built, and no amount of reading
+can mark one as known. This is also what keeps the map honest, which means ideals 1 and
+3 stand or fall together.
+
+- *Rules out:* a "mark as complete" button, nodes that advance on scroll, and multiple
+  choice standing in as the assessment.
+- *Seen in the wild:* **Exercism**, where the unit of work is a failing test you have
+  to make pass. Reading material is available, but it is never the thing being tracked.
+- *Covers:* W8 (hands and mouth busy), W19 (progress means production), A7 (retrieval
+  rather than transcription).
+
+### 4. They commit before they are told
+
+There is a large difference between being handed an answer and discovering you did not
+have it. An attempt made first creates a specific gap, wakes up the related knowledge,
+and stakes a prediction that the explanation can then confirm or correct. Told first,
+that same explanation lands on nothing and slides off.
+
+Being wrong carries no cost here — the error is what marks the spot the correction
+should land on. One rule keeps the whole thing working: the guess is never scored,
+because a graded guess stops being an honest guess immediately.
+
+- *Rules out:* revealing a chart, an output or a result before asking what the learner
+  expects, and attaching any score to something labelled a prediction.
+- *Seen in the wild:* **Kahoot.** Everyone locks an answer in before the distribution
+  and the correct one appear, and the reveal is gripping precisely because you already
+  committed to something.
+- *Covers:* W14 (ask before explaining), W15 (surprise), A2 (the payoff sits inside
+  the unit).
+
+### 5. Depth belongs to the learner, sentence by sentence
+
+The same node has to serve someone skimming before a meeting and someone who wants the
+derivation, and which of those they are changes inside a single session — sometimes
+inside a paragraph. Asking at signup gets it wrong for both and then stays wrong.
+
+Putting the control on every card fixes that, and it buys a second thing worth as much:
+you can now write above comfort, because anyone who needs less can press *simpler*
+rather than being written down to by default. Pre-generating the variants is what makes
+people actually press the button, since a depth control that costs a wait goes unused.
+
+- *Rules out:* a difficulty setting in preferences, separate beginner and advanced
+  tracks, and writing every card for the least-prepared reader.
+- *Seen in the wild:* **Stripe's API reference**, where nested object fields expand
+  only when you ask for them. The same page is a summary or an exhaustive spec
+  depending on what you click.
+- *Covers:* W17 (err fast, depth on demand), A4 (a shorter version instead of a gate),
+  A15 (no sitting through the known part).
+
+### 6. Level is measured, never asked
+
+"How would you rate your Kubernetes?" produces a number that means nothing, because
+self-assessment is unreliable and the honest answer is usually "depends which part".
+What someone writes, though, is evidence: the vocabulary they reach for, the mistakes
+they make, the branches they skip. That evidence is more accurate than any dropdown and
+it costs the learner nothing, because it comes out of work they were doing anyway. It
+also keeps getting better, where an answer given at signup is stale within a week.
+
+- *Rules out:* level dropdowns, self-rating sliders, and any personalisation that
+  depends on the learner describing themselves accurately.
+- *Seen in the wild:* **provisional ratings on Lichess and Chess.com.** You never
+  declare how strong you are — you play a handful of games, the system works it out,
+  and the matchmaking follows.
+- *Covers:* W18 (skip the known), A14 (no forms before starting), A18 (the estimate
+  tracks the current session, not a stale self-report).
+
+### 7. Nothing important lives only in their head
+
+Working memory is small and empties easily, so every rule, value or goal the learner has
+to hold is capacity taken away from the thinking. The expensive version is information
+that must be combined but is presented apart — a formula on one screen, the exercise on
+another — because then the effort goes into carrying things back and forth instead of
+using them.
+
+The fix is unglamorous: repeat rather than cross-reference, keep the current question
+written where the work is happening, and put anything used together into one visual
+field. Printing a formula twelve times costs twelve lines; sending the reader back for
+it twelve times costs the thread every time.
+
+- *Rules out:* glossaries you navigate to, drills that reference a value from an
+  earlier card, and multi-step instructions delivered in a single sentence.
+- *Seen in the wild:* **frozen header rows in Google Sheets.** Scroll to row 400 and
+  the column names are still there, so you never have to remember what column G meant.
+- *Covers:* W9 (everything in view), A11 (one instruction at a time), A12 (nothing
+  carried across screens).
+
+### 8. Speed is part of understanding, not an engineering nicety
+
+An eight-second load does not merely annoy — it decides how much of the subject gets
+explored, because exploration only happens while it is cheap. If pressing *deeper* costs
+a wait, people stop pressing it, and the depth control that was the entire point of
+ideal 5 quietly ceases to exist.
+
+The same holds for a model that takes forty seconds to rebuild: nobody tries the stupid
+parameter values, and the stupid values are exactly where the intuition was hiding. So
+stream everything, skeleton everything, and build the next screen while the current one
+is still being read.
+
+- *Rules out:* spinners, blocking loads between nodes, and any interaction where a
+  second attempt costs as much as the first.
+- *Seen in the wild:* **Linear**, which treats sub-100ms response as a product
+  requirement rather than an optimisation — and where the speed visibly changes how
+  much people move around inside the app.
+- *Covers:* W11 (momentum never waits), A10 (dead time).
 
 ---
 
 ## The loop
+
+The eight ideals describe what has to be true. This is the shape that makes them true
+in practice — one cycle that every topic runs through, whatever the subject.
 
 ```
 MAP     what exists, what I know, what is next
@@ -78,12 +217,14 @@ DRILL   explain it back, predict, debug, translate → targeted feedback
 RECALL  short daily mixed review; failures reopen the node
 ```
 
-Three rules keep it honest. **One trip round the loop takes three to eight minutes**,
-because small units mean frequent finishes and finishing is the only reward available
-before mastery arrives *(W2)*. **Reading cannot complete a node** — only production
-can, or the map starts lying and the first ideal collapses *(W19)*. And **the system
-picks what gets reviewed**, not the learner, because nobody chooses to review the
-thing they are worst at.
+Three rules keep the loop honest.
+
+- **One trip takes three to eight minutes.** Small units mean frequent finishes, and
+  finishing is the only reward on offer before mastery arrives. *(W2)*
+- **Reading cannot complete a node** — only production can. Break this and the map
+  starts lying, which collapses ideal 1. *(W19)*
+- **The system picks what gets reviewed**, not the learner, because nobody
+  volunteers to review the thing they are worst at.
 
 **Layout:** a map rail on the left, one thing on the main stage, and an ask box on the
 right that is scoped to the current node. Answers appear inline, so a question never
@@ -101,14 +242,15 @@ to endorse the product — several of them get other things badly wrong.
 
 ### Calibration probe
 
-Asking someone to pick Beginner, Intermediate or Advanced produces a number that
-means nothing, because people judge their own level badly and the honest answer is
-usually "depends on the sub-topic". So measure instead of asking. Sixty seconds of
-quick interactions — do you know these four terms, what do you want to do with this,
-how much time do you have — will set depth, vocabulary and scope better than any
-self-report. The single most valuable question is *what related things do you already
-use*, because that decides which comparisons will land and which whole branches can
-be deleted before the learner ever sees them.
+Asking someone to pick Beginner, Intermediate or Advanced produces a number that means
+nothing, because people judge their own level badly and the honest answer is usually
+"depends on the sub-topic". So measure instead of asking. Sixty seconds of quick
+interactions — do you know these four terms, what do you want to do with this, how much
+time do you have — will set depth, vocabulary and scope better than any self-report.
+
+The single most valuable question is *what related things do you already use*, because
+that decides which comparisons will land and which whole branches can be deleted before
+the learner ever sees them.
 
 - *The ideal:* diagnose before you instruct, and spend the diagnosis on what they can
   already do rather than on how they rate themselves.
@@ -123,12 +265,12 @@ be deleted before the learner ever sees them.
 The map is the first thing on screen and the reason the whole thing works. Fifteen to
 forty nodes with dependencies drawn between them, each carrying a status: untouched,
 seen, explained, verified, due, or shaky. It gives the subject a visible shape and a
-visible end, and the shape of a subject is a large part of what expertise actually
-is. Three interactions carry most of the value: *I already know this* collapses a node
-and its prerequisites and shrinks the map; *just get me to X* lights the shortest path
-and dims everything else; and any question from the ask rail can become a new node.
-Nothing on the map ever locks — a missing prerequisite is a note you can walk past,
-not a gate.
+visible end, and the shape of a subject is a large part of what expertise actually is.
+
+Three interactions carry most of the value: *I already know this* collapses a node and
+its prerequisites and shrinks the map; *just get me to X* lights the shortest path and
+dims everything else; and any question from the ask rail can become a new node. Nothing
+on the map ever locks — a missing prerequisite is a note you can walk past, not a gate.
 
 - *The ideal:* make the whole finite and visible from the start, and let any point be
   an entry point. A learner with an urgent question is holding the strongest
@@ -143,12 +285,13 @@ not a gate.
 
 One concept, one screen, and always the same six slots: a one-line claim, one visual,
 three to five sentences of mechanism, one worked example with real numbers, the thing
-people usually get wrong, and the depth buttons. Keeping the shape identical
-everywhere means the eye stops hunting for where the point is and starts reading the
-point. It also forces the generator to produce the two parts that are normally
-missing — the *mechanism*, not just the definition, and the *misconception*, which is
-where most of the real learning happens. The card opens on the claim, so the answer
-arrives before any context does.
+people usually get wrong, and the depth buttons. Keeping the shape identical everywhere
+means the eye stops hunting for where the point is and starts reading the point.
+
+It also forces the generator to produce the two parts that are normally missing — the
+*mechanism*, not just the definition, and the *misconception*, which is where most of
+the real learning happens. The card opens on the claim, so the answer arrives before any
+context does.
 
 - *The ideal:* a fixed, predictable structure removes a cost the reader is otherwise
   paying on every page, and the fixed slots force the author to write the hard parts.
@@ -161,15 +304,16 @@ arrives before any context does.
 
 ### Depth buttons
 
-The same node has to serve someone skimming before a meeting and someone who wants
-the derivation, and asking which they are at signup gets it wrong for both. So put
-the choice on every card and let them change their mind mid-sentence: *simpler*
-regenerates with an analogy from a domain they already know, *deeper* adds the layer
-underneath, *more concrete* replaces the abstraction with an instance, *why it
-matters* gives the consequence, *where this breaks* gives the edge cases. Depth is
-sticky — three presses of *deeper* and later cards start deeper — and because the
-variants are pre-generated the button feels instant, which is what makes people
-actually press it.
+Five buttons sit under every card. *Simpler* regenerates the explanation around an
+analogy from a domain the learner already works in. *Deeper* adds the layer underneath
+— the maths, the protocol, the mechanism. *More concrete* swaps the abstraction for a
+specific instance with real numbers, *why it matters* gives the consequence, and
+*where this breaks* gives the edge cases.
+
+Depth is sticky: three presses of *deeper* and later cards start deeper, so the
+learner sets their level by using the product rather than by declaring it. And because
+the variants are pre-generated the button responds instantly — a depth control that
+costs a wait is a depth control nobody presses.
 
 - *The ideal:* pitch slightly above comfort and make the depth available on demand.
   Writing for the least-prepared reader holds everyone at the slowest pace in the room
@@ -229,12 +373,14 @@ a graded guess stops being an honest guess and the mechanism dies with it.
 ### Playground
 
 Some ideas are relationships between quantities, and no amount of prose transfers a
-relationship as fast as ten seconds of moving a slider and watching the curve answer.
-So give one to three parameters and a live picture — not a simulation of everything,
-just a knob and a consequence. The response must be on the same frame as the drag: if
-the model takes forty seconds to rebuild, nobody explores, and exploring is where the
-intuition was going to come from. The LLM does not run the simulation; it picks a
-widget from a fixed library and sets its parameters.
+relationship as fast as ten seconds of moving a slider and watching the curve answer. So
+give one to three parameters and a live picture — not a simulation of everything, just a
+knob and a consequence.
+
+The response must be on the same frame as the drag: if the model takes forty seconds to
+rebuild, nobody explores, and exploring is where the intuition was going to come from.
+The LLM does not run the simulation; it picks a widget from a fixed library and sets its
+parameters.
 
 - *The ideal:* let people manipulate the thing rather than read about it, and make the
   manipulation cheap enough that they try the stupid values too.
@@ -247,12 +393,13 @@ widget from a fixed library and sets its parameters.
 ### Timeline
 
 Historical and evolutionary topics are causal chains running through time, and a
-horizontal time axis is the only layout whose geometry matches that. Drag the
-scrubber and the panel below shows what was happening, what people believed at the
-time, what they did, and what it cost. Two synced tracks work well — the measured
-series above, the decisions below. Then the drill this layout makes possible: stop at
-a decision point and hand it over. *"You are the Fed chair in October 1979. Here is
-what is known. What do you do?"*
+horizontal time axis is the only layout whose geometry matches that. Drag the scrubber
+and the panel below shows what was happening, what people believed at the time, what
+they did, and what it cost. Two synced tracks work well — the measured series above, the
+decisions below.
+
+Then the drill this layout makes possible: stop at a decision point and hand it over.
+*"You are the Fed chair in October 1979. Here is what is known. What do you do?"*
 
 - *The ideal:* order material as a causal chain rather than as a taxonomy, because
   when elements are linked by cause, remembering one pulls the next one with it.
@@ -264,14 +411,16 @@ what is known. What do you do?"*
 
 ### Compare table
 
-Most confusion in a technical subject is not "I don't know X" — it is "I can't
-separate X from Y". Contrast resolves that faster than any amount of further
-explanation of either one. So watch for the conflation in the learner's own
-explain-back, and when it shows up, generate a side-by-side with rows chosen for
-decision relevance rather than for symmetry: *"you are using Deployment and
-StatefulSet interchangeably — here are the three differences that change what you
-would write."* Firing on detected confusion is what makes this feel like the system is
-paying attention rather than like a reference page.
+Most confusion in a technical subject is not "I don't know X" — it is "I can't separate
+X from Y". Contrast resolves that faster than any amount of further explanation of
+either one.
+
+So watch for the conflation in the learner's own explain-back, and when it shows up,
+generate a side-by-side with rows chosen for decision relevance rather than for
+symmetry: *"you are using Deployment and StatefulSet interchangeably — here are the
+three differences that change what you would write."* Firing on detected confusion is
+what makes this feel like the system is paying attention rather than like a reference
+page.
 
 - *The ideal:* teach the distinction at the moment the learner reveals they have
   merged two things, using the smallest number of rows that would change a decision.
@@ -283,13 +432,15 @@ paying attention rather than like a reference page.
 
 ### Broken thing to fix
 
-Expertise is largely a library of failure modes, and diagnosis is what the job
-actually consists of. So the most valuable screen in a technical topic is a broken
-artefact and the question *what is wrong and why* — a robot that oscillates under
-load, a pod stuck in `CrashLoopBackOff`, a sentence with a subtle agreement error, a
-policy that made inflation worse. Give hints in a ladder rather than an answer button:
-nudge, then narrow, then reveal, with each rung recorded as a signal about how solid
-that node really is. The drill completes only when the thing works again.
+Expertise is largely a library of failure modes, and diagnosis is what the job actually
+consists of. So the most valuable screen in a technical topic is a broken artefact and
+the question *what is wrong and why* — a robot that oscillates under load, a pod stuck
+in `CrashLoopBackOff`, a sentence with a subtle agreement error, a policy that made
+inflation worse.
+
+Give hints in a ladder rather than an answer button: nudge, then narrow, then reveal,
+with each rung recorded as a signal about how solid that node really is. The drill
+completes only when the thing works again.
 
 - *The ideal:* practise the task, not a proxy for it — and make the completion test
   the artefact working, so being finished is a fact rather than a feeling.
@@ -304,10 +455,12 @@ that node really is. The drill completes only when the thing works again.
 For the three to five hardest nodes in a topic, replace the wall of explanation with a
 short chain of clickable questions that walk the learner into the idea. The important
 detail: **wrong answers are the interesting path**. A wrong click does not say
-"incorrect" — it says "sure, let's do that", plays the consequence out, and lands on
-the contradiction. Self-derived conclusions stick far better than delivered ones, and
-clicking keeps it fast enough that nobody minds. Use this sparingly; every node as a
-guided dialogue is exhausting.
+"incorrect" — it says "sure, let's do that", plays the consequence out, and lands on the
+contradiction.
+
+Self-derived conclusions stick far better than delivered ones, and clicking keeps it
+fast enough that nobody minds. Use this sparingly; every node as a guided dialogue is
+exhausting.
 
 - *The ideal:* let the learner reach the conclusion themselves, and treat a wrong
   answer as a branch to explore rather than as an error to correct.
@@ -319,14 +472,15 @@ guided dialogue is exhausting.
 
 ### Review deck
 
-Everything else in this document builds understanding; this is the only part that
-fights forgetting, and without it a fast sprint decays to nothing in three weeks.
-Atomic items get extracted from every node the learner touches — cloze, reverse,
-application, production — and surfaced as a short daily session of a dozen or so,
-mixed across nodes rather than blocked on one. The critical link is what happens on
-failure: a failed item flips its source node to *shaky* on the map, which reopens it.
-That closes the loop from recall back to the map and makes forgetting visible work
-rather than invisible decay.
+Everything else in this document builds understanding; this is the only part that fights
+forgetting, and without it a fast sprint decays to nothing in three weeks. Atomic items
+get extracted from every node the learner touches — cloze, reverse, application,
+production — and surfaced as a short daily session of a dozen or so, mixed across nodes
+rather than blocked on one.
+
+The critical link is what happens on failure: a failed item flips its source node to
+*shaky* on the map, which reopens it. That closes the loop from recall back to the map
+and makes forgetting visible work rather than invisible decay.
 
 - *The ideal:* schedule retrieval rather than re-reading, space it by failure, and
   make a lapse reschedule quietly instead of accumulating into a backlog.
@@ -354,13 +508,15 @@ distraction into an extension of the map.
 
 ### Session wrapper
 
-Open with a contract in one line — *"twelve minutes, four nodes, and you will be able
-to read a manifest and say what it does"* — because an unlabelled task has no visible
-end and gets deferred rather than started. Close with a generated one-page artefact:
-what was covered, in the learner's own vocabulary, the three things they got wrong,
-and what comes next. The opening line is what makes starting possible; the closing
-page is what makes them come back, because it accumulates into something they own and
-doubles as the review material.
+Open with a contract in one line — *"twelve minutes, four nodes, and you will be able to
+read a manifest and say what it does"* — because an unlabelled task has no visible end
+and gets deferred rather than started. Close with a generated one-page artefact: what
+was covered, in the learner's own vocabulary, the three things they got wrong, and what
+comes next.
+
+The opening line is what makes starting possible; the closing page is what makes them
+come back, because it accumulates into something they own and doubles as the review
+material.
 
 - *The ideal:* state the cost before asking for the commitment, and hand back
   something that outlives the session.
@@ -474,6 +630,10 @@ decides what "known" means — get that wrong and the map lies about progress.
 ---
 
 ## Five examples
+
+Five topics, one from each kind. Each shows the map, the screen that defines the
+topic, one node in detail, and the drill that decides whether the learner actually
+has it.
 
 ### Robotics — a System topic
 
@@ -717,6 +877,9 @@ the design, not an acceptable gap.
 
 ## Backend
 
+The UX above implies a specific backend shape. Three decisions carry almost all of the
+weight, and getting the first one wrong makes the rest impossible.
+
 **Generate typed objects, not prose.** The LLM fills a schema; the frontend renders
 it the same way every time. That is what makes it feel like a product instead of a
 chat window. Typed objects are also cacheable, re-renderable at a new depth, and
@@ -800,11 +963,13 @@ wrong thing at scale.
 
 ## Build order
 
-**v0 — the spine.** Calibration → map with status → concept cards with depth buttons
-→ predict-then-reveal → explain-back with a diff → status updates. Build the restore
-point in v0 too; it is small, and without it every interruption costs a learner. One topic kind only: pick a **Tool**
-topic like Kubernetes, because correctness is checkable and the audience tolerates
-rough edges. *If this does not already feel much better than a chatbot, nothing later
+**v0 — the spine.** Calibration → map with status → concept cards with depth buttons →
+predict-then-reveal → explain-back with a diff → status updates. Build the restore point
+in v0 too; it is small, and without it every interruption costs a learner. One topic
+kind only: pick a **Tool** topic like Kubernetes, because correctness is checkable and
+the audience tolerates rough edges.
+
+*If this does not already feel much better than a chatbot, nothing later
 will fix it.*
 
 **v1 — retention.** Review items, spaced sessions, Shaky nodes, session summaries.

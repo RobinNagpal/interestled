@@ -3,13 +3,18 @@
 Why ADHD learners disengage, what the research says, and exactly how to fix it.
 Companion to [README.md](./README.md).
 
+**In here:** 20 things that work and 20 that do not, each with the mechanism, the
+evidence, and two fixes carrying a worked example. About 30 minutes end to end — but
+the points are independent, so reading four of them is a perfectly good use of it.
+
 The single most useful thing to know about ADHD is that it does not mean having less
 attention. It means attention gets allocated differently: it goes to whatever is
 **interesting, novel, urgent or difficult**, and largely ignores whatever is merely
 important. So a learner can lose an afternoon to something they picked up by accident
-and be unable to start the thing they actually care about. Nothing below is about
-making people try harder. It is about arranging material so that the attention they
-do have can reach it.
+and be unable to start the thing they actually care about.
+
+Nothing below is about making people try harder. It is about arranging material so
+that the attention they already have can reach it.
 
 Four traits are behind almost every point in this document:
 
