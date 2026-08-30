@@ -8,18 +8,41 @@ export function isEarned(status: NodeStatus): boolean {
   return EARNED.includes(status);
 }
 
+export interface AdvanceOptions {
+  /**
+   * Whether this drill is the one that decides "known" for this topic's
+   * archetype. Hardcoding "an apply drill" here left System, Story and
+   * Self-help topics unable to ever reach Verified, because their mastery
+   * drills are Predict and ExplainBack.
+   */
+  isMastery: boolean;
+  /**
+   * Whether a failure may move the node down. False for Predict: a guess made
+   * before the reveal is a learning device, not an assessment, and penalising
+   * it is the thing that stops people guessing honestly (W14).
+   */
+  penalise: boolean;
+}
+
 /**
  * Where a node moves after an attempt. Reading only ever reaches Seen — the
- * jump to Explained needs a passed explain-back, and Verified needs the idea
- * used on a case it has not been used on.
+ * jump to Explained needs a passed explain-back, and Verified needs the drill
+ * that defines mastery for this archetype.
  */
-export function advance(current: NodeStatus, verdict: VerdictT, isApplication: boolean): NodeStatus {
+export function advance(
+  current: NodeStatus,
+  verdict: VerdictT,
+  options: AdvanceOptions,
+): NodeStatus {
   if (!verdict.passed) {
+    if (!options.penalise) {
+      return current === NodeStatus.Untouched ? NodeStatus.Seen : current;
+    }
     // A failure never drops an earned node below Shaky: the work still happened,
     // and wiping it is the mechanic that loses people (A9).
     return isEarned(current) || current === NodeStatus.Shaky ? NodeStatus.Shaky : NodeStatus.Seen;
   }
-  if (isApplication) {
+  if (options.isMastery) {
     return NodeStatus.Verified;
   }
   return current === NodeStatus.Verified ? NodeStatus.Verified : NodeStatus.Explained;

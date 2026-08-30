@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UseMutationResult, UseQueryResult } from "@tanstack/react-query";
 import type {
@@ -132,19 +133,51 @@ export function useEndSession(): UseMutationResult<SessionSummaryViewT, Error, s
   return useMutation({ mutationFn: (sessionId: string) => api.endSession(sessionId) });
 }
 
-/**
- * The restore point. Fire-and-forget on every keystroke: a failed save must
- * never interrupt typing, and the next keystroke will retry it anyway.
- */
-export function useSaveResume(): (input: {
+export interface ResumeInput {
   topicId: string;
   nodeId: string;
   drillId: string | null;
   draft: string;
   lastThought: string;
-}) => void {
+}
+
+/** Long enough to collapse a burst of typing, short enough to survive a kill. */
+const RESUME_DEBOUNCE_MS = 800;
+
+/**
+ * The restore point, saved while typing. Debounced on purpose: writing on every
+ * keystroke is one request and one upsert per character, which on a phone is
+ * hundreds of round trips per drill. The pending write is flushed on unmount so
+ * navigating away still saves, and failures are swallowed because a save must
+ * never interrupt typing.
+ */
+export function useSaveResume(): (input: ResumeInput) => void {
   const api = useApi();
-  return (input) => {
-    void api.saveResume(input).catch(() => undefined);
-  };
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<ResumeInput | null>(null);
+
+  const flush = useCallback((): void => {
+    const input = pending.current;
+    pending.current = null;
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    if (input !== null) {
+      void api.saveResume(input).catch(() => undefined);
+    }
+  }, [api]);
+
+  useEffect(() => flush, [flush]);
+
+  return useCallback(
+    (input: ResumeInput) => {
+      pending.current = input;
+      if (timer.current !== null) {
+        clearTimeout(timer.current);
+      }
+      timer.current = setTimeout(flush, RESUME_DEBOUNCE_MS);
+    },
+    [flush],
+  );
 }

@@ -11,6 +11,7 @@ export function Input({
   autoFocus = false,
   keyboardType = "default",
   hint,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -21,7 +22,10 @@ export function Input({
   autoFocus?: boolean;
   keyboardType?: "default" | "email-address";
   hint?: string;
+  maxLength?: number;
 }): ReactElement {
+  // Warn before the limit rather than at it, so a long answer is never lost.
+  const nearLimit = maxLength !== undefined && value.length > maxLength * 0.9;
   return (
     <View className="gap-1">
       <Text className="text-sm font-medium text-ink-soft">{label}</Text>
@@ -34,11 +38,17 @@ export function Input({
         multiline={multiline}
         autoFocus={autoFocus}
         keyboardType={keyboardType}
+        maxLength={maxLength}
         autoCapitalize={keyboardType === "email-address" ? "none" : "sentences"}
         autoCorrect={keyboardType !== "email-address"}
         className={`rounded-card border border-ink-faint/40 bg-surface px-3 py-3 text-base text-ink ${multiline ? "min-h-32" : ""}`}
         style={multiline ? { textAlignVertical: "top" } : undefined}
       />
+      {nearLimit ? (
+        <Text className="text-xs text-warn">
+          {value.length} of {maxLength} characters
+        </Text>
+      ) : null}
       {hint === undefined ? null : <Text className="text-xs text-ink-faint">{hint}</Text>}
     </View>
   );

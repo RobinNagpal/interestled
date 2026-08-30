@@ -58,9 +58,12 @@ export const Verdict = z.object({
   misconception: z.string().max(300).default(""),
 });
 
+/** Shared so the client can stop typing at the same point the server refuses. */
+export const MAX_RESPONSE_LENGTH = 4000;
+
 export const AttemptInput = z.object({
   drillId: Id,
-  response: z.string().trim().min(1, "Write something first").max(4000),
+  response: z.string().trim().min(1, "Write something first").max(MAX_RESPONSE_LENGTH),
   hintsUsed: z.number().int().min(0).max(3).default(0),
 });
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { NodeStatus, TopicArchetype, VerdictLabel } from "@learnloop/schemas";
 import type { LearningNodeT, VerdictT } from "@learnloop/schemas";
 import { advance, afterLapse, orderVerdict, summarise } from "../src/progress";
+import { masteryDrill } from "../src/session";
+import { DrillKind } from "@learnloop/schemas";
 
 const pass: VerdictT = {
   items: [{ label: VerdictLabel.Got, point: "p", note: "" }],
@@ -27,23 +29,49 @@ function node(overrides: Partial<LearningNodeT> = {}): LearningNodeT {
   };
 }
 
+const graded = { isMastery: false, penalise: true };
+const mastery = { isMastery: true, penalise: true };
+const guess = { isMastery: false, penalise: false };
+
 describe("advance", () => {
   it("moves a seen node to explained on a passed explain-back", () => {
-    expect(advance(NodeStatus.Seen, pass, false)).toBe(NodeStatus.Explained);
+    expect(advance(NodeStatus.Seen, pass, graded)).toBe(NodeStatus.Explained);
   });
 
-  it("only reaches verified through an application drill", () => {
-    expect(advance(NodeStatus.Explained, pass, true)).toBe(NodeStatus.Verified);
-    expect(advance(NodeStatus.Explained, pass, false)).toBe(NodeStatus.Explained);
+  it("only reaches verified through the drill that defines mastery", () => {
+    expect(advance(NodeStatus.Explained, pass, mastery)).toBe(NodeStatus.Verified);
+    expect(advance(NodeStatus.Explained, pass, graded)).toBe(NodeStatus.Explained);
+  });
+
+  it("lets every archetype reach verified through its own mastery drill", () => {
+    // Regression: mastery was hardcoded to Apply, so the three archetypes whose
+    // mastery drill is Predict or ExplainBack could never be verified at all.
+    for (const archetype of Object.values(TopicArchetype)) {
+      const kind = masteryDrill(archetype);
+      const isMastery = kind === masteryDrill(archetype);
+      expect(advance(NodeStatus.Explained, pass, { isMastery, penalise: kind !== DrillKind.Predict })).toBe(
+        NodeStatus.Verified,
+      );
+    }
   });
 
   it("never demotes an earned node below shaky", () => {
-    expect(advance(NodeStatus.Verified, fail, false)).toBe(NodeStatus.Shaky);
-    expect(advance(NodeStatus.Untouched, fail, false)).toBe(NodeStatus.Seen);
+    expect(advance(NodeStatus.Verified, fail, graded)).toBe(NodeStatus.Shaky);
+    expect(advance(NodeStatus.Untouched, fail, graded)).toBe(NodeStatus.Seen);
+  });
+
+  it("never penalises a wrong guess, whatever the node had reached", () => {
+    // The drill screen promises a prediction is never scored; demoting on one
+    // made that copy false and punished exactly the honest guessing it asks for.
+    expect(advance(NodeStatus.Verified, fail, guess)).toBe(NodeStatus.Verified);
+    expect(advance(NodeStatus.Explained, fail, guess)).toBe(NodeStatus.Explained);
+    expect(advance(NodeStatus.Shaky, fail, guess)).toBe(NodeStatus.Shaky);
+    // It still counts as having seen the node.
+    expect(advance(NodeStatus.Untouched, fail, guess)).toBe(NodeStatus.Seen);
   });
 
   it("keeps verified when a further explain-back passes", () => {
-    expect(advance(NodeStatus.Verified, pass, false)).toBe(NodeStatus.Verified);
+    expect(advance(NodeStatus.Verified, pass, graded)).toBe(NodeStatus.Verified);
   });
 });
 

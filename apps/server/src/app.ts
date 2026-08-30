@@ -23,6 +23,21 @@ function uniqueMessage(error: Prisma.PrismaClientKnownRequestError): string {
     : "That value is already taken";
 }
 
+/**
+ * Same-origin in production — CloudFront serves the app and /api/* from one
+ * domain — so CORS exists only for local development, where the Expo dev server
+ * is on a different port. Defaulting to "*" would let any site on the internet
+ * drive this API, which matters more than usual when every generation call
+ * costs money.
+ */
+function allowedOrigins(): string[] {
+  const configured = process.env.ALLOWED_ORIGINS;
+  if (configured !== undefined && configured.trim() !== "") {
+    return configured.split(",").map((entry) => entry.trim()).filter((entry) => entry !== "");
+  }
+  return ["http://localhost:7070", "http://localhost:8081"];
+}
+
 export interface AppOptions {
   /**
    * Built lazily and once: a missing API key must fail the request that needed
@@ -36,7 +51,8 @@ export function createApp(db: Db, options: AppOptions = {}): Hono {
   let cached: LlmProvider | null = null;
   const provider = options.provider ?? ((): LlmProvider => (cached ??= createProvider()));
 
-  app.use("*", cors());
+  const origins = allowedOrigins();
+  app.use("*", cors({ origin: (origin) => (origins.includes(origin) ? origin : null) }));
   app.get("/health", (c) => c.json({ ok: true }));
 
   app.route("/api/auth", authRouter(db));

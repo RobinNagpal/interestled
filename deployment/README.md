@@ -20,6 +20,12 @@ Everything runs on AWS under one domain:
   routes survive a refresh — `/api/*` is excluded.
 - **Postgres is not provisioned here.** Bring a connection string (Neon and
   Supabase free tiers work well) and set it as the Lambda's `DATABASE_URL`.
+- **Use the pooled endpoint and `?connection_limit=1&pool_timeout=20`.** Each
+  warm Lambda container holds its own Prisma connection pool, so the default
+  sizing multiplies by the number of live containers and exhausts a free-tier
+  database under modest traffic. This is the most common way a Prisma-on-Lambda
+  deployment falls over, and it fails as confusing timeouts rather than as an
+  obvious connection error.
 
 ## Two settings that are not the usual defaults
 
@@ -80,13 +86,20 @@ Finally give the function its database and model key. Terraform ignores later
 changes to the function's environment, so these survive future applies:
 
 ```sh
-aws lambda update-function-configuration \
-  --function-name learnloop-api \
-  --environment "Variables={DATABASE_URL=postgresql://…,LLM_PROVIDER=gemini,LLM_MODEL=gemini-2.0-flash,GEMINI_API_KEY=…}"
+terraform output -raw set_environment_command   # then fill in the placeholders
 ```
 
-Note that this replaces the whole variables map rather than merging, so pass
-every key each time.
+That output deliberately lists every key, because `--environment` **replaces**
+the whole variables map rather than merging into it: a command that sets only
+`DATABASE_URL` silently deletes the provider key and breaks every generation.
+
+## Before this is public
+
+Registration is open and each topic costs a model call. The server caps
+generations per user (10/hour, 100 topics), but nothing yet limits how many
+accounts one person can create, so put a rate limit or a sign-up gate in front
+of `/api/auth/register` before exposing this to the internet — otherwise the
+model bill is unbounded.
 
 ## Deploying
 

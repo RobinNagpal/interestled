@@ -10,7 +10,7 @@ import type { GeneratedMapT, TopicT } from "@learnloop/schemas";
 import { summarise } from "@learnloop/domain";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
-import { NotFoundError } from "./errors";
+import { ConflictError, NotFoundError } from "./errors";
 import { generateMap } from "./llm";
 import type { LlmProvider } from "./llm";
 import { toNode, toResumePoint, toTopic } from "./rows";
@@ -46,6 +46,31 @@ async function saveMap(db: Db, topic: TopicT, map: GeneratedMapT): Promise<void>
       data: { archetype: map.archetype, status: TopicStatus.Ready },
     }),
   ]);
+}
+
+/**
+ * Generating a map is the only expensive call in the product, and registration
+ * is open, so without a ceiling anyone could burn the deployment's model budget
+ * by looping topic creation. These are per user; the edge still needs a limit
+ * on registration itself before this is exposed publicly (see deployment/README).
+ */
+const MAX_GENERATIONS_PER_HOUR = 10;
+const MAX_TOPICS_PER_USER = 100;
+
+async function assertWithinBudget(db: Db, userId: string, isNew: boolean): Promise<void> {
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const [recent, total] = await Promise.all([
+    db.topic.count({ where: { userId, createdAt: { gte: hourAgo } } }),
+    isNew ? db.topic.count({ where: { userId } }) : Promise.resolve(0),
+  ]);
+  if (recent >= MAX_GENERATIONS_PER_HOUR) {
+    throw new ConflictError(
+      `That is ${MAX_GENERATIONS_PER_HOUR} new topics in an hour — the limit resets shortly.`,
+    );
+  }
+  if (isNew && total >= MAX_TOPICS_PER_USER) {
+    throw new ConflictError(`You have reached ${MAX_TOPICS_PER_USER} topics. Delete one to add another.`);
+  }
 }
 
 /**
@@ -91,6 +116,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
    */
   router.post("/", zValidator("json", TopicCreateInput), async (c) => {
     const input = c.req.valid("json");
+    await assertWithinBudget(db, c.get("userId"), true);
     const created = await db.topic.create({
       data: {
         id: newId(),
@@ -119,6 +145,8 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     if (topic === null) {
       throw new NotFoundError("Topic not found");
     }
+    // Retry generates too, so it is inside the same budget.
+    await assertWithinBudget(db, c.get("userId"), false);
     // Nodes from a partially-saved run would collide with the new ones, and the
     // cascade takes their cards and drills with them.
     await db.learningNode.deleteMany({ where: { topicId: topic.id } });

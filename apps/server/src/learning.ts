@@ -172,7 +172,13 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
       response: input.response,
     });
 
-    const status = advance(node.status, verdict, drill.kind === DrillKind.Apply);
+    const status = advance(node.status, verdict, {
+      // The archetype decides which drill means "known", so a System topic
+      // reaches Verified through Predict and a Tool topic through Apply.
+      isMastery: drill.kind === masteryDrill(node.archetype),
+      // A wrong guess before the reveal never costs the learner anything.
+      penalise: drill.kind !== DrillKind.Predict,
+    });
     const [attempt] = await db.$transaction([
       db.attempt.create({
         data: {

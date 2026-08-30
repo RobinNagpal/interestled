@@ -82,6 +82,11 @@ Adding a provider is therefore:
 No migration, because `LLM_PROVIDER` is configuration rather than data. Nothing else
 in the codebase may name a provider.
 
+**Generation is the only expensive call, and registration is open.** Every path that
+reaches the model is inside a per-user budget (`assertWithinBudget` in `topics.ts`).
+Adding a new generating endpoint means adding it there too, or the deployment's model
+bill has no ceiling.
+
 **Never cache a grading call.** A cached verdict is a verdict on somebody else's
 answer. Cards, drills and review items are cached deliberately; `gradeAttempt` is the
 one call that must be live, and it runs at `temperature: 0` so the same answer does
@@ -97,7 +102,12 @@ These are load-bearing. Breaking one is a bug, not a trade-off:
 - **Nothing on the map locks.** Prerequisites are advisory notes; a learner may open
   any node at any time.
 - **No streaks, no scores, no percentages of an unseen total.** Progress is stated as
-  capability. A failed drill never drops an earned node below `Shaky`.
+  capability. A failed drill never drops an earned node below `Shaky`, and a failed
+  *prediction* never moves it at all — a guess made before the reveal is a learning
+  device, not an assessment, and scoring it stops people guessing honestly.
+- **The archetype decides what `Verified` means.** `advance` takes the mastery drill
+  from `masteryDrill(archetype)` rather than assuming an apply drill; assuming it left
+  three of the five archetypes unable to reach `Verified` at all.
 - **The review batch is three items**, never a backlog, so an absence cannot become a
   wall.
 - **Timers only on retrieval.** Never on a card, an explain-back, or an apply drill.

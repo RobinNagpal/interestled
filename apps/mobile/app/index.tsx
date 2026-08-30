@@ -49,6 +49,9 @@ export default function TopicsScreen(): ReactElement {
             {topic.status === TopicStatus.Failed ? (
               <Text className="text-sm text-warn">Map could not be built — open to retry</Text>
             ) : null}
+            {topic.status === TopicStatus.Generating ? (
+              <Text className="text-sm text-ink-faint">Building the map…</Text>
+            ) : null}
           </Pressable>
         </Link>
       ))}

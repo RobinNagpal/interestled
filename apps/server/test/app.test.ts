@@ -11,7 +11,7 @@ import type { LlmProvider } from "../src/llm/types";
  * of registration or expose every authenticated route, and nothing else in the
  * suite would notice — hence these tests.
  */
-function stubDb(session: { token: string; userId: string } | null): Db {
+function stubDb(session: { token: string; userId: string; expiresAt?: Date } | null): Db {
   const db = {
     user: {
       findUnique: vi.fn(async () => null),
@@ -20,10 +20,16 @@ function stubDb(session: { token: string; userId: string } | null): Db {
     authSession: {
       findUnique: vi.fn(async ({ where }: { where: { token: string } }) =>
         session !== null && where.token === session.token
-          ? { token: session.token, userId: session.userId, user: { id: session.userId, defaultDepth: 2 } }
+          ? {
+              token: session.token,
+              userId: session.userId,
+              expiresAt: session.expiresAt ?? new Date(Date.now() + 60_000),
+              user: { id: session.userId, defaultDepth: 2 },
+            }
           : null,
       ),
       create: vi.fn(async () => ({})),
+      delete: vi.fn(async () => ({})),
       deleteMany: vi.fn(async () => ({ count: 0 })),
     },
     topic: { findMany: vi.fn(async () => []) },
@@ -72,6 +78,18 @@ describe("auth boundary", () => {
     const app = createApp(stubDb({ token: "good", userId: "u1" }), { provider });
     const response = await app.request("/api/topics", { headers: { Authorization: "good" } });
     expect(response.status).toBe(401);
+  });
+
+  it("rejects a token that has expired", async () => {
+    const app = createApp(
+      stubDb({ token: "good", userId: "u1", expiresAt: new Date(Date.now() - 1000) }),
+      { provider },
+    );
+    const response = await app.request("/api/topics", {
+      headers: { Authorization: "Bearer good" },
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("expired") });
   });
 
   it("admits a valid token", async () => {

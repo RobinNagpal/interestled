@@ -10,6 +10,16 @@ export interface AuthEnv {
   Variables: { userId: string; defaultDepth: number };
 }
 
+/**
+ * Long enough that a learner is not signed out mid-topic, short enough that a
+ * token lifted from a device stops working. Refreshed on use below.
+ */
+const SESSION_DAYS = 30;
+
+function expiry(): Date {
+  return new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+}
+
 function issueToken(): string {
   return randomBytes(24).toString("base64url");
 }
@@ -29,7 +39,7 @@ export function authRouter(db: Db): Hono {
       data: { id: newId(), email, passwordHash: await hashPassword(password) },
     });
     const token = issueToken();
-    await db.authSession.create({ data: { token, userId: user.id } });
+    await db.authSession.create({ data: { token, userId: user.id, expiresAt: expiry() } });
     return c.json({ token, user: User.parse(user) }, 201);
   });
 
@@ -45,7 +55,10 @@ export function authRouter(db: Db): Hono {
       return c.json({ error: "Wrong email or password" }, 401);
     }
     const token = issueToken();
-    await db.authSession.create({ data: { token, userId: user.id } });
+    await db.authSession.create({ data: { token, userId: user.id, expiresAt: expiry() } });
+    // Opportunistic cleanup: this login is a natural moment to drop the rows
+    // this user has already let lapse, so nothing has to sweep the table.
+    await db.authSession.deleteMany({ where: { userId: user.id, expiresAt: { lt: new Date() } } });
     return c.json({ token, user: User.parse(user) });
   });
 
@@ -62,6 +75,10 @@ export function requireAuth(db: Db): MiddlewareHandler<AuthEnv> {
         : await db.authSession.findUnique({ where: { token }, include: { user: true } });
     if (session === null) {
       return c.json({ error: "Unauthorized" }, 401);
+    }
+    if (session.expiresAt.getTime() <= Date.now()) {
+      await db.authSession.delete({ where: { token: session.token } }).catch(() => undefined);
+      return c.json({ error: "Your session has expired — sign in again" }, 401);
     }
     c.set("userId", session.userId);
     c.set("defaultDepth", session.user.defaultDepth);

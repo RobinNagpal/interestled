@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { useDrill, useSaveResume, useSubmitAttempt } from "@learnloop/api";
 import { Button, ErrorState, Input, SectionTitle, Skeleton, VerdictView } from "@learnloop/ui";
-import { DrillKind } from "@learnloop/schemas";
+import { DrillKind, MAX_RESPONSE_LENGTH } from "@learnloop/schemas";
 import type { VerdictT } from "@learnloop/schemas";
 import { messageOf } from "../../../lib/errors";
 
@@ -115,6 +115,7 @@ export default function DrillScreen(): ReactElement {
         onChangeText={onType}
         multiline
         autoFocus
+        maxLength={MAX_RESPONSE_LENGTH}
         placeholder={isPredict ? "What do you think happens?" : "In your own words…"}
       />
 

@@ -33,20 +33,26 @@ export default function TopicScreen(): ReactElement {
   const { nodes, progress, resume } = topic.data;
 
   // Generation is one model call and it does fail — a bad key, a quota, a
-  // response the schema refused twice. Without this the topic is a dead end.
-  if (topic.data.topic.status === TopicStatus.Failed) {
+  // response the schema refused twice. It can also be cut off: CloudFront gives
+  // up at 60s while the Lambda runs to 120s, and a request killed mid-flight
+  // never reaches the catch that would mark it failed. Such a topic sits at
+  // "generating" with no nodes, so both states need the same way out.
+  const stalled =
+    topic.data.topic.status === TopicStatus.Generating && nodes.length === 0;
+  if (topic.data.topic.status === TopicStatus.Failed || stalled) {
     return (
       <View className="gap-4 p-4">
         <Text className="text-2xl font-bold text-ink">{topic.data.topic.title}</Text>
         <ErrorState
-          message={topic.data.topic.error ?? "The map could not be built."}
+          message={
+            topic.data.topic.error ??
+            (stalled
+              ? "Building the map was interrupted before it finished."
+              : "The map could not be built.")
+          }
           hint="Nothing was lost — retrying regenerates the map from the same answers."
         />
-        <Button
-          label="Try again"
-          onPress={() => retry.mutate(topicId)}
-          busy={retry.isPending}
-        />
+        <Button label="Try again" onPress={() => retry.mutate(topicId)} busy={retry.isPending} />
         {retry.isError ? <ErrorState message={messageOf(retry.error)} /> : null}
       </View>
     );

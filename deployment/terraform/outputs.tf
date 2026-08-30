@@ -34,7 +34,28 @@ output "deployer_secret_access_key" {
   sensitive   = true
 }
 
-output "set_database_url_command" {
-  description = "Run this once (with admin credentials) to point the API at your Postgres."
-  value       = "aws lambda update-function-configuration --function-name ${aws_lambda_function.api.function_name} --environment 'Variables={DATABASE_URL=<your-postgres-url>}'"
+output "set_environment_command" {
+  description = <<-EOT
+    Run this once (with admin credentials) to configure the API.
+
+    `--environment` REPLACES the whole variables map rather than merging into
+    it, so every key has to be present in one call. A command that set only
+    DATABASE_URL would silently delete the provider key and break every
+    generation, which is why this output lists them all.
+  EOT
+  value = join(" ", [
+    "aws lambda update-function-configuration",
+    "--function-name ${aws_lambda_function.api.function_name}",
+    "--environment 'Variables={",
+    join(",", [
+      # connection_limit=1 is load-bearing on Lambda: each warm container holds
+      # its own pool, so the default fans out to hundreds of Postgres
+      # connections and exhausts a free-tier database.
+      "DATABASE_URL=<postgres-url>?connection_limit=1&pool_timeout=20",
+      "LLM_PROVIDER=${var.llm_provider}",
+      "LLM_MODEL=${var.llm_model}",
+      "GEMINI_API_KEY=<your-key>",
+    ]),
+    "}'",
+  ])
 }

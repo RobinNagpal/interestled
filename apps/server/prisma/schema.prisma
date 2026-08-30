@@ -33,13 +33,19 @@ model User {
   @@map("users")
 }
 
+/**
+ * Bearer sessions. Without expiresAt a leaked token stayed valid forever and
+ * the table grew by one row per login with nothing ever removing them.
+ */
 model AuthSession {
   token     String   @id
   userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
   @@map("auth_sessions")
 }
 
