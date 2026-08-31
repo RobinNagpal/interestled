@@ -1,6 +1,7 @@
 import { DrillKind, NodeStatus, TopicArchetype } from "@interestled/schemas";
 import type { LearningNodeT } from "@interestled/schemas";
 import { isEarned } from "./progress";
+import { inMapOrder, leafNodes } from "./tree";
 
 /** Screen shapes the composer rotates between. Two in a row is a bug. */
 export enum StepKind {
@@ -33,11 +34,11 @@ export function masteryDrill(archetype: TopicArchetype): DrillKind {
 
 /**
  * The next node to offer. Shaky first (forgetting is visible work), then the
- * lowest-order untouched node. Prerequisites are never enforced — they are a
- * note on the node, so a learner who jumps ahead is not blocked (A4).
+ * first untouched leaf in map order. Prerequisites are never enforced — they are
+ * a note on the node, so a learner who jumps ahead is not blocked (A4).
  */
 export function nextNode(nodes: readonly LearningNodeT[]): LearningNodeT | null {
-  const ordered = [...nodes].sort((a, b) => a.orderIndex - b.orderIndex);
+  const ordered = leafNodes(inMapOrder(nodes));
   return (
     ordered.find((node) => node.status === NodeStatus.Shaky) ??
     ordered.find((node) => !isEarned(node.status)) ??
@@ -74,9 +75,7 @@ export function composeSession(
     steps.push({ kind: StepKind.Review, nodeId: "", minutes: 2 });
     spent += 2;
   }
-  const queue = [...nodes]
-    .filter((node) => !isEarned(node.status))
-    .sort((a, b) => a.orderIndex - b.orderIndex);
+  const queue = leafNodes(inMapOrder(nodes)).filter((node) => !isEarned(node.status));
 
   for (const node of queue) {
     const drill = masteryDrill(node.archetype);

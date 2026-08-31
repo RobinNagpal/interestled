@@ -2,6 +2,7 @@ import { Pressable, ScrollView, Text } from "react-native";
 import type { ReactElement } from "react";
 import { Link, router } from "expo-router";
 import { useReview, useTopics } from "@interestled/api";
+import { topicHref } from "@interestled/domain";
 import { Button, EmptyState, ErrorState, Skeleton } from "@interestled/ui";
 import { TopicStatus } from "@interestled/schemas";
 import { useAuth } from "../lib/auth";
@@ -40,7 +41,7 @@ export default function TopicsScreen(): ReactElement {
       ) : null}
 
       {topics.data?.map((topic) => (
-        <Link key={topic.id} href={`/topic/${topic.id}`} asChild>
+        <Link key={topic.id} href={topicHref(topic.slug)} asChild>
           <Pressable className="gap-1 rounded-card bg-surface p-4">
             <Text className="text-lg font-semibold text-ink">{topic.title}</Text>
             {topic.goal === "" ? null : (

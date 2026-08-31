@@ -3,8 +3,9 @@ import { ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useCreateTopic } from "@interestled/api";
-import { Button, ErrorState, Input } from "@interestled/ui";
-import { TimeBudget } from "@interestled/schemas";
+import { topicHref } from "@interestled/domain";
+import { Button, ErrorState, Input, Sheet } from "@interestled/ui";
+import { MapLevels, TimeBudget } from "@interestled/schemas";
 import { messageOf } from "../../lib/errors";
 import { ChipRow } from "../../components/ChipRow";
 
@@ -12,6 +13,25 @@ const BUDGETS: { value: TimeBudget; label: string }[] = [
   { value: TimeBudget.Quick, label: "20 minutes" },
   { value: TimeBudget.Week, label: "A week" },
   { value: TimeBudget.Ongoing, label: "Ongoing" },
+];
+
+/**
+ * How deep the map goes. Two is the default and is named first, because the
+ * map's whole job is to be taken in at a glance — a third level buys detail at
+ * the cost of the thing the screen exists for, and is only worth it on a subject
+ * wide enough that eight groups would not cover it.
+ */
+const LEVELS: { value: string; label: string; body: string }[] = [
+  {
+    value: String(MapLevels.Two),
+    label: "Two levels",
+    body: "Groups, with the nodes you work through inside them. The whole map fits on a screen.",
+  },
+  {
+    value: String(MapLevels.Three),
+    label: "Three levels",
+    body: "Areas, then groups, then nodes. For a subject too wide to sit under eight headings.",
+  },
 ];
 
 /**
@@ -30,11 +50,21 @@ export default function NewTopicScreen(): ReactElement {
   const [goal, setGoal] = useState("");
   const [level, setLevel] = useState("");
   const [timeBudget, setTimeBudget] = useState<TimeBudget>(TimeBudget.Week);
+  const [levels, setLevels] = useState<MapLevels>(MapLevels.Two);
+  // The shape question is asked on the way to generating rather than as a fifth
+  // field: it is about the map, not about the learner, and it only matters at
+  // the moment the button is pressed.
+  const [asking, setAsking] = useState(false);
 
   const submit = (): void => {
     create.mutate(
-      { title, goal, timeBudget, level },
-      { onSuccess: (topic) => router.replace(`/topic/${topic.id}`) },
+      { title, goal, timeBudget, level, levels },
+      {
+        onSuccess: (topic) => {
+          setAsking(false);
+          router.replace(topicHref(topic.slug));
+        },
+      },
     );
   };
 
@@ -82,16 +112,43 @@ export default function NewTopicScreen(): ReactElement {
       ) : null}
 
       <Button
-        label={create.isPending ? "Building your map…" : "Build the map"}
-        onPress={submit}
-        busy={create.isPending}
+        label="Build the map"
+        onPress={() => setAsking(true)}
         disabled={title.trim().length < 2}
       />
-      {create.isPending ? (
-        <Text className="text-center text-sm text-ink-faint">
-          One model call, usually 10–30 seconds.
-        </Text>
-      ) : null}
+
+      <Sheet
+        visible={asking}
+        title="How deep should the map go?"
+        body="You can change this later, and rebuild any one group on its own."
+        onClose={() => (create.isPending ? undefined : setAsking(false))}
+      >
+        <View className="gap-2">
+          <ChipRow
+            options={LEVELS.map((option) => ({ value: option.value, label: option.label }))}
+            selected={String(levels)}
+            onSelect={(value) =>
+              setLevels(value === String(MapLevels.Three) ? MapLevels.Three : MapLevels.Two)
+            }
+          />
+          <Text className="text-sm text-ink-soft">
+            {LEVELS.find((option) => option.value === String(levels))?.body ?? ""}
+          </Text>
+        </View>
+
+        {create.isError ? <ErrorState message={messageOf(create.error)} /> : null}
+
+        <Button
+          label={create.isPending ? "Building your map…" : "Build the map"}
+          onPress={submit}
+          busy={create.isPending}
+        />
+        {create.isPending ? (
+          <Text className="text-center text-sm text-ink-faint">
+            One model call, usually 10–30 seconds.
+          </Text>
+        ) : null}
+      </Sheet>
     </ScrollView>
   );
 }

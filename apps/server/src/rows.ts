@@ -7,6 +7,8 @@ import {
   ResumePoint,
   StudySession,
   Topic,
+  depthOfPath,
+  slugOfPath,
 } from "@interestled/schemas";
 import type {
   AtomT,
@@ -28,6 +30,8 @@ import type {
 export interface NodeRow {
   id: string;
   topicId: string;
+  parentId: string | null;
+  path: string;
   title: string;
   claim: string;
   minutes: number;
@@ -39,9 +43,16 @@ export interface NodeRow {
   prerequisites?: { prerequisiteId: string }[];
 }
 
+/**
+ * `slug` and `depth` are derived from `path` rather than stored beside it. Two
+ * columns saying the same thing is two chances for an edit to leave them
+ * disagreeing, and there is no answer to which one the router should believe.
+ */
 export function toNode(row: NodeRow): LearningNodeT {
   return LearningNode.parse({
     ...row,
+    slug: slugOfPath(row.path),
+    depth: depthOfPath(row.path),
     prerequisiteIds: (row.prerequisites ?? []).map((edge) => edge.prerequisiteId),
   });
 }

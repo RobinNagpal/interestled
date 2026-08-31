@@ -1,52 +1,43 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import {
-  NodeStatus,
+  MoveDirection,
+  MoveDirectionSchema,
   TopicCreateInput,
+  TopicRegenerateInput,
   TopicStatus,
   newId,
+  uniqueSlug,
 } from "@interestled/schemas";
-import type { GeneratedMapT, TopicT } from "@interestled/schemas";
-import { summarise } from "@interestled/domain";
+import type { GeneratedMapT, LearningNodeT, MapLevels, TopicT } from "@interestled/schemas";
+import { ancestorsOf, isBranch } from "@interestled/domain";
+import { z } from "zod";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
-import { generateMap } from "./llm";
+import { generateMap, generateSubtree } from "./llm";
 import type { LlmProvider } from "./llm";
+import { insertNodes, loadTopicDetail, prepareNodes } from "./maps";
 import { loadProfile } from "./profile";
-import { toNode, toResumePoint, toTopic } from "./rows";
+import { toNode, toTopic } from "./rows";
 
-/** Persist a generated map. Keys become ids here, so edges can be resolved. */
-async function saveMap(db: Db, topic: TopicT, map: GeneratedMapT): Promise<void> {
-  const ids = new Map(map.nodes.map((node) => [node.key, newId()]));
-  await db.$transaction([
-    db.learningNode.createMany({
-      data: map.nodes.map((node, index) => ({
-        id: ids.get(node.key)!,
-        topicId: topic.id,
-        title: node.title,
-        claim: node.claim,
-        minutes: node.minutes,
-        archetype: map.archetype,
-        orderIndex: index,
-        status: NodeStatus.Untouched,
-        capability: node.capability,
-      })),
-    }),
-    db.nodePrerequisite.createMany({
-      data: map.nodes.flatMap((node) =>
-        node.prerequisiteKeys
-          // A model sometimes names a key it did not create; drop rather than fail.
-          .filter((key) => ids.has(key) && key !== node.key)
-          .map((key) => ({ nodeId: ids.get(node.key)!, prerequisiteId: ids.get(key)! })),
-      ),
-      skipDuplicates: true,
-    }),
-    db.topic.update({
-      where: { id: topic.id },
-      data: { archetype: map.archetype, status: TopicStatus.Ready },
-    }),
-  ]);
+/** Persist a generated map, replacing whatever the topic had before. */
+async function saveMap(db: Db, topic: TopicT, map: GeneratedMapT, levels: MapLevels): Promise<void> {
+  const { rows, edges } = prepareNodes({
+    topicId: topic.id,
+    archetype: map.archetype,
+    generated: map.nodes,
+    parentId: null,
+    parentPath: null,
+    takenSlugs: new Set(),
+    firstOrderIndex: 0,
+  });
+  await insertNodes(db, rows);
+  await db.nodePrerequisite.createMany({ data: edges, skipDuplicates: true });
+  await db.topic.update({
+    where: { id: topic.id },
+    data: { archetype: map.archetype, levels, status: TopicStatus.Ready },
+  });
 }
 
 /**
@@ -55,23 +46,48 @@ async function saveMap(db: Db, topic: TopicT, map: GeneratedMapT): Promise<void>
  * by looping topic creation. These are per user; the edge still needs a limit
  * on registration itself before this is exposed publicly (see deployment/README).
  */
-const MAX_GENERATIONS_PER_HOUR = 10;
+const MAX_TOPICS_PER_HOUR = 10;
 const MAX_TOPICS_PER_USER = 100;
+/**
+ * Regenerating does not create a topic, so counting topics would have left every
+ * rebuild — of a whole map, or of one group, as often as you like — outside the
+ * budget entirely. Nodes are what a generation actually produces, so they are
+ * what gets counted, and a big map costs more of the allowance than a small one.
+ */
+const MAX_GENERATED_NODES_PER_HOUR = 400;
 
-async function assertWithinBudget(db: Db, userId: string, isNew: boolean): Promise<void> {
+async function assertWithinBudget(db: Db, userId: string, isNewTopic: boolean): Promise<void> {
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const [recent, total] = await Promise.all([
-    db.topic.count({ where: { userId, createdAt: { gte: hourAgo } } }),
-    isNew ? db.topic.count({ where: { userId } }) : Promise.resolve(0),
+  const [recentTopics, totalTopics, recentNodes] = await Promise.all([
+    isNewTopic ? db.topic.count({ where: { userId, createdAt: { gte: hourAgo } } }) : Promise.resolve(0),
+    isNewTopic ? db.topic.count({ where: { userId } }) : Promise.resolve(0),
+    db.learningNode.count({ where: { topic: { userId }, createdAt: { gte: hourAgo } } }),
   ]);
-  if (recent >= MAX_GENERATIONS_PER_HOUR) {
+  if (isNewTopic && recentTopics >= MAX_TOPICS_PER_HOUR) {
     throw new ConflictError(
-      `That is ${MAX_GENERATIONS_PER_HOUR} new topics in an hour — the limit resets shortly.`,
+      `That is ${MAX_TOPICS_PER_HOUR} new topics in an hour — the limit resets shortly.`,
     );
   }
-  if (isNew && total >= MAX_TOPICS_PER_USER) {
+  if (isNewTopic && totalTopics >= MAX_TOPICS_PER_USER) {
     throw new ConflictError(`You have reached ${MAX_TOPICS_PER_USER} topics. Delete one to add another.`);
   }
+  if (recentNodes >= MAX_GENERATED_NODES_PER_HOUR) {
+    throw new ConflictError("That is a lot of map building in one hour — the limit resets shortly.");
+  }
+}
+
+/** A slug that is free for this user. Topic titles repeat, so this is normal. */
+async function freeTopicSlug(db: Db, userId: string, title: string): Promise<string> {
+  const rows = await db.topic.findMany({ where: { userId }, select: { slug: true } });
+  return uniqueSlug(title, new Set(rows.map((row) => row.slug)), "topic-map");
+}
+
+async function findTopic(db: Db, userId: string, slug: string): Promise<TopicT> {
+  const row = await db.topic.findFirst({ where: { userId, slug } });
+  if (row === null) {
+    throw new NotFoundError("Topic not found");
+  }
+  return toTopic(row);
 }
 
 /**
@@ -79,18 +95,26 @@ async function assertWithinBudget(db: Db, userId: string, isNew: boolean): Promi
  * the learner — the topic row always survives, so a failure is visible and
  * retryable rather than the create silently vanishing.
  */
-async function buildMap(db: Db, provider: LlmProvider, topic: TopicT): Promise<string | null> {
+async function buildMap(
+  db: Db,
+  provider: LlmProvider,
+  topic: TopicT,
+  levels: MapLevels,
+  instructions: string,
+): Promise<string | null> {
   try {
     const map = await generateMap(provider, {
       title: topic.title,
       goal: topic.goal,
       timeBudget: topic.timeBudget,
       level: topic.level,
-      // Read here rather than passed in, so a retry picks up a profile edited
-      // since the topic was created — which is the usual reason to retry.
+      levels,
+      instructions,
+      // Read here rather than passed in, so a rebuild picks up a profile edited
+      // since the topic was created — which is a common reason to rebuild.
       profile: await loadProfile(db, topic.userId),
     });
-    await saveMap(db, topic, map);
+    await saveMap(db, topic, map, levels);
     return null;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation failed";
@@ -101,6 +125,8 @@ async function buildMap(db: Db, provider: LlmProvider, topic: TopicT): Promise<s
     return message;
   }
 }
+
+const Instructions = z.object({ instructions: z.string().trim().max(600).default("") });
 
 export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
@@ -120,79 +146,65 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
    */
   router.post("/", zValidator("json", TopicCreateInput), async (c) => {
     const input = c.req.valid("json");
-    await assertWithinBudget(db, c.get("userId"), true);
+    const userId = c.get("userId");
+    await assertWithinBudget(db, userId, true);
     const created = await db.topic.create({
       data: {
         id: newId(),
-        userId: c.get("userId"),
+        userId,
+        slug: await freeTopicSlug(db, userId, input.title),
         title: input.title,
         goal: input.goal,
         // Overwritten by the generated map; a placeholder keeps the column typed.
         archetype: "tool",
         timeBudget: input.timeBudget,
         level: input.level,
+        levels: input.levels,
         status: TopicStatus.Generating,
       },
     });
-    const failure = await buildMap(db, provider(), toTopic(created));
+    const failure = await buildMap(db, provider(), toTopic(created), input.levels, "");
     if (failure !== null) {
-      return c.json({ error: failure, topicId: created.id }, 502);
+      return c.json({ error: failure, topicSlug: created.slug }, 502);
     }
     return c.json(toTopic(await db.topic.findUniqueOrThrow({ where: { id: created.id } })), 201);
   });
 
-  /** Re-run generation for a topic whose map failed to build. */
-  router.post("/:id/retry", async (c) => {
-    const topic = await db.topic.findFirst({
-      where: { id: c.req.param("id"), userId: c.get("userId") },
-    });
-    if (topic === null) {
-      throw new NotFoundError("Topic not found");
-    }
-    // Retry generates too, so it is inside the same budget.
-    await assertWithinBudget(db, c.get("userId"), false);
-    // Nodes from a partially-saved run would collide with the new ones, and the
-    // cascade takes their cards and drills with them.
+  /**
+   * Build the map again — after a failure, or because the learner read it and
+   * wants it different. The instructions are their words, passed to the model
+   * verbatim; the level count is only changed when they changed it.
+   */
+  router.post("/:slug/regenerate", zValidator("json", TopicRegenerateInput), async (c) => {
+    const userId = c.get("userId");
+    const topic = await findTopic(db, userId, c.req.param("slug"));
+    const input = c.req.valid("json");
+    const levels = input.levels ?? topic.levels;
+    await assertWithinBudget(db, userId, false);
+    // Nodes from the previous map would collide with the new ones on the path
+    // constraint, and the cascade takes their cards and drills with them.
     await db.learningNode.deleteMany({ where: { topicId: topic.id } });
     await db.topic.update({
       where: { id: topic.id },
-      data: { status: TopicStatus.Generating, error: null },
+      data: { status: TopicStatus.Generating, error: null, levels },
     });
-    const failure = await buildMap(db, provider(), toTopic(topic));
+    const failure = await buildMap(db, provider(), topic, levels, input.instructions);
     if (failure !== null) {
-      return c.json({ error: failure, topicId: topic.id }, 502);
+      return c.json({ error: failure, topicSlug: topic.slug }, 502);
     }
     return c.json(toTopic(await db.topic.findUniqueOrThrow({ where: { id: topic.id } })));
   });
 
-  /** The map, its progress, and the restore point — everything the topic screen needs. */
-  router.get("/:id", async (c) => {
-    const topic = await db.topic.findFirst({
-      where: { id: c.req.param("id"), userId: c.get("userId") },
-    });
-    if (topic === null) {
-      throw new NotFoundError("Topic not found");
-    }
-    const rows = await db.learningNode.findMany({
-      where: { topicId: topic.id },
-      include: { prerequisites: { select: { prerequisiteId: true } } },
-      orderBy: { orderIndex: "asc" },
-    });
-    const nodes = rows.map(toNode);
-    const resume = await db.resumePoint.findUnique({
-      where: { userId_topicId: { userId: c.get("userId"), topicId: topic.id } },
-    });
-    return c.json({
-      topic: toTopic(topic),
-      nodes,
-      progress: summarise(nodes),
-      resume: resume === null ? null : toResumePoint(resume),
-    });
+  /** The map, its progress, and the restore point — the whole topic screen. */
+  router.get("/:slug", async (c) => {
+    const userId = c.get("userId");
+    const topic = await findTopic(db, userId, c.req.param("slug"));
+    return c.json(await loadTopicDetail(db, userId, topic));
   });
 
-  router.delete("/:id", async (c) => {
+  router.delete("/:slug", async (c) => {
     const result = await db.topic.deleteMany({
-      where: { id: c.req.param("id"), userId: c.get("userId") },
+      where: { slug: c.req.param("slug"), userId: c.get("userId") },
     });
     if (result.count === 0) {
       throw new NotFoundError("Topic not found");
@@ -200,5 +212,113 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     return c.body(null, 204);
   });
 
+  /**
+   * Rebuild what sits under one group. Everything else on the map — including
+   * the learner's status on every node outside this group — is untouched, which
+   * is the point: a map you can correct in one place is one you keep, and
+   * "regenerate everything" is a thing people only press once.
+   */
+  router.post("/:slug/nodes/:nodeId/regenerate", zValidator("json", Instructions), async (c) => {
+    const userId = c.get("userId");
+    const topic = await findTopic(db, userId, c.req.param("slug"));
+    const { nodes, node } = await loadMapNode(db, topic, c.req.param("nodeId"));
+    if (!isBranch(node, nodes)) {
+      throw new ConflictError("That is a node, not a group — there is nothing under it to rebuild.");
+    }
+    await assertWithinBudget(db, userId, false);
+
+    const childLevels = topic.levels - node.depth;
+    const siblings = nodes.filter(
+      (candidate) => candidate.parentId === node.parentId && candidate.id !== node.id,
+    );
+    const generated = await generateSubtree(
+      provider(),
+      {
+        topic,
+        trail: [...ancestorsOf(node, nodes).map((row) => row.title), node.title],
+        claim: node.claim,
+        siblingTitles: siblings.map((row) => row.title),
+        childLevels,
+        profile: await loadProfile(db, userId),
+        instructions: c.req.valid("json").instructions,
+      },
+      node.id,
+      node.depth + 1,
+    );
+    const { rows, edges } = prepareNodes({
+      topicId: topic.id,
+      archetype: topic.archetype,
+      generated,
+      parentId: node.id,
+      parentPath: node.path,
+      takenSlugs: new Set(),
+      firstOrderIndex: 0,
+    });
+    // Delete first: the replacement reuses slugs, so both sets cannot be present
+    // at once. The cascade takes the old cards, drills and review items too.
+    await db.learningNode.deleteMany({ where: { parentId: node.id } });
+    await insertNodes(db, rows);
+    await db.nodePrerequisite.createMany({ data: edges, skipDuplicates: true });
+    return c.json(await loadTopicDetail(db, userId, topic));
+  });
+
+  /**
+   * Move a node one place among its siblings. Order is per level, so this swaps
+   * exactly two rows and every other level keeps the order it had.
+   */
+  router.put(
+    "/:slug/nodes/:nodeId/move",
+    zValidator("json", z.object({ direction: MoveDirectionSchema })),
+    async (c) => {
+      const userId = c.get("userId");
+      const topic = await findTopic(db, userId, c.req.param("slug"));
+      const { nodes, node } = await loadMapNode(db, topic, c.req.param("nodeId"));
+      const siblings = nodes
+        .filter((candidate) => candidate.parentId === node.parentId)
+        .sort((a, b) => a.orderIndex - b.orderIndex);
+      const at = siblings.findIndex((candidate) => candidate.id === node.id);
+      const swapWith = siblings[c.req.valid("json").direction === MoveDirection.Up ? at - 1 : at + 1];
+      // Already at the end of its level: answering with the map unchanged beats
+      // an error, because the button is simply a no-op there.
+      if (swapWith !== undefined) {
+        await db.$transaction([
+          db.learningNode.update({ where: { id: node.id }, data: { orderIndex: swapWith.orderIndex } }),
+          db.learningNode.update({ where: { id: swapWith.id }, data: { orderIndex: node.orderIndex } }),
+        ]);
+      }
+      return c.json(await loadTopicDetail(db, userId, topic));
+    },
+  );
+
+  /** Delete a node, and everything under it. */
+  router.delete("/:slug/nodes/:nodeId", async (c) => {
+    const userId = c.get("userId");
+    const topic = await findTopic(db, userId, c.req.param("slug"));
+    const { node } = await loadMapNode(db, topic, c.req.param("nodeId"));
+    // The self-relation cascades, so children, cards, drills and review items
+    // all go with it. Nothing here is recoverable, which the client says first.
+    await db.learningNode.delete({ where: { id: node.id } });
+    return c.json(await loadTopicDetail(db, userId, topic));
+  });
+
   return router;
+}
+
+/** One node plus the whole map it belongs to — every edit needs both. */
+async function loadMapNode(
+  db: Db,
+  topic: TopicT,
+  nodeId: string,
+): Promise<{ nodes: LearningNodeT[]; node: LearningNodeT }> {
+  const rows = await db.learningNode.findMany({
+    where: { topicId: topic.id },
+    include: { prerequisites: { select: { prerequisiteId: true } } },
+    orderBy: { orderIndex: "asc" },
+  });
+  const nodes = rows.map(toNode);
+  const node = nodes.find((candidate) => candidate.id === nodeId);
+  if (node === undefined) {
+    throw new NotFoundError("Node not found");
+  }
+  return { nodes, node };
 }

@@ -61,6 +61,13 @@ model AuthSession {
 model Topic {
   id           String         @id
   userId       String         @map("user_id")
+  // Every URL for this topic is built from the slug, not the id. Unique per
+  // user, which is as far as it has to go: nothing is shared between accounts.
+  // The default exists only for the seconds between the migration running and
+  // the new bundle shipping, where the old code inserts without one; drop it in
+  // the next schema change. Random rather than '' because an empty slug would
+  // fail the Slug schema on the very next read.
+  slug         String         @default(dbgenerated("md5((random())::text)"))
   title        String
   goal         String         @default("")
   // TopicArchetype, stored as a plain string — the enum lives in
@@ -69,11 +76,9 @@ model Topic {
   timeBudget   String         @map("time_budget")
   // Where they are now and where they want to get to, in their own words.
   level        String         @default("")
-  // Superseded by `level`, and no longer read or written. Kept for one deploy
-  // only: migrations run from the runner before the new bundle ships, so
-  // dropping the column in the same push would break the still-running old
-  // version for the seconds in between. Drop it in the next schema change.
-  knownDomains String[]       @map("known_domains")
+  // MapLevels: 2 or 3. Stored as an int rather than an enum for the same reason
+  // every other fixed set here is — the enum lives in packages/schemas.
+  levels       Int            @default(2)
   status       String         @default("generating")
   error        String?
   createdAt    DateTime       @default(now()) @map("created_at")
@@ -82,6 +87,7 @@ model Topic {
   studies      StudySession[]
   resumePoints ResumePoint[]
 
+  @@unique([userId, slug])
   @@index([userId])
   @@map("topics")
 }
@@ -89,15 +95,30 @@ model Topic {
 model LearningNode {
   id            String             @id
   topicId       String             @map("topic_id")
+  // Null at the top of the map. A branch is grouping only: it has no card, no
+  // drill and no minutes of its own, and nothing counts it as progress.
+  parentId      String?            @map("parent_id")
+  // Every ancestor slug joined by "/", which is what the URL carries. The unique
+  // constraint is on this rather than on (parent_id, slug) because Postgres
+  // never treats two NULLs as equal, so a constraint naming parent_id would
+  // exempt every top-level node from itself. Siblings share a parent path, so
+  // "path is unique in the topic" is the same statement, only enforceable.
+  // The default is the deploy-gap placeholder described on Topic.slug.
+  path          String             @default(dbgenerated("md5((random())::text)"))
   title         String
   claim         String
+  // 0 on a branch. See packages/schemas LearningNode.minutes.
   minutes       Int
   archetype     String
+  // Position among siblings, not within the topic: moving a node in the edit
+  // screen swaps two rows at one level and leaves every other level alone.
   orderIndex    Int                @map("order_index")
   status        String             @default("untouched")
   capability    String
   createdAt     DateTime           @default(now()) @map("created_at")
   topic         Topic              @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  parent        LearningNode?      @relation("NodeChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children      LearningNode[]     @relation("NodeChildren")
   cards         ConceptCard[]
   drills        Drill[]
   atoms         Atom[]
@@ -105,7 +126,9 @@ model LearningNode {
   prerequisites NodePrerequisite[] @relation("NodeToPrerequisite")
   requiredBy    NodePrerequisite[] @relation("PrerequisiteToNode")
 
+  @@unique([topicId, path])
   @@index([topicId, orderIndex])
+  @@index([parentId])
   @@map("learning_nodes")
 }
 

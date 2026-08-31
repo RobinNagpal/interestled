@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import { useCard } from "@interestled/api";
+import { drillHref, nodeHref } from "@interestled/domain";
 import { Button, ErrorState, JargonList, SectionTitle, Skeleton } from "@interestled/ui";
 import { DepthAction } from "@interestled/schemas";
-import type { CardDepthT } from "@interestled/schemas";
-import { messageOf } from "../../../lib/errors";
+import type { CardDepthT, LearningNodeT } from "@interestled/schemas";
+import { messageOf } from "../lib/errors";
 
 const DEPTH_BUTTONS: { action: DepthAction; label: string }[] = [
   { action: DepthAction.Simpler, label: "Simpler" },
@@ -21,12 +22,18 @@ const DEPTH_BUTTONS: { action: DepthAction; label: string }[] = [
  * Seen and nothing further — reading can never complete a node, or the map stops
  * being honest and everything resting on it collapses.
  */
-export default function NodeCardScreen(): ReactElement {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const nodeId = id ?? "";
+export function NodeCard({
+  topicSlug,
+  node,
+  nodes,
+}: {
+  topicSlug: string;
+  node: LearningNodeT;
+  nodes: readonly LearningNodeT[];
+}): ReactElement {
   const [depth, setDepth] = useState<CardDepthT | undefined>(undefined);
   const [action, setAction] = useState<DepthAction | undefined>(undefined);
-  const card = useCard(nodeId, { depth, action });
+  const card = useCard(node.id, { depth, action });
 
   if (card.isPending) {
     return <Skeleton lines={6} />;
@@ -39,12 +46,12 @@ export default function NodeCardScreen(): ReactElement {
     );
   }
 
-  const { content, node, missingPrerequisites } = card.data;
+  const { content, missingPrerequisites } = card.data;
+  const byId = new Map(nodes.map((candidate) => [candidate.id, candidate]));
 
   return (
     <ScrollView contentContainerClassName="gap-5 p-4">
       <View className="gap-1">
-        <Text className="text-xs uppercase tracking-wide text-ink-faint">{node.title}</Text>
         {/* The claim first: the answer arrives before any context. */}
         <Text className="text-xl font-semibold text-ink">{content.claim}</Text>
       </View>
@@ -53,10 +60,24 @@ export default function NodeCardScreen(): ReactElement {
           learner will ever have, and a lock spends it. */}
       {missingPrerequisites.length > 0 ? (
         <View className="gap-1 rounded-card bg-surface-sunken p-3">
-          <Text className="text-sm text-ink-soft">
-            Usually easier after {missingPrerequisites.map((prereq) => prereq.title).join(", ")} — but
-            carry on if you want.
-          </Text>
+          <Text className="text-sm text-ink-soft">Usually easier after — but carry on if you want.</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {missingPrerequisites.map((prereq) => {
+              const target = byId.get(prereq.id);
+              return (
+                <Pressable
+                  key={prereq.id}
+                  accessibilityRole="link"
+                  disabled={target === undefined}
+                  onPress={() =>
+                    target === undefined ? undefined : router.push(nodeHref(topicSlug, target.path))
+                  }
+                >
+                  <Text className="text-sm text-accent underline">{prereq.title}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       ) : null}
 
@@ -102,10 +123,7 @@ export default function NodeCardScreen(): ReactElement {
         </View>
       </View>
 
-      <Button
-        label="Now prove it"
-        onPress={() => router.push(`/node/${nodeId}/drill?topicId=${node.topicId}`)}
-      />
+      <Button label="Now prove it" onPress={() => router.push(drillHref(topicSlug, node.path))} />
     </ScrollView>
   );
 }

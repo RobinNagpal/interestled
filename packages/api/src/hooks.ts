@@ -8,11 +8,13 @@ import type {
   DrillKind,
   DrillT,
   LearningNodeT,
+  MoveDirection,
   NodeStatus,
   ProfileT,
   ProfileUpdateInputT,
   ReviewInputT,
   TopicCreateInputT,
+  TopicRegenerateInputT,
   TopicT,
 } from "@interestled/schemas";
 import { useApi } from "./context";
@@ -50,9 +52,13 @@ export function useTopics(): UseQueryResult<TopicT[]> {
   return useQuery({ queryKey: keys.topics, queryFn: () => api.listTopics() });
 }
 
-export function useTopic(id: string): UseQueryResult<TopicDetailT> {
+export function useTopic(slug: string): UseQueryResult<TopicDetailT> {
   const api = useApi();
-  return useQuery({ queryKey: keys.topic(id), queryFn: () => api.getTopic(id), enabled: id !== "" });
+  return useQuery({
+    queryKey: keys.topic(slug),
+    queryFn: () => api.getTopic(slug),
+    enabled: slug !== "",
+  });
 }
 
 export function useCreateTopic(): UseMutationResult<TopicT, Error, TopicCreateInputT> {
@@ -64,16 +70,62 @@ export function useCreateTopic(): UseMutationResult<TopicT, Error, TopicCreateIn
   });
 }
 
-export function useRetryTopic(): UseMutationResult<TopicT, Error, string> {
+/**
+ * Build the map again, with or without instructions. Also the way out of a
+ * failed generation, which is the same operation with nothing said.
+ */
+export function useRegenerateTopic(
+  slug: string,
+): UseMutationResult<TopicT, Error, TopicRegenerateInputT> {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.retryTopic(id),
-    onSuccess: (topic) => {
+    mutationFn: (input: TopicRegenerateInputT) => api.regenerateTopic(slug, input),
+    onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.topics });
-      void client.invalidateQueries({ queryKey: keys.topic(topic.id) });
+      void client.invalidateQueries({ queryKey: keys.topic(slug) });
     },
   });
+}
+
+/**
+ * The three map edits. Each answers with the whole map, so the result is written
+ * straight into the cache — a reorder that refetched would show the old order
+ * for as long as the round trip takes, which is exactly long enough to look
+ * broken.
+ */
+function useMapEdit<TVariables>(
+  slug: string,
+  edit: (variables: TVariables) => Promise<TopicDetailT>,
+): UseMutationResult<TopicDetailT, Error, TVariables> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: edit,
+    onSuccess: (detail) => client.setQueryData(keys.topic(slug), detail),
+  });
+}
+
+export function useRegenerateNode(
+  slug: string,
+): UseMutationResult<TopicDetailT, Error, { nodeId: string; instructions: string }> {
+  const api = useApi();
+  return useMapEdit(slug, ({ nodeId, instructions }: { nodeId: string; instructions: string }) =>
+    api.regenerateNode(slug, nodeId, instructions),
+  );
+}
+
+export function useMoveNode(
+  slug: string,
+): UseMutationResult<TopicDetailT, Error, { nodeId: string; direction: MoveDirection }> {
+  const api = useApi();
+  return useMapEdit(slug, ({ nodeId, direction }: { nodeId: string; direction: MoveDirection }) =>
+    api.moveNode(slug, nodeId, direction),
+  );
+}
+
+export function useDeleteNode(slug: string): UseMutationResult<TopicDetailT, Error, string> {
+  const api = useApi();
+  return useMapEdit(slug, (nodeId: string) => api.deleteNode(slug, nodeId));
 }
 
 export function useCard(
@@ -97,25 +149,27 @@ export function useDrill(nodeId: string, kind?: DrillKind): UseQueryResult<Drill
   });
 }
 
-export function useSubmitAttempt(topicId: string): UseMutationResult<AttemptResultT, Error, AttemptInputT> {
+export function useSubmitAttempt(
+  topicSlug: string,
+): UseMutationResult<AttemptResultT, Error, AttemptInputT> {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
     mutationFn: (input: AttemptInputT) => api.submitAttempt(input),
     // The node's status has moved, so the map is now stale.
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.topic(topicId) }),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.topic(topicSlug) }),
   });
 }
 
 export function useSetNodeStatus(
-  topicId: string,
+  topicSlug: string,
 ): UseMutationResult<LearningNodeT, Error, { nodeId: string; status: NodeStatus }> {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ nodeId, status }: { nodeId: string; status: NodeStatus }) =>
       api.setNodeStatus(nodeId, status),
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.topic(topicId) }),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.topic(topicSlug) }),
   });
 }
 

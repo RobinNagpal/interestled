@@ -1,9 +1,23 @@
 import { z } from "zod";
-import { CardContent, GeneratedAtom, GeneratedMap, Verdict } from "@interestled/schemas";
+import {
+  CardContent,
+  GeneratedAtom,
+  GeneratedLeafChildren,
+  GeneratedSectionChildren,
+  GeneratedThreeLevelMap,
+  GeneratedTwoLevelMap,
+  MapLevels,
+  Verdict,
+  flattenLeafChildren,
+  flattenSectionChildren,
+  flattenThreeLevelMap,
+  flattenTwoLevelMap,
+} from "@interestled/schemas";
 import type {
   CardContentT,
   DrillKind,
   GeneratedAtomT,
+  GeneratedMapNodeT,
   GeneratedMapT,
   LearningNodeT,
   ProfileT,
@@ -11,7 +25,15 @@ import type {
   VerdictT,
 } from "@interestled/schemas";
 import { generateJson } from "./json";
-import { atomsPrompt, cardPrompt, drillPrompt, mapPrompt, SYSTEM, verdictPrompt } from "./prompts";
+import {
+  atomsPrompt,
+  cardPrompt,
+  drillPrompt,
+  mapPrompt,
+  subtreePrompt,
+  SYSTEM,
+  verdictPrompt,
+} from "./prompts";
 import type { LlmProvider } from "./types";
 
 /** Drill fields the model supplies; ids and timestamps are assigned server-side. */
@@ -26,17 +48,94 @@ export type GeneratedDrillT = z.infer<typeof GeneratedDrill>;
 
 const AtomList = z.object({ atoms: z.array(GeneratedAtom).min(1).max(6) });
 
-export function generateMap(
+/** The map is the product's spine, so it is the one call worth more tokens. */
+const MAP_OUTPUT_TOKENS = 8192;
+
+export interface MapInput {
+  title: string;
+  goal: string;
+  timeBudget: string;
+  level: string;
+  levels: MapLevels;
+  profile: ProfileT;
+  /** What to change, when the learner asked for the map again. "" the first time. */
+  instructions: string;
+}
+
+/**
+ * The map, nested as deep as the learner asked for. The two level counts are
+ * separate schemas rather than one recursive shape: a recursive schema would let
+ * the model return four levels or one, and the whole point of the question on
+ * the create screen is that the answer is honoured. Each is flattened into rows
+ * here, so nothing downstream has to know which shape came back.
+ */
+export async function generateMap(provider: LlmProvider, input: MapInput): Promise<GeneratedMapT> {
+  const prompt = mapPrompt(input);
+  if (input.levels === MapLevels.Three) {
+    return flattenThreeLevelMap(
+      await generateJson(provider, {
+        system: SYSTEM,
+        prompt,
+        schema: GeneratedThreeLevelMap,
+        maxOutputTokens: MAP_OUTPUT_TOKENS,
+      }),
+    );
+  }
+  return flattenTwoLevelMap(
+    await generateJson(provider, {
+      system: SYSTEM,
+      prompt,
+      schema: GeneratedTwoLevelMap,
+      maxOutputTokens: MAP_OUTPUT_TOKENS,
+    }),
+  );
+}
+
+export interface SubtreeInput {
+  topic: TopicT;
+  /** Top-level title first, ending with the group being rebuilt. */
+  trail: readonly string[];
+  claim: string;
+  siblingTitles: readonly string[];
+  /** How many levels sit below this group: 1 for nodes, 2 for groups of nodes. */
+  childLevels: number;
+  profile: ProfileT;
+  instructions: string;
+}
+
+/**
+ * Everything under one group, rebuilt. Returned flat and relative to the parent,
+ * with depths already set, so the caller only has to attach it.
+ */
+export async function generateSubtree(
   provider: LlmProvider,
-  input: { title: string; goal: string; timeBudget: string; level: string; profile: ProfileT },
-): Promise<GeneratedMapT> {
-  return generateJson(provider, {
-    system: SYSTEM,
-    prompt: mapPrompt(input),
-    schema: GeneratedMap,
-    // The map is the product's spine, so it is the one call worth more tokens.
-    maxOutputTokens: 8192,
-  });
+  input: SubtreeInput,
+  parentKey: string,
+  childDepth: number,
+): Promise<GeneratedMapNodeT[]> {
+  const prompt = subtreePrompt(input);
+  if (input.childLevels >= 2) {
+    return flattenSectionChildren(
+      await generateJson(provider, {
+        system: SYSTEM,
+        prompt,
+        schema: GeneratedSectionChildren,
+        maxOutputTokens: MAP_OUTPUT_TOKENS,
+      }),
+      parentKey,
+      childDepth,
+    );
+  }
+  return flattenLeafChildren(
+    await generateJson(provider, {
+      system: SYSTEM,
+      prompt,
+      schema: GeneratedLeafChildren,
+      maxOutputTokens: MAP_OUTPUT_TOKENS,
+    }),
+    parentKey,
+    childDepth,
+  );
 }
 
 export function generateCard(

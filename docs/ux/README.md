@@ -278,6 +278,28 @@ forty nodes with dependencies drawn between them, each carrying a status: untouc
 seen, explained, verified, due, or shaky. It gives the subject a visible shape and a
 visible end, and the shape of a subject is a large part of what expertise actually is.
 
+**The map has levels.** A flat list of thirty nodes is a list, not a shape, so the map
+is built as groups with the nodes inside them — two levels by default, three for a
+subject too wide to sit under eight headings. The learner is asked which when they
+press the build button, because it is a question about the map rather than about them
+and it only matters at that moment. A group is a heading and nothing more: no card, no
+drill, no minutes of its own, and nothing counts it as progress — its time is the sum
+of the leaves under it, and collapsing one is what keeps a wide subject something you
+can still see the whole of.
+
+**Every node has its own address**, built from titles rather than ids:
+`/topic/kubernetes/scheduling/taints`, and `.../drill` for the drill. A slug is unique
+among its siblings, so the URL reads as the trail down to the node and a link sent to
+someone else lands exactly where it says.
+
+**The map is editable, because the first one is rarely quite right.** Reading a map is
+what tells you what is missing from it, and a product whose only answer to "nearly
+right" is regenerating everything throws away every node already verified. So the map
+screen has an edit mode: move a row among its siblings, delete one, and rebuild any one
+group — in the learner's own words, "less YAML, more networking" — leaving every other
+group and all the progress on it untouched. Rebuilding the whole map is there too, and
+says plainly that it replaces everything.
+
 Three interactions carry most of the value: *I already know this* collapses a node and
 its prerequisites and shrinks the map; *just get me to X* lights the shortest path and
 dims everything else; and any question from the ask rail can become a new node. Nothing
@@ -844,7 +866,7 @@ the design, not an acceptable gap.
 | W4 | Tiny physical first action | Sessions and resumes open on one keystroke or drag, never on a page of reading |
 | W5 | Change format often | Format rotation in the session composer; forced switch after three of a kind |
 | W6 | Fast feedback | Drill grading is the one always-live backend call; playgrounds respond on the drag |
-| W7 | Move around freely | The map never locks; search enters at any node; the ask rail follows a tangent without losing place |
+| W7 | Move around freely | The map never locks; search enters at any node; every node has its own URL, so a link opens straight into it; the ask rail follows a tangent without losing place |
 | W8 | Hands and mouth busy | Every node completes by production; voice input on explain-back |
 | W9 | Everything needed in view | Drill prompts embed their own values; the goal line stays framed; compare tables put both things side by side |
 | W10 | Mild urgency | Timed speed reps in the review deck; high event rate in fluency topics |
@@ -853,7 +875,7 @@ the design, not an acceptable gap.
 | W13 | One thing at a time | One concept and one visual per card; map rail dims during a drill |
 | W14 | Ask before explaining | Predict-then-reveal on every reveal; guided questions on the hardest nodes |
 | W15 | Surprise and story | The misconception slot on every card; timeline topics ordered causally |
-| W16 | Reduce decisions | One primary action per screen; the map is available, never required |
+| W16 | Reduce decisions | One primary action per screen; the map is available, never required; the depth question is asked once, with two levels already chosen |
 | W17 | Err on the side of too fast | Cards written above comfort with depth buttons underneath; no recaps |
 | W18 | Skip what they know | Calibration and the profile's background collapse branches; "I already know this" on every node, honoured without proof |
 | W19 | Concrete progress | Status dots advance only on production; progress stated as new ability |
@@ -875,10 +897,10 @@ the design, not an acceptable gap.
 | A10 | No dead time | Streaming with skeletons; speculative pre-generation; no spinner over finished content |
 | A11 | Not several instructions at once | One instruction per screen; multi-step tasks render as a checklist |
 | A12 | Nothing carried across screens | Values repeated at the point of use; jargon defined on hover in place |
-| A13 | No clutter | One visual per card; chrome hidden during drills; no badges or notifications mid-session |
+| A13 | No clutter | One visual per card; groups on the map collapse, so a wide subject is still one screen; chrome hidden during drills; no badges or notifications mid-session |
 | A14 | No setup before starting | Calibration is 60 interesting seconds; the profile is optional and never blocks a topic; sign-in comes after the first node |
 | A15 | No repeating known material | Two correct applications retires a node to spaced review; skip is always available |
-| A16 | No vague progress | A finite, visible node count and capability units, never a bare percentage |
+| A16 | No vague progress | A finite, visible node count and capability units, never a bare percentage; groups are excluded from it, so the total is one the learner can actually reach |
 | A17 | No harsh marking | The got/vague/missing/wrong diff; no scores, no percentages, no failure states |
 | A18 | Do not assume consistency | Difficulty adapts within the session; no user-visible comparison to their own past pace |
 | A19 | Do not time the thinking | Timers only on recall reps and fluency drills; never on a card or an explain-back |

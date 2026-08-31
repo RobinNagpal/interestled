@@ -1,5 +1,6 @@
 import { NodeStatus, VerdictLabel } from "@interestled/schemas";
 import type { LearningNodeT, VerdictT } from "@interestled/schemas";
+import { leafNodes } from "./tree";
 
 /** Statuses that mean the learner has demonstrated something, not read something. */
 const EARNED: readonly NodeStatus[] = [NodeStatus.Explained, NodeStatus.Verified, NodeStatus.Due];
@@ -62,14 +63,21 @@ export interface Progress {
   remainingMinutes: number;
 }
 
+/**
+ * Takes the whole map and counts only its leaves. A branch is a heading — it has
+ * no card and no drill, so counting one would inflate the total with rows nobody
+ * can ever complete, and a total that cannot reach its own maximum is exactly
+ * the lying map ideal 1 forbids.
+ */
 export function summarise(nodes: readonly LearningNodeT[]): Progress {
-  const earned = nodes.filter((node) => isEarned(node.status));
+  const leaves = leafNodes(nodes);
+  const earned = leaves.filter((node) => isEarned(node.status));
   return {
-    total: nodes.length,
+    total: leaves.length,
     earned: earned.length,
-    shaky: nodes.filter((node) => node.status === NodeStatus.Shaky).length,
+    shaky: leaves.filter((node) => node.status === NodeStatus.Shaky).length,
     capabilities: earned.map((node) => node.capability),
-    remainingMinutes: nodes
+    remainingMinutes: leaves
       .filter((node) => !isEarned(node.status))
       .reduce((sum, node) => sum + node.minutes, 0),
   };

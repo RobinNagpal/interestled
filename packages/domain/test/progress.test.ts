@@ -13,9 +13,16 @@ const pass: VerdictT = {
 const fail: VerdictT = { ...pass, passed: false };
 
 function node(overrides: Partial<LearningNodeT> = {}): LearningNodeT {
+  const id = overrides.id ?? "n1";
   return {
-    id: "n1",
+    id,
     topicId: "t1",
+    // Flat by default — a fixture is a top-level leaf unless a test gives it a
+    // parent. Slug and path come from the id so two fixtures never collide.
+    parentId: null,
+    slug: id,
+    path: id,
+    depth: 1,
     title: "Node",
     claim: "A claim",
     minutes: 3,
