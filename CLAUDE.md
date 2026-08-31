@@ -77,7 +77,9 @@ Adding a provider is therefore:
 
 1. a new file beside `src/llm/gemini.ts`,
 2. one branch in `src/llm/registry.ts`,
-3. one env var, and one line in the Lambda's `environment` block in terraform.
+3. one env var, and one line in the block of `.github/workflows/deploy.yml` that
+   writes `/etc/interestled-api.env` — that file is rewritten whole on every
+   deploy, so a key omitted there is a key the service never sees.
 
 No migration, because `LLM_PROVIDER` is configuration rather than data. Nothing else
 in the codebase may name a provider.

@@ -34,7 +34,7 @@ pnpm workspaces + Turborepo, mirroring [courtpot](https://github.com/RobinNagpal
 
 ```
 apps/mobile     Expo + expo-router + NativeWind (iOS, Android, web from one codebase)
-apps/server     Hono + Prisma + Postgres, running as one Lambda behind a Function URL
+apps/server     Hono + Prisma + Postgres, one systemd service on a shared host
 packages/schemas  Zod schemas and enums — the single source of truth for types
 packages/domain   Pure rules: progress, scheduling, session composition, depth
 packages/api      Typed REST client + React Query hooks
@@ -68,7 +68,8 @@ server at another model by setting `LLM_PROVIDER` and `LLM_MODEL`; to add one:
 1. write a file beside `apps/server/src/llm/gemini.ts` implementing `LlmProvider` —
    one method, in and out as text;
 2. add a branch to `apps/server/src/llm/registry.ts`;
-3. add the key to the Lambda's `environment` block in `deployment/terraform/lambda.tf`.
+3. add the key to the env file the deploy workflow writes, in
+   `.github/workflows/deploy.yml`.
 
 No migration is needed: the provider is configuration, not data. See
 [CLAUDE.md](CLAUDE.md#llm-providers).
@@ -76,6 +77,7 @@ No migration is needed: the provider is configuration, not data. See
 ## Deployment
 
 Everything runs on AWS behind one domain — CloudFront serves the web export from S3
-and `/api/*` from the Lambda, so there is no CORS and one origin. See
+and `/api/*` from a Lightsail instance shared with courtpot, so there is no CORS and
+one origin. See
 [deployment/README.md](deployment/README.md) for the one-time Terraform apply and the
 GitHub Actions secrets. Pushing to `main` typechecks, tests and lints, then deploys.

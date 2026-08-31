@@ -21,54 +21,24 @@ variable "domain_name" {
   type        = string
 }
 
-variable "database_url" {
+variable "shared_host_state_bucket" {
   description = <<-EOT
-    Postgres connection string for the API Lambda. May be left empty at first
-    apply — the function's environment is in `ignore_changes`, so a value set
-    later in the AWS console (or via `aws lambda update-function-configuration`)
-    survives future applies.
+    Terraform state bucket of the shared Lightsail host, read to find the
+    instance's static IP. The host is shared with courtpot and its stack lives
+    in that repository at deployment/terraform/shared-host, so its state belongs
+    to neither project's bucket.
+
+    Nothing about the database or the LLM appears in this stack any more. The
+    API is a process on that host and its environment — DATABASE_URL,
+    LLM_PROVIDER, LLM_MODEL, GEMINI_API_KEY — is written to
+    /etc/interestled-api.env by the deploy workflow from repository secrets.
+    That also removes the footgun the old `set_environment_command` output
+    existed to warn about: a file is edited key by key, where
+    `aws lambda update-function-configuration --environment` replaced the whole
+    map and would silently drop the provider key.
   EOT
   type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "lambda_memory_mb" {
-  description = "Memory for the API Lambda (CPU scales with it)."
-  type        = number
-  default     = 1024
-}
-
-variable "lambda_timeout_seconds" {
-  description = <<-EOT
-    Generating a knowledge map is a single large model call and routinely takes
-    20-40 seconds, so the default 15s used for ordinary CRUD is far too short.
-  EOT
-  type        = number
-  default     = 120
-}
-
-variable "llm_provider" {
-  description = "Which LLM the API generates content with. Only \"gemini\" is implemented today."
-  type        = string
-  default     = "gemini"
-}
-
-variable "llm_model" {
-  description = "Model id for the chosen provider."
-  type        = string
-  default     = "gemini-2.0-flash"
-}
-
-variable "llm_api_key" {
-  description = <<-EOT
-    API key for the chosen provider. Like database_url this may be left empty at
-    first apply and set later, because the function's environment block is in
-    `ignore_changes`.
-  EOT
-  type        = string
-  default     = ""
-  sensitive   = true
+  default     = "shared-host-tfstate-729763663166"
 }
 
 variable "create_deployer_access_key" {

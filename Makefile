@@ -1,7 +1,7 @@
 # Interest Led — local shortcuts. Deployment happens in GitHub Actions
 # (.github/workflows/deploy.yml); nothing here touches AWS.
 
-.PHONY: help install dev api web check migrate lambda clean
+.PHONY: help install dev api web check migrate server clean
 
 help:
 	@echo "  make install   install workspace dependencies"
@@ -9,7 +9,7 @@ help:
 	@echo "  make web       run the app on :7070"
 	@echo "  make check     typecheck + test + lint, the same gate CI runs"
 	@echo "  make migrate   apply pending migrations to \$$DATABASE_URL"
-	@echo "  make lambda    build deployment/dist/lambda.zip locally"
+	@echo "  make server    build deployment/dist/server locally"
 	@echo "  make clean     remove build output"
 
 install:
@@ -31,8 +31,8 @@ check:
 migrate:
 	pnpm --filter server exec prisma migrate deploy
 
-lambda:
-	bash deployment/scripts/build-lambda.sh
+server:
+	bash deployment/scripts/build-server.sh
 
 clean:
 	rm -rf deployment/dist apps/mobile/dist .turbo
