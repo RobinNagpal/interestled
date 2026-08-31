@@ -17,7 +17,7 @@ import type { CardContentT, LearningNodeT, TopicT } from "@interestled/schemas";
 import { advance, depthAfter, masteryDrill, missingPrerequisites, nextDefaultDepth } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
-import { NotFoundError } from "./errors";
+import { ConflictError, NotFoundError } from "./errors";
 import { generateAtoms, generateCard, generateDrill, gradeAttempt } from "./llm";
 import type { LlmProvider } from "./llm";
 import { loadProfile } from "./profile";
@@ -46,6 +46,19 @@ async function loadNode(
     throw new NotFoundError("Node not found");
   }
   return { node: toNode(row), topic: toTopic(row.topic) };
+}
+
+/**
+ * A group has no card and no drill — it is a heading, and the screens route to
+ * its children instead. Refusing here rather than trusting the client is worth
+ * the line: generating a card is a model call, and a deep link to a group URL is
+ * the kind of thing that happens by hand.
+ */
+async function refuseGroup(db: Db, node: LearningNodeT): Promise<void> {
+  const children = await db.learningNode.count({ where: { parentId: node.id } });
+  if (children > 0) {
+    throw new ConflictError(`"${node.title}" is a group. Open one of the nodes inside it.`);
+  }
 }
 
 /**
@@ -104,6 +117,7 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
   router.get("/:id/card", zValidator("query", CardQuery), async (c) => {
     const userId = c.get("userId");
     const { node, topic } = await loadNode(db, userId, c.req.param("id"));
+    await refuseGroup(db, node);
     const query = c.req.valid("query");
     const base = CardDepth.parse(query.depth ?? c.get("defaultDepth"));
     const depth = query.action === undefined ? base : depthAfter(base, query.action);
@@ -144,6 +158,7 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
   router.get("/:id/drill", zValidator("query", z.object({ kind: DrillKindSchema.optional() })), async (c) => {
     const userId = c.get("userId");
     const { node, topic } = await loadNode(db, userId, c.req.param("id"));
+    await refuseGroup(db, node);
     const kind = c.req.valid("query").kind ?? masteryDrill(node.archetype);
 
     const existing = await db.drill.findFirst({ where: { nodeId: node.id, kind } });

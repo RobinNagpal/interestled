@@ -1,4 +1,4 @@
-import { DepthAction, DrillKind, LearningStyle } from "@interestled/schemas";
+import { DepthAction, DrillKind, LearningStyle, MapLevels } from "@interestled/schemas";
 import type { CardContentT, LearningNodeT, ProfileT, TopicT } from "@interestled/schemas";
 
 /**
@@ -65,12 +65,82 @@ export function learnerBlock(profile: ProfileT): string {
   return `About the learner:\n${lines.join("\n")}`;
 }
 
+/** The shared description of a leaf, which is the only kind of node with a card. */
+const LEAF_RULES = `Each of these:
+- "key": short slug, unique across the WHOLE map, lowercase with underscores.
+- "title": 2-6 words.
+- "claim": ONE sentence answering "what is this, really?". Not a definition.
+- "minutes": honest reading+doing time, 1-5. Nothing may exceed 5.
+- "capability": what they can do once it is verified, starting with a verb
+  ("read a manifest and say what it does"). This is how progress gets reported,
+  so it must be checkable, not "understand X".
+- "prerequisiteKeys": keys of nodes genuinely needed first, at most 3. These are
+  advisory notes, never gates, so include only real dependencies. They may name a
+  node in any group, not only this one.`;
+
+/** The shared description of a branch, which is a heading and nothing more. */
+const GROUP_RULES = `Each group:
+- "key": short slug, unique across the WHOLE map, lowercase with underscores.
+- "title": 2-5 words. A part of the subject, not a stage ("Networking", never "Basics").
+- "claim": ONE sentence saying what this part of the subject is.
+- "capability": what they can do once everything inside it is done.
+A group is a heading: it has no minutes, because nobody sits down and reads a heading.`;
+
+const ARCHETYPES = `Classify the topic into exactly one archetype:
+- "system": interacting parts and quantities (robotics, an engine). Known = can predict behaviour.
+- "story": causes and consequences over time (inflation history). Known = can explain why and argue it.
+- "tool": objects, commands, workflows, failure modes (Kubernetes, Git). Known = can do it and fix it.
+- "skill": automaticity through volume (a language, chess). Known = speed and accuracy under pressure.
+- "self_help": a framework applied to your own situation (motivation). Known = a behaviour changed.`;
+
+/** Ordering is the same rule at every level: the interesting thing comes first. */
+const ORDERING = `Order every list so the most interesting item is first — an anomaly, a live
+demo, or a result, never a definition or a setup step. That holds inside each group too.`;
+
+/**
+ * The learner's own words on what to change, when they asked for the map to be
+ * built again. Quoted rather than paraphrased: "less YAML" is an instruction the
+ * model can follow, and a summary of it is not.
+ */
+function instructionBlock(instructions: string): string {
+  return instructions === ""
+    ? ""
+    : `\nThey have asked for this to be rebuilt, and said what to change:\n"""\n${instructions}\n"""\nFollow it. Where it conflicts with anything above, it wins.\n`;
+}
+
+function levelBlock(levels: MapLevels): string {
+  if (levels === MapLevels.Two) {
+    return `Produce a TWO-level map.
+
+Level 1: 3-8 groups, in "sections".
+${GROUP_RULES}
+
+Level 2: 2-8 nodes inside each group, in its "nodes".
+${LEAF_RULES}
+
+Return JSON: {"archetype":"...","sections":[{"key","title","claim","capability","nodes":[{"key","title","claim","minutes","capability","prerequisiteKeys"}]}]}`;
+  }
+  return `Produce a THREE-level map.
+
+Level 1: 2-5 broad areas, in "areas".
+Level 2: 2-5 groups inside each area, in its "sections".
+${GROUP_RULES}
+That applies to areas and to groups alike.
+
+Level 3: 2-8 nodes inside each group, in its "nodes".
+${LEAF_RULES}
+
+Return JSON: {"archetype":"...","areas":[{"key","title","claim","capability","sections":[{"key","title","claim","capability","nodes":[{"key","title","claim","minutes","capability","prerequisiteKeys"}]}]}]}`;
+}
+
 export function mapPrompt(input: {
   title: string;
   goal: string;
   timeBudget: string;
   level: string;
+  levels: MapLevels;
   profile: ProfileT;
+  instructions: string;
 }): string {
   const level =
     input.level === ""
@@ -83,29 +153,59 @@ Time available: ${input.timeBudget}
 ${level}
 
 ${learnerBlock(input.profile)}
+${instructionBlock(input.instructions)}
+${ARCHETYPES}
 
-Classify the topic into exactly one archetype:
-- "system": interacting parts and quantities (robotics, an engine). Known = can predict behaviour.
-- "story": causes and consequences over time (inflation history). Known = can explain why and argue it.
-- "tool": objects, commands, workflows, failure modes (Kubernetes, Git). Known = can do it and fix it.
-- "skill": automaticity through volume (a language, chess). Known = speed and accuracy under pressure.
-- "self_help": a framework applied to your own situation (motivation). Known = a behaviour changed.
+${levelBlock(input.levels)}
 
-Then produce 8-24 nodes ordered so the most interesting one is first — an anomaly, a
-live demo, or a result, never a definition or a setup step.
+${ORDERING}`;
+}
 
-Each node:
-- "key": short slug, unique, lowercase with underscores.
-- "title": 2-6 words.
-- "claim": ONE sentence answering "what is this, really?". Not a definition.
-- "minutes": honest reading+doing time, 1-5. Nothing may exceed 5.
-- "capability": what they can do once it is verified, starting with a verb
-  ("read a manifest and say what it does"). This is how progress gets reported,
-  so it must be checkable, not "understand X".
-- "prerequisiteKeys": keys of nodes genuinely needed first, at most 3. These are
-  advisory notes, never gates, so include only real dependencies.
+/**
+ * Rebuild what sits under one group, leaving the rest of the map alone. The
+ * siblings are named so the replacement does not simply repeat them, and the
+ * ancestors are named because "Taints" means nothing without "Scheduling"
+ * above it.
+ */
+export function subtreePrompt(input: {
+  topic: TopicT;
+  /** Top-level first, ending with the group being rebuilt. */
+  trail: readonly string[];
+  claim: string;
+  /** Titles of the groups beside this one, which the replacement must not repeat. */
+  siblingTitles: readonly string[];
+  /** 1 when the children are nodes, 2 when they are groups of nodes. */
+  childLevels: number;
+  profile: ProfileT;
+  instructions: string;
+}): string {
+  const shape =
+    input.childLevels === 1
+      ? `Produce 2-8 nodes for this group, in "nodes".
+${LEAF_RULES}
 
-Return JSON: {"archetype": "...", "nodes": [{"key","title","claim","minutes","capability","prerequisiteKeys"}]}`;
+Return JSON: {"nodes":[{"key","title","claim","minutes","capability","prerequisiteKeys"}]}`
+      : `Produce 2-5 groups for this area, in "sections", each with 2-8 nodes in its "nodes".
+${GROUP_RULES}
+${LEAF_RULES}
+
+Return JSON: {"sections":[{"key","title","claim","capability","nodes":[{"key","title","claim","minutes","capability","prerequisiteKeys"}]}]}`;
+  const siblings =
+    input.siblingTitles.length === 0
+      ? ""
+      : `\nOther parts of this map, which you are NOT rebuilding and must not duplicate: ${input.siblingTitles.join(", ")}.\n`;
+  return `Topic: ${input.topic.title}
+What they want to be able to do: ${input.topic.goal || "(not stated)"}
+Where this sits in the map: ${input.trail.join(" › ")}
+What it covers: ${input.claim}
+${siblings}
+${learnerBlock(input.profile)}
+${instructionBlock(input.instructions)}
+Rebuild only what belongs under "${input.trail[input.trail.length - 1] ?? input.topic.title}". Everything else in the map stays as it is.
+
+${shape}
+
+${ORDERING}`;
 }
 
 const DEPTH_GUIDE: Record<number, string> = {

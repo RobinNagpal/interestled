@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { Id, newId } from "../src/ids";
 import { Email, Password } from "../src/auth";
 import { CardContent } from "../src/cards";
-import { GeneratedMap } from "../src/nodes";
+import {
+  GeneratedThreeLevelMap,
+  GeneratedTwoLevelMap,
+  flattenLeafChildren,
+  flattenThreeLevelMap,
+  flattenTwoLevelMap,
+} from "../src/nodes";
 import { TopicArchetype } from "../src/topics";
 
 describe("newId", () => {
@@ -75,8 +81,8 @@ describe("CardContent", () => {
   });
 });
 
-describe("GeneratedMap", () => {
-  const node = (key: string) => ({
+describe("the generated map shapes", () => {
+  const leaf = (key: string) => ({
     key,
     title: "T",
     claim: "c",
@@ -84,20 +90,98 @@ describe("GeneratedMap", () => {
     capability: "do it",
     prerequisiteKeys: [],
   });
-  const map = (keys: string[]) => ({
+  const section = (key: string, leafKeys: string[]) => ({
+    key,
+    title: "Group",
+    claim: "c",
+    capability: "do the group",
+    nodes: leafKeys.map(leaf),
+  });
+  const twoLevel = (sections: ReturnType<typeof section>[]) => ({
     archetype: TopicArchetype.Tool,
-    nodes: keys.map(node),
+    sections,
   });
 
-  it("accepts a map with unique keys", () => {
-    expect(GeneratedMap.safeParse(map(["a", "b", "c", "d", "e", "f"])).success).toBe(true);
+  it("accepts a two-level map with unique keys", () => {
+    const map = twoLevel([
+      section("s1", ["a", "b"]),
+      section("s2", ["c", "d"]),
+      section("s3", ["e", "f"]),
+    ]);
+    expect(GeneratedTwoLevelMap.safeParse(map).success).toBe(true);
   });
 
   it("rejects duplicate keys, which would map two nodes onto one row", () => {
-    expect(GeneratedMap.safeParse(map(["a", "b", "c", "d", "e", "a"])).success).toBe(false);
+    // Across groups, not only inside one: keys become ids for the whole map.
+    const map = twoLevel([
+      section("s1", ["a", "b"]),
+      section("s2", ["a", "d"]),
+      section("s3", ["e", "f"]),
+    ]);
+    expect(GeneratedTwoLevelMap.safeParse(map).success).toBe(false);
+  });
+
+  it("rejects a group key that repeats one of its own nodes", () => {
+    const map = twoLevel([
+      section("s1", ["s2", "b"]),
+      section("s2", ["c", "d"]),
+      section("s3", ["e", "f"]),
+    ]);
+    expect(GeneratedTwoLevelMap.safeParse(map).success).toBe(false);
   });
 
   it("rejects a map too small to be worth showing", () => {
-    expect(GeneratedMap.safeParse(map(["a", "b"])).success).toBe(false);
+    expect(GeneratedTwoLevelMap.safeParse(twoLevel([section("s1", ["a", "b"])])).success).toBe(false);
+  });
+
+  it("flattens a two-level map to rows, groups before their nodes", () => {
+    const flat = flattenTwoLevelMap(
+      twoLevel([section("s1", ["a", "b"]), section("s2", ["c", "d"]), section("s3", ["e", "f"])]),
+    );
+    expect(flat.nodes.map((node) => node.key)).toEqual([
+      "s1", "a", "b", "s2", "c", "d", "s3", "e", "f",
+    ]);
+    expect(flat.nodes[0]).toMatchObject({ parentKey: null, depth: 1, minutes: 0 });
+    expect(flat.nodes[1]).toMatchObject({ parentKey: "s1", depth: 2, minutes: 3 });
+  });
+
+  it("gives a group no minutes of its own, because it is a heading", () => {
+    const flat = flattenTwoLevelMap(
+      twoLevel([section("s1", ["a", "b"]), section("s2", ["c", "d"]), section("s3", ["e", "f"])]),
+    );
+    const groups = flat.nodes.filter((node) => node.depth === 1);
+    expect(groups.every((node) => node.minutes === 0)).toBe(true);
+  });
+
+  it("flattens a three-level map to three depths", () => {
+    const map = {
+      archetype: TopicArchetype.Tool,
+      areas: [
+        {
+          key: "area1",
+          title: "Area",
+          claim: "c",
+          capability: "do the area",
+          sections: [section("s1", ["a", "b"]), section("s2", ["c", "d"])],
+        },
+        {
+          key: "area2",
+          title: "Area",
+          claim: "c",
+          capability: "do the area",
+          sections: [section("s3", ["e", "f"]), section("s4", ["g", "h"])],
+        },
+      ],
+    };
+    expect(GeneratedThreeLevelMap.safeParse(map).success).toBe(true);
+    const flat = flattenThreeLevelMap(map);
+    expect(flat.nodes.find((node) => node.key === "area1")).toMatchObject({ parentKey: null, depth: 1 });
+    expect(flat.nodes.find((node) => node.key === "s1")).toMatchObject({ parentKey: "area1", depth: 2 });
+    expect(flat.nodes.find((node) => node.key === "a")).toMatchObject({ parentKey: "s1", depth: 3 });
+  });
+
+  it("attaches regenerated children under the branch that asked for them", () => {
+    const flat = flattenLeafChildren({ nodes: [leaf("a"), leaf("b")] }, "s1", 3);
+    expect(flat.every((node) => node.parentKey === "s1" && node.depth === 3)).toBe(true);
   });
 });

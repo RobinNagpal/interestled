@@ -23,12 +23,14 @@ import type {
   DrillT,
   LearningNodeT,
   LoginInputT,
+  MoveDirection,
   NodeStatus,
   ProfileT,
   ProfileUpdateInputT,
   RegisterInputT,
   ReviewInputT,
   TopicCreateInputT,
+  TopicRegenerateInputT,
   TopicT,
 } from "@interestled/schemas";
 
@@ -172,9 +174,15 @@ export interface ApiClient {
 
   listTopics(): Promise<TopicT[]>;
   createTopic(input: TopicCreateInputT): Promise<TopicT>;
-  getTopic(id: string): Promise<TopicDetailT>;
-  retryTopic(id: string): Promise<TopicT>;
-  deleteTopic(id: string): Promise<void>;
+  /** Every topic call is keyed by slug, because that is what the URL carries. */
+  getTopic(slug: string): Promise<TopicDetailT>;
+  regenerateTopic(slug: string, input: TopicRegenerateInputT): Promise<TopicT>;
+  deleteTopic(slug: string): Promise<void>;
+
+  /** The three map edits. Each answers with the whole map, already rebuilt. */
+  regenerateNode(slug: string, nodeId: string, instructions: string): Promise<TopicDetailT>;
+  moveNode(slug: string, nodeId: string, direction: MoveDirection): Promise<TopicDetailT>;
+  deleteNode(slug: string, nodeId: string): Promise<TopicDetailT>;
 
   getCard(nodeId: string, options?: { depth?: CardDepthT; action?: DepthAction }): Promise<CardViewT>;
   getDrill(nodeId: string, kind?: DrillKind): Promise<DrillT>;
@@ -215,9 +223,21 @@ export function createApiClient(config: ClientConfig): ApiClient {
 
     listTopics: () => get("/api/topics", z.array(Topic)),
     createTopic: (input) => post("/api/topics", Topic, input),
-    getTopic: (id) => get(`/api/topics/${id}`, TopicDetail),
-    retryTopic: (id) => post(`/api/topics/${id}/retry`, Topic),
-    deleteTopic: (id) => requestVoid(config, `/api/topics/${id}`, "DELETE"),
+    getTopic: (slug) => get(`/api/topics/${encodeURIComponent(slug)}`, TopicDetail),
+    regenerateTopic: (slug, input) =>
+      post(`/api/topics/${encodeURIComponent(slug)}/regenerate`, Topic, input),
+    deleteTopic: (slug) => requestVoid(config, `/api/topics/${encodeURIComponent(slug)}`, "DELETE"),
+
+    regenerateNode: (slug, nodeId, instructions) =>
+      post(`/api/topics/${encodeURIComponent(slug)}/nodes/${nodeId}/regenerate`, TopicDetail, {
+        instructions,
+      }),
+    moveNode: (slug, nodeId, direction) =>
+      request(config, `/api/topics/${encodeURIComponent(slug)}/nodes/${nodeId}/move`, "PUT", TopicDetail, {
+        direction,
+      }),
+    deleteNode: (slug, nodeId) =>
+      request(config, `/api/topics/${encodeURIComponent(slug)}/nodes/${nodeId}`, "DELETE", TopicDetail),
 
     getCard: (nodeId, options) => {
       const query = new URLSearchParams();

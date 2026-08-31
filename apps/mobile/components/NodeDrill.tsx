@@ -1,23 +1,22 @@
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import { useDrill, useSaveResume, useSubmitAttempt } from "@interestled/api";
+import { topicHref } from "@interestled/domain";
 import { Button, ErrorState, Input, SectionTitle, Skeleton, VerdictView } from "@interestled/ui";
 import { DrillKind, MAX_RESPONSE_LENGTH } from "@interestled/schemas";
-import type { VerdictT } from "@interestled/schemas";
-import { messageOf } from "../../../lib/errors";
+import type { LearningNodeT, TopicT, VerdictT } from "@interestled/schemas";
+import { messageOf } from "../lib/errors";
 
 /**
  * Production, not recognition. There is no timer here and no score: a clock on
  * thinking fills the working memory that comprehension needs, and a number
  * turns feedback into self-evaluation, which is the kind most likely to hurt.
  */
-export default function DrillScreen(): ReactElement {
-  const { id, topicId } = useLocalSearchParams<{ id: string; topicId?: string }>();
-  const nodeId = id ?? "";
-  const drill = useDrill(nodeId);
-  const submit = useSubmitAttempt(topicId ?? "");
+export function NodeDrill({ topic, node }: { topic: TopicT; node: LearningNodeT }): ReactElement {
+  const drill = useDrill(node.id);
+  const submit = useSubmitAttempt(topic.slug);
   const saveResume = useSaveResume();
 
   const [response, setResponse] = useState("");
@@ -41,17 +40,16 @@ export default function DrillScreen(): ReactElement {
 
   const onType = (next: string): void => {
     setResponse(next);
-    // Written on every keystroke, so leaving mid-sentence costs nothing and
-    // there is never a reason to avoid starting.
-    if (topicId !== undefined) {
-      saveResume({
-        topicId,
-        nodeId,
-        drillId: task.id,
-        draft: next,
-        lastThought: task.prompt.slice(0, 200),
-      });
-    }
+    // Written while typing, so leaving mid-sentence costs nothing and there is
+    // never a reason to avoid starting. The restore point is keyed by topic id
+    // rather than slug, because that is the row it belongs to.
+    saveResume({
+      topicId: topic.id,
+      nodeId: node.id,
+      drillId: task.id,
+      draft: next,
+      lastThought: task.prompt.slice(0, 200),
+    });
   };
 
   const send = (): void => {
@@ -77,10 +75,7 @@ export default function DrillScreen(): ReactElement {
         {verdict.passed ? (
           <Text className="text-base text-ink">You can now {lowerFirst(capability)}.</Text>
         ) : null}
-        <Button
-          label="Back to the map"
-          onPress={() => router.push(topicId === undefined ? "/" : `/topic/${topicId}`)}
-        />
+        <Button label="Back to the map" onPress={() => router.push(topicHref(topic.slug))} />
         {verdict.passed ? null : (
           <Button
             label="Try again"

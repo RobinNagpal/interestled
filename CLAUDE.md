@@ -53,6 +53,13 @@ model ConceptCard {
 
 - Add a plural `@@map` to every new model, and `@map` to every field whose name is
   not already a single lower-case word.
+- **Two new NOT NULL columns need a default for the deploy gap.** Migrations run from
+  the runner before the new bundle ships, so for a few seconds the old code is still
+  inserting rows that name none of the new columns. `topics.slug` and
+  `learning_nodes.path` therefore default to `md5(random()::text)` rather than `''`: an
+  empty slug fails the `Slug` schema on the very next read, and two of them collide on
+  the unique index. Those defaults are for the gap only — drop them in the next schema
+  change.
 - **Renames need hand-written migrations.** `prisma migrate dev` cannot tell a rename
   from a drop-and-recreate, so it generates `DROP TABLE` + `CREATE TABLE` and destroys
   the rows. Write `ALTER TABLE … RENAME` by hand, and rename the constraints and
@@ -70,6 +77,38 @@ Adding a status is a one-line code change with no migration. `NodeStatusSchema`
 is what guarantees the string is valid — parse at every boundary that reads the column.
 
 Do not add `enum` blocks to `schema.prisma`.
+
+## The map is a tree, addressed by slug
+
+`learning_nodes` has a `parent_id` and a `path`, and those two carry the whole
+structure:
+
+- **A branch is a heading.** No card, no drill, `minutes` 0, and nothing counts it as
+  progress. `summarise`, `composeSession` and `nextNode` all run through `leafNodes`
+  first; counting branches gives a total the learner can never reach, which is the
+  lying map ideal 1 forbids. `isBranch` is derived from the set rather than stored,
+  because deleting a branch's last child turns it into a leaf and a stored flag would
+  be a second fact about the same thing.
+- **`path` is every ancestor slug joined by `/`**, and it is what URLs carry:
+  `/topic/<topic-slug>/<node-path>` and `.../drill`. `slug` and `depth` are derived
+  from it in `toNode` rather than stored beside it — two columns saying the same thing
+  is two chances for an edit to leave them disagreeing.
+- **Uniqueness is `UNIQUE(topic_id, path)`, not `(parent_id, slug)`.** Postgres never
+  treats two NULLs as equal, so a constraint naming `parent_id` would exempt every
+  top-level node from itself. Siblings share a parent path, so the two say the same
+  thing and only one of them can be enforced.
+- **Slugs are allocated server-side, never by the model.** `uniqueSlug` in
+  `packages/schemas` numbers repeats and refuses `RESERVED_SLUGS` — a node titled
+  "Edit" would otherwise sit at `/topic/x/edit` and shadow the edit screen.
+- **`orderIndex` ranks siblings, not the topic.** Moving a node swaps exactly two rows
+  at one level. Reading order comes from `inMapOrder`, which walks the tree; sorting
+  the flat list by `orderIndex` interleaves the levels.
+
+`MapLevels` (2 or 3) is asked on the create screen and stored on the topic. The two
+level counts are separate Zod schemas rather than one recursive shape: a recursive
+schema would let the model return four levels or one, and the point of asking is that
+the answer is honoured. `flattenTwoLevelMap` / `flattenThreeLevelMap` turn either into
+the flat `GeneratedMap` rows that `prepareNodes` stores.
 
 ## Accounts and sessions
 
@@ -120,7 +159,9 @@ in the codebase may name a provider.
 **Generation is the only expensive call, and registration is open.** Every path that
 reaches the model is inside a per-user budget (`assertWithinBudget` in `topics.ts`).
 Adding a new generating endpoint means adding it there too, or the deployment's model
-bill has no ceiling.
+bill has no ceiling. Note what it counts: rebuilding a map or one group creates no
+topic, so a topic count alone would leave every rebuild outside the budget entirely —
+nodes generated in the last hour is the limit that actually binds.
 
 **Never cache a grading call.** A cached verdict is a verdict on somebody else's
 answer. Cards, drills and review items are cached deliberately; `gradeAttempt` is the
@@ -145,6 +186,9 @@ These are load-bearing. Breaking one is a bug, not a trade-off:
   three of the five archetypes unable to reach `Verified` at all.
 - **The review batch is three items**, never a backlog, so an absence cannot become a
   wall.
+- **Rebuilding one group must leave the rest of the map alone.** "The map is nearly
+  right" is the normal case after reading it, and an edit mode whose only answer is
+  regenerating everything throws away every node already verified.
 - **Timers only on retrieval.** Never on a card, an explain-back, or an apply drill.
 - **No effort language in generated copy** — that ban lives in the `SYSTEM` prompt and
   is covered by a test.

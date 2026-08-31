@@ -1,4 +1,5 @@
 export * from "./ids";
+export * from "./slugs";
 export * from "./auth";
 export * from "./profile";
 export * from "./llm";
