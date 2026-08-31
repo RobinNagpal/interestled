@@ -77,7 +77,7 @@ describe("gemini provider", () => {
     );
     const provider = createGeminiProvider({
       apiKey: "secret",
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     await expect(provider.complete({ system: "s", prompt: "p" })).resolves.toBe('{"a":1}');
@@ -85,7 +85,7 @@ describe("gemini provider", () => {
     const call = fetchImpl.mock.calls[0];
     expect(call).toBeDefined();
     const [url, init] = call!;
-    expect(String(url)).toContain("gemini-2.0-flash:generateContent");
+    expect(String(url)).toContain("gemini-3.6-flash:generateContent");
     // The key belongs in a header, never in the query string, where it would
     // land in logs and proxy traces.
     expect(String(url)).not.toContain("secret");

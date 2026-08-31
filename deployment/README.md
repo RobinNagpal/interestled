@@ -125,7 +125,7 @@ Then wire up GitHub Actions (**Settings → Secrets and variables → Actions**)
 | Variable | `SSH_HOST_KEY` | `ssh-keyscan -t rsa,ecdsa,ed25519 <static-ip>` |
 | Variable | `SITE_URL` | `https://interestled.com` |
 | Variable | `LLM_PROVIDER` | `gemini` |
-| Variable | `LLM_MODEL` | `gemini-2.0-flash` |
+| Variable | `LLM_MODEL` | `gemini-3.6-flash` |
 | Secret | `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com/apikey) |
 
 `DATABASE_URL` is a secret because the workflow runs `prisma migrate deploy`

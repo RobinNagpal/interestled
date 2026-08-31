@@ -10,7 +10,10 @@ const Env = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   PORT: z.coerce.number().int().positive().default(7071),
   LLM_PROVIDER: LlmProviderIdSchema.default(LlmProviderId.Gemini),
-  LLM_MODEL: z.string().min(1).default("gemini-2.0-flash"),
+  // Google retires these: gemini-2.0-flash returned 404 "no longer available"
+  // in August 2026. The default is only a default — LLM_MODEL is set per
+  // deployment, so moving on is a variable change, not a release.
+  LLM_MODEL: z.string().min(1).default("gemini-3.6-flash"),
   GEMINI_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
