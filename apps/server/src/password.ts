@@ -36,8 +36,9 @@ const MAX_MEM = 128 * N * R * 2;
 
 /**
  * scrypt from node:crypto rather than argon2 from npm: it is memory-hard, needs
- * no native build step (which the Lambda bundle would otherwise have to ship),
- * and the parameters live in the hash so they can be raised without a migration.
+ * no native build step (which the esbuild bundle would otherwise have to ship
+ * and rsync to the host), and the parameters live in the hash so they can be
+ * raised without a migration.
  */
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
