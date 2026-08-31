@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useCard } from "@interestled/api";
 import { drillHref, nodeHref } from "@interestled/domain";
-import { Button, ErrorState, JargonList, SectionTitle, Skeleton } from "@interestled/ui";
+import { Button, ErrorState, JargonList, LoadingContent, SectionTitle } from "@interestled/ui";
 import { DepthAction } from "@interestled/schemas";
 import type { CardDepthT, LearningNodeT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
@@ -36,7 +36,13 @@ export function NodeCard({
   const card = useCard(node.id, { depth, action });
 
   if (card.isPending) {
-    return <Skeleton lines={6} />;
+    return (
+      <LoadingContent
+        label={`Writing the card for ${node.title}…`}
+        hint="The first time a node is opened its card is written for you, which takes 10–30 seconds. After that it is instant."
+        lines={6}
+      />
+    );
   }
   if (card.isError) {
     return (

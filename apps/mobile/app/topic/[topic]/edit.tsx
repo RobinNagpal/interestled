@@ -11,7 +11,7 @@ import {
 } from "@interestled/api";
 import { buildTree, topicHref } from "@interestled/domain";
 import type { NodeTreeT } from "@interestled/domain";
-import { Button, ErrorState, Input, SectionTitle, Sheet, Skeleton } from "@interestled/ui";
+import { Button, ErrorState, Input, LoadingContent, SectionTitle, Sheet } from "@interestled/ui";
 import { MapLevels, MoveDirection } from "@interestled/schemas";
 import type { LearningNodeT } from "@interestled/schemas";
 import { messageOf } from "../../../lib/errors";
@@ -57,7 +57,7 @@ export default function EditMapScreen(): ReactElement {
     return (
       <>
         {header}
-        <Skeleton lines={6} />
+        <LoadingContent label="Opening the map…" lines={6} />
       </>
     );
   }

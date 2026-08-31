@@ -156,6 +156,25 @@ Adding a provider is therefore:
 No migration, because `LLM_PROVIDER` is configuration rather than data. Nothing else
 in the codebase may name a provider.
 
+**The prompts are Markdown, not TypeScript.** Every prompt lives in
+`apps/server/src/llm/prompts/` as one `.md` file, filled by `render` in
+`template.ts` — the part of Mustache that is `{{name}}`, `{{#name}}…{{/name}}`
+and `{{^name}}…{{/name}}`, and nothing else. `prompts.ts` holds only the
+choosing: which block applies and to what, because those conditions are keyed on
+enums the type system should be keeping exhaustive.
+
+`render` throws when the template names something the call did not supply, and
+when the call supplies something the template does not name. Both are otherwise
+silent: an unfilled `{{level}}` reaches the model as those eight characters, and
+the model answers it with something plausible and wrong.
+
+They are read from disk rather than bundled, because `__dirname` does not exist
+under the ESM `tsx` and `vitest` run, and `import.meta.url` comes out
+`undefined` once esbuild has emitted CommonJS — so `promptFiles.ts` looks in the
+places the folder can be and takes the one that exists. `build-server.sh` copies
+the folder next to `index.js`, the same as the Prisma engine, and fails the build
+if it did not land.
+
 **Generation is the only expensive call, and registration is open.** Every path that
 reaches the model is inside a per-user budget (`assertWithinBudget` in `topics.ts`).
 Adding a new generating endpoint means adding it there too, or the deployment's model

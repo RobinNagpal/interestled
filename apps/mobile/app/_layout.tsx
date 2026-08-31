@@ -14,7 +14,7 @@ const queryClient = createAppQueryClient();
 function Gate({ children }: { children: ReactNode }): ReactElement {
   const { ready, user, client } = useAuth();
   if (!ready) {
-    return <LoadingState />;
+    return <LoadingState label="Signing you in…" />;
   }
   if (user === null) {
     return <AuthScreen />;

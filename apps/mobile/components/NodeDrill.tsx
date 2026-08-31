@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useDrill, useSaveResume, useSubmitAttempt } from "@interestled/api";
 import { topicHref } from "@interestled/domain";
-import { Button, ErrorState, Input, SectionTitle, Skeleton, VerdictView } from "@interestled/ui";
+import { Button, ErrorState, Input, LoadingContent, SectionTitle, VerdictView } from "@interestled/ui";
 import { DrillKind, MAX_RESPONSE_LENGTH } from "@interestled/schemas";
 import type { LearningNodeT, TopicT, VerdictT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
@@ -25,7 +25,12 @@ export function NodeDrill({ topic, node }: { topic: TopicT; node: LearningNodeT 
   const [capability, setCapability] = useState("");
 
   if (drill.isPending) {
-    return <Skeleton lines={5} />;
+    return (
+      <LoadingContent
+        label={`Setting the drill for ${node.title}…`}
+        hint="The first drill on a node is written for you, which takes 10–30 seconds. After that it is instant."
+      />
+    );
   }
   if (drill.isError) {
     return (

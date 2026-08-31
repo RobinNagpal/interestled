@@ -19,7 +19,7 @@ import {
   Minutes,
   NodeStatusDot,
   SectionTitle,
-  Skeleton,
+  LoadingContent,
   statusLabel,
 } from "@interestled/ui";
 import { NodeStatus, TopicStatus } from "@interestled/schemas";
@@ -65,7 +65,7 @@ export default function TopicScreen(): ReactElement {
     return (
       <>
         {header}
-        <Skeleton lines={6} />
+        <LoadingContent label="Opening the map…" lines={6} />
       </>
     );
   }
