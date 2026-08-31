@@ -17,3 +17,6 @@ deployment/dist/
 *.tfvars
 
 .DS_Store
+.envrc
+*.iml
+.idea/
