@@ -36,6 +36,7 @@ export default function RootLayout(): ReactElement {
             }}
           >
             <Stack.Screen name="index" options={{ title: "Your topics" }} />
+            <Stack.Screen name="profile" options={{ title: "Your profile" }} />
             <Stack.Screen name="topic/new" options={{ title: "New topic", presentation: "modal" }} />
             <Stack.Screen name="topic/[id]" options={{ title: "Map" }} />
             <Stack.Screen name="node/[id]/index" options={{ title: "" }} />

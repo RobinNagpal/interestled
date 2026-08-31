@@ -1,5 +1,6 @@
 export * from "./ids";
 export * from "./auth";
+export * from "./profile";
 export * from "./llm";
 export * from "./topics";
 export * from "./nodes";

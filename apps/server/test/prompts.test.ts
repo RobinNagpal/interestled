@@ -1,7 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { DrillKind, NodeStatus, TopicArchetype, TimeBudget, TopicStatus } from "@interestled/schemas";
-import type { CardContentT, LearningNodeT, TopicT } from "@interestled/schemas";
+import {
+  DrillKind,
+  LearningStyle,
+  NodeStatus,
+  TopicArchetype,
+  TimeBudget,
+  TopicStatus,
+} from "@interestled/schemas";
+import type { CardContentT, LearningNodeT, ProfileT, TopicT } from "@interestled/schemas";
 import { SYSTEM, cardPrompt, drillPrompt, mapPrompt, verdictPrompt } from "../src/llm/prompts";
+
+const profile: ProfileT = {
+  age: 34,
+  background: "Backend engineer, mostly Python",
+  learningStyles: [LearningStyle.Examples, LearningStyle.Numbers],
+};
+
+/** A learner who has filled in nothing — the state every account starts in. */
+const blankProfile: ProfileT = { age: null, background: "", learningStyles: [] };
 
 const topic: TopicT = {
   id: "t1",
@@ -10,7 +26,7 @@ const topic: TopicT = {
   goal: "deploy and debug a service",
   archetype: TopicArchetype.Tool,
   timeBudget: TimeBudget.Week,
-  knownDomains: ["docker", "linux"],
+  level: "I use Docker daily\nWant to run a small cluster",
   status: TopicStatus.Ready,
   error: null,
   createdAt: new Date(),
@@ -49,41 +65,97 @@ describe("SYSTEM", () => {
 });
 
 describe("mapPrompt", () => {
-  it("passes what they already know, so whole branches can be dropped", () => {
+  it("passes where they are and where they are going, so branches can be dropped", () => {
     const prompt = mapPrompt({
       title: topic.title,
       goal: topic.goal,
       timeBudget: topic.timeBudget,
-      knownDomains: topic.knownDomains,
+      level: topic.level,
+      profile,
     });
-    expect(prompt).toContain("docker, linux");
-    expect(prompt).toContain("Do not create nodes for things these already cover");
+    expect(prompt).toContain("I use Docker daily");
+    expect(prompt).toContain("Do not create nodes for what they already have");
+    // The target is the half that decides where the map stops.
+    expect(prompt).toContain("stop the map at the level they asked for");
   });
 
-  it("says so plainly when nothing is known, rather than sending an empty list", () => {
-    const prompt = mapPrompt({ title: "French", goal: "", timeBudget: "quick", knownDomains: [] });
-    expect(prompt).toContain("did not name anything");
+  it("says so plainly when the level is blank, rather than sending an empty line", () => {
+    const prompt = mapPrompt({
+      title: "French",
+      goal: "",
+      timeBudget: "quick",
+      level: "",
+      profile,
+    });
+    expect(prompt).toContain("did not say where they are starting from");
+  });
+
+  it("carries the profile, so one answer calibrates every topic", () => {
+    const prompt = mapPrompt({
+      title: "x",
+      goal: "",
+      timeBudget: "week",
+      level: "",
+      profile,
+    });
+    expect(prompt).toContain("They are 34");
+    expect(prompt).toContain("Backend engineer, mostly Python");
+    // The enum values themselves would mean nothing to the model.
+    expect(prompt).toContain("worked example");
+    expect(prompt).not.toContain("examples, numbers");
   });
 
   it("caps node minutes so nothing on the map looks unfinishable", () => {
-    expect(mapPrompt({ title: "x", goal: "", timeBudget: "week", knownDomains: [] })).toContain(
-      "Nothing may exceed 5",
-    );
+    expect(
+      mapPrompt({ title: "x", goal: "", timeBudget: "week", level: "", profile: blankProfile }),
+    ).toContain("Nothing may exceed 5");
+  });
+});
+
+describe("learnerBlock", () => {
+  it("omits every line the learner left blank, rather than saying 'not stated'", () => {
+    const prompt = mapPrompt({
+      title: "x",
+      goal: "",
+      timeBudget: "week",
+      level: "",
+      profile: blankProfile,
+    });
+    expect(prompt).toContain("nothing on file");
+    expect(prompt).not.toContain("They are ");
+  });
+
+  it("drops the age line alone when only the age is missing", () => {
+    const prompt = mapPrompt({
+      title: "x",
+      goal: "",
+      timeBudget: "week",
+      level: "",
+      profile: { ...profile, age: null },
+    });
+    expect(prompt).not.toContain("They are ");
+    expect(prompt).toContain("Backend engineer, mostly Python");
   });
 });
 
 describe("cardPrompt", () => {
   it("changes the instruction with the depth", () => {
-    const shallow = cardPrompt({ topic, node, depth: 1, variant: "base" });
-    const deep = cardPrompt({ topic, node, depth: 5, variant: "base" });
+    const shallow = cardPrompt({ topic, node, depth: 1, variant: "base", profile });
+    const deep = cardPrompt({ topic, node, depth: 5, variant: "base", profile });
     expect(shallow).toContain("intuition only");
     expect(deep).toContain("expert");
   });
 
   it("asks a variant for a different angle at the same depth", () => {
-    expect(cardPrompt({ topic, node, depth: 3, variant: "where_this_breaks" })).toContain(
+    expect(cardPrompt({ topic, node, depth: 3, variant: "where_this_breaks", profile })).toContain(
       "when this model is wrong",
     );
+  });
+
+  it("writes the card to the same profile the map was built from", () => {
+    const prompt = cardPrompt({ topic, node, depth: 3, variant: "base", profile });
+    expect(prompt).toContain("Backend engineer, mostly Python");
+    expect(prompt).toContain("real quantities");
   });
 });
 

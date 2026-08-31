@@ -57,6 +57,11 @@ export default function TopicsScreen(): ReactElement {
       ))}
 
       <Button label="Add a topic" onPress={() => router.push("/topic/new")} />
+      <Button
+        label="Your profile"
+        tone="secondary"
+        onPress={() => router.push("/profile")}
+      />
       <Button label="Sign out" tone="quiet" onPress={() => void signOut()} />
     </ScrollView>
   );

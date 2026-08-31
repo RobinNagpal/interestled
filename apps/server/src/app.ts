@@ -9,6 +9,7 @@ import { ConflictError, GenerationError, NotFoundError } from "./errors";
 import { learningRouter } from "./learning";
 import { createProvider } from "./llm";
 import type { LlmProvider } from "./llm";
+import { profileRouter } from "./profile";
 import { reviewRouter } from "./review";
 import { sessionsRouter } from "./sessions";
 import { topicsRouter } from "./topics";
@@ -60,6 +61,7 @@ export function createApp(db: Db, options: AppOptions = {}): Hono {
   const authed = new Hono<AuthEnv>();
   authed.use("*", requireAuth(db));
   authed.route("/auth/session", sessionRouter(db));
+  authed.route("/profile", profileRouter(db));
   authed.route("/topics", topicsRouter(db, provider));
   authed.route("/nodes", learningRouter(db, provider));
   authed.route("/review", reviewRouter(db));

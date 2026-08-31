@@ -13,6 +13,7 @@ import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
 import { generateMap } from "./llm";
 import type { LlmProvider } from "./llm";
+import { loadProfile } from "./profile";
 import { toNode, toResumePoint, toTopic } from "./rows";
 
 /** Persist a generated map. Keys become ids here, so edges can be resolved. */
@@ -84,7 +85,10 @@ async function buildMap(db: Db, provider: LlmProvider, topic: TopicT): Promise<s
       title: topic.title,
       goal: topic.goal,
       timeBudget: topic.timeBudget,
-      knownDomains: topic.knownDomains,
+      level: topic.level,
+      // Read here rather than passed in, so a retry picks up a profile edited
+      // since the topic was created — which is the usual reason to retry.
+      profile: await loadProfile(db, topic.userId),
     });
     await saveMap(db, topic, map);
     return null;
@@ -126,7 +130,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
         // Overwritten by the generated map; a placeholder keeps the column typed.
         archetype: "tool",
         timeBudget: input.timeBudget,
-        knownDomains: input.knownDomains,
+        level: input.level,
         status: TopicStatus.Generating,
       },
     });

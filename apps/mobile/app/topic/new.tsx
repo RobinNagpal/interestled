@@ -16,27 +16,24 @@ const BUDGETS: { value: TimeBudget; label: string }[] = [
 
 /**
  * The calibration probe. Four questions, under a minute, and it measures rather
- * than asks — "what do you already use" decides which comparisons land and which
- * whole branches get dropped before the learner ever sees them.
+ * than asks — where they are now and where they want to get to decides which
+ * whole branches get dropped before the learner ever sees them, and where the
+ * map is allowed to stop.
+ *
+ * The two long answers are boxes asking for points rather than one line each:
+ * "deploy a service" and "debug it at 3am" are different goals, and a single
+ * line quietly asks people to pick one of them.
  */
 export default function NewTopicScreen(): ReactElement {
   const create = useCreateTopic();
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
-  const [known, setKnown] = useState("");
+  const [level, setLevel] = useState("");
   const [timeBudget, setTimeBudget] = useState<TimeBudget>(TimeBudget.Week);
 
   const submit = (): void => {
     create.mutate(
-      {
-        title,
-        goal,
-        timeBudget,
-        knownDomains: known
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.length > 0),
-      },
+      { title, goal, timeBudget, level },
       { onSuccess: (topic) => router.replace(`/topic/${topic.id}`) },
     );
   };
@@ -51,18 +48,22 @@ export default function NewTopicScreen(): ReactElement {
         autoFocus
       />
       <Input
-        label="What do you want to be able to do with it?"
+        label="What do you want to be able to do with it? Three points."
         value={goal}
         onChangeText={setGoal}
-        placeholder="Deploy a service and debug it when it breaks"
+        multiline
+        maxLength={600}
+        placeholder={"Deploy a service\nRead the logs when it breaks\nSize it without guessing"}
         hint="This picks the shortest path through the map."
       />
       <Input
-        label="What related things do you already use?"
-        value={known}
-        onChangeText={setKnown}
-        placeholder="docker, linux, ci"
-        hint="Comma separated. This is the answer that saves you the most time."
+        label="Where are you now, and where do you want to get to? 3-5 points."
+        value={level}
+        onChangeText={setLevel}
+        multiline
+        maxLength={600}
+        placeholder={"I use Docker daily\nNever run anything in production\nWant to own a small cluster"}
+        hint="This is the answer that saves you the most time."
       />
       <View className="gap-2">
         <Text className="text-sm font-medium text-ink-soft">How much time have you got?</Text>
