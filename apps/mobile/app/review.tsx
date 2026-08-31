@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useGradeReview, useReview } from "@interestled/api";
-import { Button, EmptyState, ErrorState, SectionTitle, Skeleton } from "@interestled/ui";
+import { Button, EmptyState, ErrorState, LoadingContent, SectionTitle } from "@interestled/ui";
 import { ReviewGrade } from "@interestled/schemas";
 import type { AtomT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
@@ -32,7 +32,7 @@ export default function ReviewScreen(): ReactElement {
   }, [batch, review.data]);
 
   if (review.isPending || (batch === null && !review.isError)) {
-    return <Skeleton lines={4} />;
+    return <LoadingContent label="Gathering what is due…" lines={4} />;
   }
   if (review.isError) {
     return (

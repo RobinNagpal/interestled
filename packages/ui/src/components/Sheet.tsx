@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 
 /**
@@ -22,14 +22,27 @@ export function Sheet({
 }): ReactElement {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        onPress={onClose}
-        className="flex-1 justify-end bg-ink/40"
-      >
-        {/* Swallows the press so a tap inside the card does not dismiss it. */}
-        <Pressable onPress={() => undefined} className="max-h-[85%] rounded-t-card bg-surface">
+      <View className="flex-1 justify-end">
+        {/*
+         * The backdrop is a SIBLING of the card, never its ancestor. A Pressable
+         * wrapping the card reads on the web as a role="button" ancestor of
+         * everything inside it, and react-native-web treats a space key pressed
+         * anywhere beneath it as a press of the button — so typing the first
+         * space into the box below dismissed the sheet mid-sentence. Sitting it
+         * behind the card instead means no key press inside the card ever
+         * reaches it, and a tap on the dimmed area still lands on it.
+         */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          onPress={onClose}
+          // Geometry through the style prop rather than a class: "fill the
+          // parent" is the one thing here that must hold on every target, and
+          // absoluteFill is the platform's own answer to it.
+          style={StyleSheet.absoluteFill}
+          className="bg-ink/40"
+        />
+        <View className="max-h-[85%] rounded-t-card bg-surface">
           <ScrollView contentContainerClassName="gap-4 p-5">
             <View className="gap-1">
               <Text className="text-xl font-semibold text-ink">{title}</Text>
@@ -37,8 +50,8 @@ export function Sheet({
             </View>
             {children}
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

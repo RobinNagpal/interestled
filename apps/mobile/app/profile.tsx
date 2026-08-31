@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { useProfile, useUpdateProfile } from "@interestled/api";
-import { Button, ErrorState, Input, Skeleton } from "@interestled/ui";
+import { Button, ErrorState, Input, LoadingContent } from "@interestled/ui";
 import { LEARNING_STYLES, LEARNING_STYLE_LABELS } from "@interestled/schemas";
 import type { LearningStyle, ProfileT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
@@ -47,7 +47,7 @@ export default function ProfileScreen(): ReactElement {
   }, [profile.data]);
 
   if (profile.isPending) {
-    return <Skeleton lines={5} />;
+    return <LoadingContent label="Opening your profile…" lines={5} />;
   }
   if (profile.isError) {
     return (

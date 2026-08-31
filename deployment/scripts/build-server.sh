@@ -43,5 +43,15 @@ fi
 cp "$engine" "$out/"
 cp "$root/apps/server/prisma/schema.prisma" "$out/"
 
+# The prompts are Markdown read at runtime, not bundled: esbuild can inline them
+# but tsx and vitest cannot, so the one loader that works everywhere is the file
+# system. src/llm/promptFiles.ts looks for them beside index.js first, which is
+# what this puts there. A missing folder fails every generation, so check it.
+cp -R "$root/apps/server/src/llm/prompts" "$out/prompts"
+if [[ ! -f "$out/prompts/system.md" ]]; then
+  echo "error: prompts/ did not copy into the bundle" >&2
+  exit 1
+fi
+
 echo "Built $(du -sh "$out" | cut -f1) in deployment/dist/server:"
 ls -1 "$out"

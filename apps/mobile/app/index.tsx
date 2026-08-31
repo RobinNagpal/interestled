@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { Link, router } from "expo-router";
 import { useReview, useTopics } from "@interestled/api";
 import { topicHref } from "@interestled/domain";
-import { Button, EmptyState, ErrorState, Skeleton } from "@interestled/ui";
+import { Button, EmptyState, ErrorState, LoadingContent } from "@interestled/ui";
 import { TopicStatus } from "@interestled/schemas";
 import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
@@ -30,7 +30,7 @@ export default function TopicsScreen(): ReactElement {
         </Pressable>
       ) : null}
 
-      {topics.isPending ? <Skeleton lines={4} /> : null}
+      {topics.isPending ? <LoadingContent label="Loading your topics…" lines={4} /> : null}
       {topics.isError ? <ErrorState message={messageOf(topics.error)} /> : null}
 
       {topics.data?.length === 0 ? (

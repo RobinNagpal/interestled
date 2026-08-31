@@ -1,24 +1,22 @@
 import { DepthAction, DrillKind, LearningStyle, MapLevels } from "@interestled/schemas";
 import type { CardContentT, LearningNodeT, ProfileT, TopicT } from "@interestled/schemas";
+import { promptFile } from "./promptFiles";
+import { render } from "./template";
 
 /**
- * Rules that hold for every generation. These are the design documents in
- * docs/ux compressed to what a model can follow — mostly caps and bans, because
- * an uninstructed model writes 900 words of preamble by default.
+ * The prompts themselves live in ./prompts as Markdown, one file per prompt,
+ * filled here. Keeping the text out of TypeScript is what makes it readable as
+ * the instructions it is — a template literal with three levels of interpolation
+ * in it is a program that happens to contain English.
+ *
+ * What stays in code is the choosing: which block applies, and to what. A
+ * template language that could express those conditions would be a second,
+ * untyped program, and the enums below are exactly the thing the type system is
+ * meant to keep exhaustive.
  */
-export const SYSTEM = `You write material for a learning app used by people who lose interest fast, including people with ADHD.
 
-Hard rules:
-- Reply with JSON only. No prose outside the JSON, no code fences.
-- No preamble. Never open with history, aims, "in this section", or why the topic matters.
-- Lead with the point. The first sentence is the claim itself.
-- Plain words. Short sentences. Cut every recap, transition and filler phrase.
-- Be concrete: real numbers, real names, real commands. Never "various factors".
-- Never invent a figure, a date, a command or a flag you are not sure of. If a
-  specific number would be needed and you do not know it, write the sentence
-  without it rather than guessing.
-- Where experts genuinely disagree, say so in one clause instead of picking a side.
-- Never use motivational or effort language: no "focus", "try harder", "you've got this".`;
+/** Rules that hold for every generation. */
+export const SYSTEM = promptFile("system");
 
 /**
  * What each style actually changes about the writing. The enum values would mean
@@ -43,94 +41,24 @@ const STYLE_GUIDE: Record<LearningStyle, string> = {
  * rather than sending "age: not stated" and inviting the model to comment on it.
  */
 export function learnerBlock(profile: ProfileT): string {
-  const lines: string[] = [];
-  if (profile.age !== null) {
-    lines.push(`They are ${profile.age}. Pitch vocabulary and comparisons accordingly.`);
-  }
-  if (profile.background !== "") {
-    lines.push(
-      `What they already know: ${profile.background}. Skip what this covers, and draw comparisons from it.`,
-    );
-  }
-  if (profile.learningStyles.length > 0) {
-    lines.push(
-      `How they want it explained:\n${profile.learningStyles
-        .map((style) => `- ${STYLE_GUIDE[style]}`)
-        .join("\n")}`,
-    );
-  }
-  if (lines.length === 0) {
-    return "About the learner: nothing on file. Write for a capable adult and stay concrete.";
-  }
-  return `About the learner:\n${lines.join("\n")}`;
+  const styles = profile.learningStyles.map((style) => `- ${STYLE_GUIDE[style]}`).join("\n");
+  const known =
+    profile.age !== null || profile.background !== "" || profile.learningStyles.length > 0;
+  return render(promptFile("learner"), {
+    anything: known ? "yes" : "",
+    age: profile.age === null ? "" : String(profile.age),
+    background: profile.background,
+    styles,
+  });
 }
 
-/** The shared description of a leaf, which is the only kind of node with a card. */
-const LEAF_RULES = `Each of these:
-- "key": short slug, unique across the WHOLE map, lowercase with underscores.
-- "title": 2-6 words.
-- "claim": ONE sentence answering "what is this, really?". Not a definition.
-- "minutes": honest reading+doing time, 1-5. Nothing may exceed 5.
-- "capability": what they can do once it is verified, starting with a verb
-  ("read a manifest and say what it does"). This is how progress gets reported,
-  so it must be checkable, not "understand X".
-- "prerequisiteKeys": keys of nodes genuinely needed first, at most 3. These are
-  advisory notes, never gates, so include only real dependencies. They may name a
-  node in any group, not only this one.`;
-
-/** The shared description of a branch, which is a heading and nothing more. */
-const GROUP_RULES = `Each group:
-- "key": short slug, unique across the WHOLE map, lowercase with underscores.
-- "title": 2-5 words. A part of the subject, not a stage ("Networking", never "Basics").
-- "claim": ONE sentence saying what this part of the subject is.
-- "capability": what they can do once everything inside it is done.
-A group is a heading: it has no minutes, because nobody sits down and reads a heading.`;
-
-const ARCHETYPES = `Classify the topic into exactly one archetype:
-- "system": interacting parts and quantities (robotics, an engine). Known = can predict behaviour.
-- "story": causes and consequences over time (inflation history). Known = can explain why and argue it.
-- "tool": objects, commands, workflows, failure modes (Kubernetes, Git). Known = can do it and fix it.
-- "skill": automaticity through volume (a language, chess). Known = speed and accuracy under pressure.
-- "self_help": a framework applied to your own situation (motivation). Known = a behaviour changed.`;
-
-/** Ordering is the same rule at every level: the interesting thing comes first. */
-const ORDERING = `Order every list so the most interesting item is first — an anomaly, a live
-demo, or a result, never a definition or a setup step. That holds inside each group too.`;
-
-/**
- * The learner's own words on what to change, when they asked for the map to be
- * built again. Quoted rather than paraphrased: "less YAML" is an instruction the
- * model can follow, and a summary of it is not.
- */
 function instructionBlock(instructions: string): string {
-  return instructions === ""
-    ? ""
-    : `\nThey have asked for this to be rebuilt, and said what to change:\n"""\n${instructions}\n"""\nFollow it. Where it conflicts with anything above, it wins.\n`;
+  return render(promptFile("instructions"), { instructions });
 }
 
-function levelBlock(levels: MapLevels): string {
-  if (levels === MapLevels.Two) {
-    return `Produce a TWO-level map.
-
-Level 1: 3-8 groups, in "sections".
-${GROUP_RULES}
-
-Level 2: 2-8 nodes inside each group, in its "nodes".
-${LEAF_RULES}
-
-Return JSON: {"archetype":"...","sections":[{"key","title","claim","capability","nodes":[{"key","title","claim","minutes","capability","prerequisiteKeys"}]}]}`;
-  }
-  return `Produce a THREE-level map.
-
-Level 1: 2-5 broad areas, in "areas".
-Level 2: 2-5 groups inside each area, in its "sections".
-${GROUP_RULES}
-That applies to areas and to groups alike.
-
-Level 3: 2-8 nodes inside each group, in its "nodes".
-${LEAF_RULES}
-
-Return JSON: {"archetype":"...","areas":[{"key","title","claim","capability","sections":[{"key","title","claim","capability","nodes":[{"key","title","claim","minutes","capability","prerequisiteKeys"}]}]}]}`;
+/** The two shared blocks that describe what a node and a group must contain. */
+function shapeBlocks(): { leafRules: string; groupRules: string } {
+  return { leafRules: promptFile("leaf-rules"), groupRules: promptFile("group-rules") };
 }
 
 export function mapPrompt(input: {
@@ -140,25 +68,24 @@ export function mapPrompt(input: {
   level: string;
   levels: MapLevels;
   profile: ProfileT;
+  /** What to change, when the learner asked for the map again. "" the first time. */
   instructions: string;
 }): string {
-  const level =
-    input.level === ""
-      ? "They did not say where they are starting from."
-      : `Where they are now and where they want to get to:\n${input.level}\nDo not create nodes for what they already have, and stop the map at the level they asked for.`;
-  return `Build a knowledge map for: ${input.title}
-
-What they want to be able to do: ${input.goal || "(not stated — infer the most common goal)"}
-Time available: ${input.timeBudget}
-${level}
-
-${learnerBlock(input.profile)}
-${instructionBlock(input.instructions)}
-${ARCHETYPES}
-
-${levelBlock(input.levels)}
-
-${ORDERING}`;
+  const shape = render(
+    promptFile(input.levels === MapLevels.Three ? "map-three-levels" : "map-two-levels"),
+    shapeBlocks(),
+  );
+  return render(promptFile("map"), {
+    title: input.title,
+    goal: input.goal || "(not stated — infer the most common goal)",
+    timeBudget: input.timeBudget,
+    level: input.level,
+    learner: learnerBlock(input.profile),
+    instructions: instructionBlock(input.instructions),
+    archetypes: promptFile("archetypes"),
+    shape,
+    ordering: promptFile("ordering"),
+  });
 }
 
 /**
@@ -179,33 +106,22 @@ export function subtreePrompt(input: {
   profile: ProfileT;
   instructions: string;
 }): string {
-  const shape =
-    input.childLevels === 1
-      ? `Produce 2-8 nodes for this group, in "nodes".
-${LEAF_RULES}
-
-Return JSON: {"nodes":[{"key","title","claim","minutes","capability","prerequisiteKeys"}]}`
-      : `Produce 2-5 groups for this area, in "sections", each with 2-8 nodes in its "nodes".
-${GROUP_RULES}
-${LEAF_RULES}
-
-Return JSON: {"sections":[{"key","title","claim","capability","nodes":[{"key","title","claim","minutes","capability","prerequisiteKeys"}]}]}`;
-  const siblings =
-    input.siblingTitles.length === 0
-      ? ""
-      : `\nOther parts of this map, which you are NOT rebuilding and must not duplicate: ${input.siblingTitles.join(", ")}.\n`;
-  return `Topic: ${input.topic.title}
-What they want to be able to do: ${input.topic.goal || "(not stated)"}
-Where this sits in the map: ${input.trail.join(" › ")}
-What it covers: ${input.claim}
-${siblings}
-${learnerBlock(input.profile)}
-${instructionBlock(input.instructions)}
-Rebuild only what belongs under "${input.trail[input.trail.length - 1] ?? input.topic.title}". Everything else in the map stays as it is.
-
-${shape}
-
-${ORDERING}`;
+  const shape = render(
+    promptFile(input.childLevels >= 2 ? "subtree-sections" : "subtree-leaves"),
+    input.childLevels >= 2 ? shapeBlocks() : { leafRules: promptFile("leaf-rules") },
+  );
+  return render(promptFile("subtree"), {
+    topic: input.topic.title,
+    goal: input.topic.goal || "(not stated)",
+    trail: input.trail.join(" › "),
+    claim: input.claim,
+    siblings: input.siblingTitles.join(", "),
+    group: input.trail[input.trail.length - 1] ?? input.topic.title,
+    learner: learnerBlock(input.profile),
+    instructions: instructionBlock(input.instructions),
+    shape,
+    ordering: promptFile("ordering"),
+  });
 }
 
 const DEPTH_GUIDE: Record<number, string> = {
@@ -233,26 +149,14 @@ export function cardPrompt(input: {
   variant: string;
   profile: ProfileT;
 }): string {
-  return `Topic: ${input.topic.title}
-Node: ${input.node.title}
-Its claim: ${input.node.claim}
-
-${DEPTH_GUIDE[input.depth] ?? DEPTH_GUIDE[3]}
-${VARIANT_GUIDE[input.variant] ?? ""}
-
-${learnerBlock(input.profile)}
-
-Write the card. Six slots, all required:
-- "claim": one sentence. The answer, first, before any context.
-- "mechanism": 1-5 short items explaining WHY it behaves this way. Not a definition,
-  not a list of features. Each item under 40 words.
-- "example": {"setup", "result"} — one concrete worked case with real values.
-- "misconception": {"belief", "correction"} — what people actually get wrong here,
-  stated as the plausible wrong belief, then what is true and why.
-- "jargon": every technical term you used, each with a one-line meaning at this depth.
-  Empty array if you used none.
-
-Return JSON: {"claim","mechanism":[],"example":{"setup","result"},"misconception":{"belief","correction"},"jargon":[{"term","gloss"}]}`;
+  return render(promptFile("card"), {
+    topic: input.topic.title,
+    node: input.node.title,
+    claim: input.node.claim,
+    depthGuide: DEPTH_GUIDE[input.depth] ?? DEPTH_GUIDE[3]!,
+    variantGuide: VARIANT_GUIDE[input.variant] ?? "",
+    learner: learnerBlock(input.profile),
+  });
 }
 
 const DRILL_GUIDE: Record<DrillKind, string> = {
@@ -272,22 +176,14 @@ export function drillPrompt(input: {
   kind: DrillKind;
   card: CardContentT;
 }): string {
-  return `Node: ${input.node.title}
-Claim: ${input.card.claim}
-Mechanism: ${input.card.mechanism.join(" ")}
-Common misconception: ${input.card.misconception.belief}
-
-Write one drill of kind "${input.kind}".
-${DRILL_GUIDE[input.kind]}
-
-- "prompt": the task itself. Everything needed to answer must be IN the prompt —
-  never refer to "the card above" or a value from a previous screen.
-- "completionTest": one line stating what will exist when they are done.
-- "referencePoints": 2-5 things a good answer contains, each one checkable. These
-  are what the answer gets compared against, so make them specific and separable.
-- "hints": exactly 3, escalating — a nudge, then a narrowing, then near-reveal.
-
-Return JSON: {"prompt","completionTest","referencePoints":[],"hints":[]}`;
+  return render(promptFile("drill"), {
+    node: input.node.title,
+    claim: input.card.claim,
+    mechanism: input.card.mechanism.join(" "),
+    misconception: input.card.misconception.belief,
+    kind: input.kind,
+    kindGuide: DRILL_GUIDE[input.kind],
+  });
 }
 
 export function verdictPrompt(input: {
@@ -295,51 +191,19 @@ export function verdictPrompt(input: {
   referencePoints: readonly string[];
   response: string;
 }): string {
-  return `The learner was asked:
-${input.prompt}
-
-A good answer contains these points:
-${input.referencePoints.map((point, index) => `${index + 1}. ${point}`).join("\n")}
-
-Their answer:
-"""
-${input.response}
-"""
-
-Judge each reference point independently:
-- "got": they stated it clearly.
-- "vague": they gestured at it without saying the thing that matters. The note must
-  name what is missing ("faster than what, and why?").
-- "missing": absent.
-- "wrong": they asserted something that contradicts it. The note gives the correction
-  plus one concrete example, in under 40 words.
-
-Rules:
-- Judge the ANSWER, never the person. No score, no percentage, no praise, no criticism.
-- Notes must be usable in the next ten seconds — a correction, not an assessment.
-- "passed" is true when no point is "wrong" and at least half are "got".
-- "misconception": if their answer reveals a specific wrong belief, state it in
-  THEIR words in one short sentence. Otherwise empty string.
-- Wording differences are not errors. A right idea said plainly is "got".
-
-Return JSON: {"items":[{"label","point","note"}],"passed":true|false,"misconception":""}`;
+  return render(promptFile("verdict"), {
+    prompt: input.prompt,
+    referencePoints: input.referencePoints.map((point, index) => `${index + 1}. ${point}`).join("\n"),
+    response: input.response,
+  });
 }
 
 export function atomsPrompt(input: { node: LearningNodeT; card: CardContentT }): string {
-  return `Node: ${input.node.title}
-Claim: ${input.card.claim}
-Mechanism: ${input.card.mechanism.join(" ")}
-Worked example: ${input.card.example.setup} → ${input.card.example.result}
-Misconception: ${input.card.misconception.belief} (in fact: ${input.card.misconception.correction})
-
-Extract 3-5 retrieval items for spaced review. Mix the kinds:
-- "cloze": one sentence with the load-bearing words removed, written as "___".
-- "reverse": a question whose answer is the name of the thing.
-- "application": a symptom or situation, answered by what to do or check first.
-- "production": something they must produce from scratch (a command, a sentence, a value).
-
-Each must be answerable in under fifteen seconds and must stand alone — no
-reference to "the card" or to another item. The answer must be short and specific.
-
-Return JSON: {"atoms":[{"kind","prompt","answer"}]}`;
+  return render(promptFile("atoms"), {
+    node: input.node.title,
+    claim: input.card.claim,
+    mechanism: input.card.mechanism.join(" "),
+    example: `${input.card.example.setup} → ${input.card.example.result}`,
+    misconception: `${input.card.misconception.belief} (in fact: ${input.card.misconception.correction})`,
+  });
 }

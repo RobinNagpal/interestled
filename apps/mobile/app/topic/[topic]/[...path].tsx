@@ -15,7 +15,7 @@ import {
   Minutes,
   NodeStatusDot,
   SectionTitle,
-  Skeleton,
+  LoadingContent,
   statusLabel,
 } from "@interestled/ui";
 import type { LearningNodeT } from "@interestled/schemas";
@@ -63,7 +63,7 @@ export default function NodePathScreen(): ReactElement {
     return (
       <>
         {header("")}
-        <Skeleton lines={6} />
+        <LoadingContent label="Finding that on the map…" lines={6} />
       </>
     );
   }
