@@ -11,12 +11,21 @@ describe("newId", () => {
   });
 
   it("sorts by creation time, so ordering by id orders by age", () => {
-    const first = newId(() => 0);
-    const second = newId(() => 0.99);
+    // The clock is pinned, not merely assumed to be still: reading Date.now()
+    // twice made this fail whenever the millisecond ticked between the calls.
+    const at = (): number => 1_700_000_000_000;
+    const first = newId(() => 0, at);
+    const second = newId(() => 0.99, at);
     // Same millisecond: the random suffix breaks the tie without reordering
     // the timestamp prefix.
     expect(first.slice(0, 9)).toBe(second.slice(0, 9));
     expect(first < second).toBe(true);
+  });
+
+  it("orders across milliseconds by the timestamp, whatever the suffix", () => {
+    const earlier = newId(() => 0.99, () => 1_700_000_000_000);
+    const later = newId(() => 0, () => 1_700_000_000_001);
+    expect(earlier < later).toBe(true);
   });
 
   it("does not collide across many draws", () => {
