@@ -8,11 +8,13 @@ import { NodeStatus } from "@interestled/schemas";
  * none of the signals mean anything.
  */
 const LOOK: Record<NodeStatus, { dot: string; label: string }> = {
-  [NodeStatus.Untouched]: { dot: "border border-ink-faint", label: "Not started" },
+  [NodeStatus.Untouched]: { dot: "border-2 border-ink-faint", label: "Not started" },
   [NodeStatus.Seen]: { dot: "border-2 border-accent", label: "Read" },
-  [NodeStatus.Explained]: { dot: "bg-accent/60", label: "Explained" },
+  [NodeStatus.Explained]: { dot: "bg-accent/70", label: "Explained" },
   [NodeStatus.Verified]: { dot: "bg-good", label: "Can do it" },
-  [NodeStatus.Due]: { dot: "bg-accent-soft", label: "Due" },
+  // Filled *and* ringed. Bare accent-soft is a pale wash that a white row swallows
+  // whole, which left the one status that is asking for attention invisible.
+  [NodeStatus.Due]: { dot: "border-2 border-accent bg-accent-soft", label: "Due" },
   [NodeStatus.Shaky]: { dot: "bg-warn", label: "Needs another look" },
 };
 
