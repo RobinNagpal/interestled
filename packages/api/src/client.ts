@@ -7,6 +7,7 @@ import {
   Drill,
   LearningNode,
   NodeStatusSchema,
+  Profile,
   ResumePoint,
   StudySession,
   Topic,
@@ -23,6 +24,8 @@ import type {
   LearningNodeT,
   LoginInputT,
   NodeStatus,
+  ProfileT,
+  ProfileUpdateInputT,
   RegisterInputT,
   ReviewInputT,
   TopicCreateInputT,
@@ -164,6 +167,9 @@ export interface ApiClient {
   logout(): Promise<void>;
   me(): Promise<z.infer<typeof User>>;
 
+  getProfile(): Promise<ProfileT>;
+  updateProfile(input: ProfileUpdateInputT): Promise<ProfileT>;
+
   listTopics(): Promise<TopicT[]>;
   createTopic(input: TopicCreateInputT): Promise<TopicT>;
   getTopic(id: string): Promise<TopicDetailT>;
@@ -204,6 +210,9 @@ export function createApiClient(config: ClientConfig): ApiClient {
     logout: () => requestVoid(config, "/api/auth/session/logout", "POST"),
     me: () => get("/api/auth/session/me", User),
 
+    getProfile: () => get("/api/profile", Profile),
+    updateProfile: (input) => request(config, "/api/profile", "PUT", Profile, input),
+
     listTopics: () => get("/api/topics", z.array(Topic)),
     createTopic: (input) => post("/api/topics", Topic, input),
     getTopic: (id) => get(`/api/topics/${id}`, TopicDetail),
@@ -236,4 +245,4 @@ export function createApiClient(config: ClientConfig): ApiClient {
   };
 }
 
-export type { AtomT, DrillT, LearningNodeT, TopicT };
+export type { AtomT, DrillT, LearningNodeT, ProfileT, TopicT };

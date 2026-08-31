@@ -23,6 +23,14 @@ model User {
   passwordHash String        @map("password_hash")
   // Sticky depth, 1-5. Follows the learner across topics rather than resetting.
   defaultDepth Int           @default(2) @map("default_depth")
+  // The profile. Every field is optional on purpose: a required form standing
+  // between signing up and the first topic is the setup cost A14 bans. All
+  // three are read by every generation call — see src/llm/prompts.ts.
+  age          Int?
+  // What they already know at a high level, in their own words.
+  background   String        @default("")
+  // LearningStyle values, as plain strings — the enum lives in packages/schemas.
+  learningStyles String[]    @map("learning_styles")
   createdAt    DateTime      @default(now()) @map("created_at")
   sessions     AuthSession[]
   topics       Topic[]
@@ -59,6 +67,12 @@ model Topic {
   // packages/schemas, so a new archetype needs no migration.
   archetype    String
   timeBudget   String         @map("time_budget")
+  // Where they are now and where they want to get to, in their own words.
+  level        String         @default("")
+  // Superseded by `level`, and no longer read or written. Kept for one deploy
+  // only: migrations run from the runner before the new bundle ships, so
+  // dropping the column in the same push would break the still-running old
+  // version for the seconds in between. Drop it in the next schema change.
   knownDomains String[]       @map("known_domains")
   status       String         @default("generating")
   error        String?

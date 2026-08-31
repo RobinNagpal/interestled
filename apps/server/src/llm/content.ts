@@ -6,6 +6,7 @@ import type {
   GeneratedAtomT,
   GeneratedMapT,
   LearningNodeT,
+  ProfileT,
   TopicT,
   VerdictT,
 } from "@interestled/schemas";
@@ -27,7 +28,7 @@ const AtomList = z.object({ atoms: z.array(GeneratedAtom).min(1).max(6) });
 
 export function generateMap(
   provider: LlmProvider,
-  input: { title: string; goal: string; timeBudget: string; knownDomains: readonly string[] },
+  input: { title: string; goal: string; timeBudget: string; level: string; profile: ProfileT },
 ): Promise<GeneratedMapT> {
   return generateJson(provider, {
     system: SYSTEM,
@@ -40,7 +41,7 @@ export function generateMap(
 
 export function generateCard(
   provider: LlmProvider,
-  input: { topic: TopicT; node: LearningNodeT; depth: number; variant: string },
+  input: { topic: TopicT; node: LearningNodeT; depth: number; variant: string; profile: ProfileT },
 ): Promise<CardContentT> {
   return generateJson(provider, {
     system: SYSTEM,

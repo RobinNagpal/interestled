@@ -244,13 +244,24 @@ to endorse the product — several of them get other things badly wrong.
 
 Asking someone to pick Beginner, Intermediate or Advanced produces a number that means
 nothing, because people judge their own level badly and the honest answer is usually
-"depends on the sub-topic". So measure instead of asking. Sixty seconds of quick
-interactions — do you know these four terms, what do you want to do with this, how much
-time do you have — will set depth, vocabulary and scope better than any self-report.
+"depends on the sub-topic". So ask about the work instead of the rating. Sixty seconds —
+what do you want to be able to do with this, where are you now and where do you want to
+get to, how much time do you have — sets depth, vocabulary and scope better than any
+self-report.
 
-The single most valuable question is *what related things do you already use*, because
-that decides which comparisons will land and which whole branches can be deleted before
-the learner ever sees them.
+The two long answers are boxes asking for points, not single lines. "Deploy a service"
+and "debug it at 3am" are different goals, and one line quietly asks people to pick one
+of them. *Where are you now, and where do you want to get to* is the highest-value
+answer in the product: the first half decides which comparisons land and which whole
+branches can be deleted before the learner ever sees them, and the second decides where
+the map is allowed to stop, which is the difference between twelve nodes and forty.
+
+Some of it is not per-topic at all. Age, what they already know at a high level, and
+how they want things explained are true of the learner rather than of the subject, so
+they are asked once on the profile screen and read by every generation call after that
+— the calibration that does not have to be repeated per topic. All of it is optional:
+a learner who never opens that screen gets the same product, and a required form
+between signing up and the first node is exactly the setup cost A14 bans.
 
 - *The ideal:* diagnose before you instruct, and spend the diagnosis on what they can
   already do rather than on how they rate themselves.
@@ -844,7 +855,7 @@ the design, not an acceptable gap.
 | W15 | Surprise and story | The misconception slot on every card; timeline topics ordered causally |
 | W16 | Reduce decisions | One primary action per screen; the map is available, never required |
 | W17 | Err on the side of too fast | Cards written above comfort with depth buttons underneath; no recaps |
-| W18 | Skip what they know | Calibration collapses branches; "I already know this" on every node, honoured without proof |
+| W18 | Skip what they know | Calibration and the profile's background collapse branches; "I already know this" on every node, honoured without proof |
 | W19 | Concrete progress | Status dots advance only on production; progress stated as new ability |
 | W20 | Painless return | "Three things worth reloading" on re-entry; the review queue reschedules instead of piling up |
 
@@ -865,7 +876,7 @@ the design, not an acceptable gap.
 | A11 | Not several instructions at once | One instruction per screen; multi-step tasks render as a checklist |
 | A12 | Nothing carried across screens | Values repeated at the point of use; jargon defined on hover in place |
 | A13 | No clutter | One visual per card; chrome hidden during drills; no badges or notifications mid-session |
-| A14 | No setup before starting | Calibration is 60 interesting seconds; sign-in comes after the first node |
+| A14 | No setup before starting | Calibration is 60 interesting seconds; the profile is optional and never blocks a topic; sign-in comes after the first node |
 | A15 | No repeating known material | Two correct applications retires a node to spaced review; skip is always available |
 | A16 | No vague progress | A finite, visible node count and capability units, never a bare percentage |
 | A17 | No harsh marking | The got/vague/missing/wrong diff; no scores, no percentages, no failure states |
@@ -899,11 +910,13 @@ gradable — prose is none of those.
 Also needed: `KnowledgeMap`, `Drill` (with a reference answer and a hint ladder),
 `Evaluation` (got / vague / missing / wrong), `Atom`, `Widget`, `Plan`.
 
-**The learner model is the real product state.** Goal, time budget, what they already
-know, current depth, per-node status, open misconceptions with the evidence for each,
-recurring errors, review queue. Every generation call reads this. Personalisation is
-entirely what you put in the prompt, so this object *is* the product. Let the learner
-see and edit it.
+**The learner model is the real product state.** Goal, time budget, where they are and
+where they want to get to, age, background, preferred explanation shapes, current depth,
+per-node status, open misconceptions with the evidence for each, recurring errors,
+review queue. Every generation call reads this. Personalisation is entirely what you put
+in the prompt, so this object *is* the product. Let the learner see and edit it — the
+account-wide half of it is the profile screen, and editing it changes what is generated
+next rather than rewriting what is already cached.
 
 **Cache aggressively; only one call must be live.**
 

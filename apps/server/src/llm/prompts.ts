@@ -1,5 +1,5 @@
-import { DepthAction, DrillKind } from "@interestled/schemas";
-import type { CardContentT, LearningNodeT, TopicT } from "@interestled/schemas";
+import { DepthAction, DrillKind, LearningStyle } from "@interestled/schemas";
+import type { CardContentT, LearningNodeT, ProfileT, TopicT } from "@interestled/schemas";
 
 /**
  * Rules that hold for every generation. These are the design documents in
@@ -20,21 +20,69 @@ Hard rules:
 - Where experts genuinely disagree, say so in one clause instead of picking a side.
 - Never use motivational or effort language: no "focus", "try harder", "you've got this".`;
 
+/**
+ * What each style actually changes about the writing. The enum values would mean
+ * nothing to a model on their own, and "adapt to their learning style" is the
+ * kind of instruction that changes nothing at all.
+ */
+const STYLE_GUIDE: Record<LearningStyle, string> = {
+  [LearningStyle.Examples]: "Open with a worked example and derive the rule from it.",
+  [LearningStyle.Analogies]: "Anchor each idea to one analogy from something they already know.",
+  [LearningStyle.Visuals]: "Describe the structure spatially — what sits where, and what moves.",
+  [LearningStyle.HandsOn]: "Make it something they run, type or change, not something they read.",
+  [LearningStyle.StepByStep]: "Order it as a sequence, each step finishing before the next starts.",
+  [LearningStyle.BigPicture]: "State how the whole thing fits together before any part of it.",
+  [LearningStyle.Stories]: "Carry it on a concrete case with people and consequences in it.",
+  [LearningStyle.Numbers]: "Use real quantities, and say what each one is measured against.",
+};
+
+/**
+ * The profile, as prompt text. It is the same block for every generation call,
+ * so the map and the cards under it are calibrated to one learner rather than
+ * drifting apart. Every field is optional, so each line is omitted when empty
+ * rather than sending "age: not stated" and inviting the model to comment on it.
+ */
+export function learnerBlock(profile: ProfileT): string {
+  const lines: string[] = [];
+  if (profile.age !== null) {
+    lines.push(`They are ${profile.age}. Pitch vocabulary and comparisons accordingly.`);
+  }
+  if (profile.background !== "") {
+    lines.push(
+      `What they already know: ${profile.background}. Skip what this covers, and draw comparisons from it.`,
+    );
+  }
+  if (profile.learningStyles.length > 0) {
+    lines.push(
+      `How they want it explained:\n${profile.learningStyles
+        .map((style) => `- ${STYLE_GUIDE[style]}`)
+        .join("\n")}`,
+    );
+  }
+  if (lines.length === 0) {
+    return "About the learner: nothing on file. Write for a capable adult and stay concrete.";
+  }
+  return `About the learner:\n${lines.join("\n")}`;
+}
+
 export function mapPrompt(input: {
   title: string;
   goal: string;
   timeBudget: string;
-  knownDomains: readonly string[];
+  level: string;
+  profile: ProfileT;
 }): string {
-  const known =
-    input.knownDomains.length === 0
-      ? "They did not name anything they already use."
-      : `They already use: ${input.knownDomains.join(", ")}. Do not create nodes for things these already cover, and draw comparisons from them.`;
+  const level =
+    input.level === ""
+      ? "They did not say where they are starting from."
+      : `Where they are now and where they want to get to:\n${input.level}\nDo not create nodes for what they already have, and stop the map at the level they asked for.`;
   return `Build a knowledge map for: ${input.title}
 
 What they want to be able to do: ${input.goal || "(not stated — infer the most common goal)"}
 Time available: ${input.timeBudget}
-${known}
+${level}
+
+${learnerBlock(input.profile)}
 
 Classify the topic into exactly one archetype:
 - "system": interacting parts and quantities (robotics, an engine). Known = can predict behaviour.
@@ -83,17 +131,16 @@ export function cardPrompt(input: {
   node: LearningNodeT;
   depth: number;
   variant: string;
+  profile: ProfileT;
 }): string {
-  const known =
-    input.topic.knownDomains.length === 0
-      ? ""
-      : `\nDraw any analogy from things they already use: ${input.topic.knownDomains.join(", ")}.`;
   return `Topic: ${input.topic.title}
 Node: ${input.node.title}
 Its claim: ${input.node.claim}
 
 ${DEPTH_GUIDE[input.depth] ?? DEPTH_GUIDE[3]}
-${VARIANT_GUIDE[input.variant] ?? ""}${known}
+${VARIANT_GUIDE[input.variant] ?? ""}
+
+${learnerBlock(input.profile)}
 
 Write the card. Six slots, all required:
 - "claim": one sentence. The answer, first, before any context.

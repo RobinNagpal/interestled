@@ -3,6 +3,7 @@ import {
   ConceptCard,
   Drill,
   LearningNode,
+  Profile,
   ResumePoint,
   StudySession,
   Topic,
@@ -12,6 +13,7 @@ import type {
   ConceptCardT,
   DrillT,
   LearningNodeT,
+  ProfileT,
   ResumePointT,
   StudySessionT,
   TopicT,
@@ -46,6 +48,14 @@ export function toNode(row: NodeRow): LearningNodeT {
 
 export function toTopic(row: unknown): TopicT {
   return Topic.parse(row);
+}
+
+/**
+ * The profile is a slice of the user row, so the parse both validates the stored
+ * learning styles and drops everything else the row carries.
+ */
+export function toProfile(row: unknown): ProfileT {
+  return Profile.parse(row);
 }
 
 export function toCard(row: unknown): ConceptCardT {

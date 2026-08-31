@@ -9,6 +9,8 @@ import type {
   DrillT,
   LearningNodeT,
   NodeStatus,
+  ProfileT,
+  ProfileUpdateInputT,
   ReviewInputT,
   TopicCreateInputT,
   TopicT,
@@ -23,6 +25,25 @@ import type {
   SessionSummaryViewT,
   TopicDetailT,
 } from "./client";
+
+/**
+ * The profile feeds every generation call, so it is fetched once and cached
+ * under its own key rather than being folded into the user object — editing it
+ * must not invalidate the session.
+ */
+export function useProfile(): UseQueryResult<ProfileT> {
+  const api = useApi();
+  return useQuery({ queryKey: keys.profile, queryFn: () => api.getProfile() });
+}
+
+export function useUpdateProfile(): UseMutationResult<ProfileT, Error, ProfileUpdateInputT> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ProfileUpdateInputT) => api.updateProfile(input),
+    onSuccess: (profile) => client.setQueryData(keys.profile, profile),
+  });
+}
 
 export function useTopics(): UseQueryResult<TopicT[]> {
   const api = useApi();
