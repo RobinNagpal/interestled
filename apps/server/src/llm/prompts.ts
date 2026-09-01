@@ -86,42 +86,34 @@ function instructionBlock(instructions: string): string {
  *
  * None of these names a depth or a length. Depth decides how far down the
  * mechanism the explanation goes and averageReadTime decides how long it runs;
- * these decide the words it is written in, which is a third question and was
- * being answered by the same chip as the second until the split.
+ * these decide the words it is written in.
  */
 const ENGLISH_GUIDE: Record<EnglishLevel, string> = {
   [EnglishLevel.Simple]:
-    "in everyday words and short sentences. Assume nothing about their vocabulary: where a plain word will do, it is the one to use.",
-  [EnglishLevel.Medium]: "in ordinary adult prose — neither simplified nor dense.",
+    "everyday words and short sentences, assuming nothing about their vocabulary. Where a plain word will do, it is the one to use.",
+  [EnglishLevel.Medium]: "ordinary adult prose — neither simplified nor dense.",
   [EnglishLevel.Advanced]:
-    "densely and precisely, with the language taken as read. No sentence spent making a point easier to read than it is to think about.",
+    "dense and precise, with the language taken as read. No sentence spent making a point easier to read than it is to think about.",
 };
 
 /**
- * Independent of the English above, which is the whole point of asking them
- * apart. Plain sentences carrying the field's real terminology is what someone
- * learning a subject in a second language wants, and the single style chip
- * could not express it: every value that offered the terms also demanded the
- * dense prose around them.
+ * Independent of the English above, and content-rules.md says so outright: two
+ * rules that pull opposite ways are two rules a model resolves by picking one.
  */
 const TECHNICAL_GUIDE: Record<TechnicalDetail, string> = {
   [TechnicalDetail.Low]:
-    "Give the idea in the learner's own terms. Reach for the field's vocabulary only where nothing else will do, and gloss it on the spot.",
+    "the idea in the learner's own terms. Reach for the field's vocabulary only where nothing else will do, and gloss it on the spot.",
   [TechnicalDetail.Medium]:
-    "Use the terms that carry weight, each glossed where it first appears. The real name for a thing, never a paraphrase standing in for it.",
+    "the terms that carry weight, each glossed where it first appears. The real name for a thing, never a paraphrase standing in for it.",
   [TechnicalDetail.High]:
-    "Use the field's own terms, notation and real values throughout, precisely. They want the real thing rather than a simplification.",
+    "the field's own terms, notation and real values throughout, used precisely. They want the real thing rather than a simplification.",
 };
 
-/**
- * Empty for prose, because there is nothing to say: prose is what every other
- * rule already describes, and a line saying "written as prose" is one more
- * instruction for the model to answer.
- */
+/** Empty for prose: a line reading "written as prose" is one more thing to answer. */
 const FORMAT_GUIDE: Record<ContentFormat, string> = {
   [ContentFormat.Prose]: "",
   [ContentFormat.ReferenceNotes]:
-    "Lay it out as something to look up rather than read through: the rule, the exact conditions it holds under, and the real values, each stated flat on its own. No linking sentences between them.",
+    "something to look up rather than read through — the rule, the exact conditions it holds under, and the real values, each stated flat on its own. No linking sentences between them.",
 };
 
 /** What a topic is written to before the learner has written anything of their own. */

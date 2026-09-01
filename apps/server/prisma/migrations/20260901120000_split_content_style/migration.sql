@@ -11,10 +11,10 @@ ALTER TABLE "topics"
   ADD COLUMN "technical_detail" TEXT NOT NULL DEFAULT 'medium',
   ADD COLUMN "format" TEXT NOT NULL DEFAULT 'prose';
 
--- Carried over from the value each topic already had. "Short" is not a level of
--- English and never was — how long the writing runs is average_read_time's
--- question — so the two short styles map by their register alone, which is the
--- part of them these columns actually carry.
+-- Carried over from the value each topic already had, by register alone: "short"
+-- was never a level of English, it was how long the writing runs, and that is
+-- average_read_time's question. So short_and_crisp, which marked no register at
+-- all, lands in the middle of both scales rather than at the plain end of one.
 UPDATE "topics" SET
   "english_level" = CASE "style"
     WHEN 'plain_and_deep' THEN 'simple'

@@ -28,11 +28,9 @@ export const User = z.object({
   id: Id,
   email: Email,
   /**
-   * Where this learner's cards start. It is on the user rather than the topic
-   * because depth follows the person across every subject, and it is answered
-   * back here because the screens have to say what a card is being written to
-   * before the card arrives — a wait that names nothing is a wait nobody can
-   * tell from a hang.
+   * Where this learner's cards start — on the user rather than the topic,
+   * because depth follows the person across every subject. Answered back so the
+   * app can name the depth a card is being written to before it arrives.
    */
   defaultDepth: CardDepth,
   createdAt: z.coerce.date(),

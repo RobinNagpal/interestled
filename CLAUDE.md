@@ -224,24 +224,48 @@ one call that must be live, and it runs at `temperature: 0` so the same answer d
 not get two different verdicts.
 
 **The card's own settings are what the controls under it change.** `CardSettings`
-(depth, minutes, style, angle) is what `cardPrompt` reads, what the card cache is keyed
-by — `cardVariant` builds the variant half, depth has its own column — and what the card
-route answers back, so the panel can state where the card stands rather than guessing.
-The topic's settings are the defaults; each control is an override for one card. A
-control that does not reach the prompt is a control that does nothing, which is what
-"Simpler" was at depth 1: a refetch returning the identical card.
+(depth, minutes, englishLevel, technicalDetail, format, angle) is what `cardPrompt`
+reads, what the card cache is keyed by — `cardVariant` builds the variant half, depth
+has its own column — and what the card route answers back, so the panel can state where
+the card stands rather than guessing. The topic's settings are the defaults; each
+control is an override for one card. A control that does not reach the prompt is a
+control that does nothing, which is what "Simpler" was at depth 1: a refetch returning
+the identical card. `defaultCardSettings` lives in `packages/domain` rather than on the
+server, because the app names what a card is being written to while it waits for it.
+
+**`?rewrite=1` is the one call that must go around the card cache**, and the only one a
+learner can repeat without bound — every other generating path either creates nodes or
+is answered from the cache the second time. It is therefore inside `assertRewriteBudget`
+(cards written per user per hour), and its upsert moves `createdAt` with the content, or
+a rewrite of an old row is one the ceiling never counts.
 
 **A card is written to the learner's read time, not to a constant.** `CARD_MINUTES_MAX`
-is the ceiling the six slots can hold, and `CardContent`'s limits are the outer bound of
-a card that long — not the size of an ordinary one, which is the minutes in the
-settings. Length arrives as more mechanism items, never longer ones. Changing a topic's
-`averageReadTime` rescales its leaves' minutes (`rescaleMinutes` in `topics.ts`), because
-the node's own estimate is what the default card length is capped to: without that the
-setting is half-applied and a ten-minute topic still writes three-minute cards.
+is the ceiling one card can hold, and `CardContent`'s limits are the outer bound of a
+card that long — not the size of an ordinary one, which is the minutes in the settings.
+Length arrives as more mechanism items, never longer ones: `MECHANISM_SHARE` of the
+words are the mechanism, and that budget divided by `MECHANISM_ITEM_WORDS` is the item
+count `mechanismItems` asks for. Do not also fix the count — a fixed count and a fixed
+item length between them already decide a card's length, and naming a read time as well
+is what left the read time as the part that gave way. `MAX_MECHANISM_ITEMS` is derived
+from the same constants, so a count the prompt asks for can never be one the schema
+refuses. Changing a topic's `averageReadTime` rescales its leaves' minutes
+(`rescaleMinutes` in `topics.ts`), because the node's own estimate is what the default
+card length is capped to: without that the setting is half-applied and a ten-minute
+topic still writes three-minute cards.
 
-**Every topic carries its own writing settings** — `style`, `averageReadTime` and
-`contentInstructions`, defaulting to `prompts/content-instructions.md` when the learner
-has written none. `contentSettingsOf(topic)` is what every generating call passes, and
+**`example` and `misconception` are written where they apply, not always.** A node that
+is itself one case has no second case to instantiate it with, and a descriptive node has
+no wrong belief to correct; demanded anyway, both come back as the node restated under a
+heading promising something new. They are optional in `CardContent` and `card.md` states
+the test for earning each. `claim` and `mechanism` stay required. Anything reading a
+card must handle their absence — the screen drops the section, and `drill.md` and
+`atoms.md` drop the line rather than labelling a blank the model would then answer.
+
+**Every topic carries its own writing settings** — `englishLevel`, `technicalDetail`,
+`format`, `averageReadTime` and `contentInstructions`, defaulting to
+`prompts/content-instructions.md` when the learner has written none. The first two are
+independent on purpose, and `content-rules.md` says so to the model: two rules pulling
+opposite ways are two rules it resolves by picking one. `contentSettingsOf(topic)` is what every generating call passes, and
 changing them deletes that topic's cached cards so the change is visible on the next
 node rather than only on unread ones. Drills are kept: deleting one cascades to the
 attempts made against it.

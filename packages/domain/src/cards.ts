@@ -8,14 +8,14 @@ export function cardMinutes(minutes: number): number {
 
 /**
  * The settings a card is written to when the learner has not overridden any of
- * them: the topic's own style and read time, and the node's own estimate where
- * that is shorter — a longer card than the map admits to is the map lying about
- * time, which is the one thing it is not allowed to do.
+ * them: the topic's own register and read time, and the node's own estimate
+ * where that is shorter — a longer card than the map admits to is the map lying
+ * about time, which is the one thing it is not allowed to do.
  *
- * Shared rather than server-side, because the screen has to name what a card is
- * being written to while it is being written, and the only alternative is the
- * app guessing at the same rule. Two copies of this would disagree the first
- * time either changed, and the wait would then describe a card that never came.
+ * Shared rather than server-side because the app names what a card is being
+ * written to while it is being written. Two copies of this rule would disagree
+ * the first time either changed, and the wait would then describe a card that
+ * never came.
  */
 export function defaultCardSettings(
   topic: TopicT,

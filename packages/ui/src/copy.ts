@@ -29,11 +29,7 @@ export const ENGLISH_OPTIONS = Object.values(EnglishLevel).map((value) => ({
   label: ENGLISH_COPY[value].label,
 }));
 
-/**
- * Asked apart from the English above, because the two do not answer each other:
- * plain sentences carrying the field's real terminology is exactly what someone
- * learning a subject in a second language wants, and one chip could not say it.
- */
+/** Asked apart from the English above, because the two do not answer each other. */
 export const TECHNICAL_COPY: Record<TechnicalDetail, { label: string; body: string }> = {
   [TechnicalDetail.Low]: {
     label: "Light",

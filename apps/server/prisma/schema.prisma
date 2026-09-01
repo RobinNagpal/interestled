@@ -22,6 +22,8 @@ model User {
   // client's `omit` config so it can never reach an API response.
   passwordHash String        @map("password_hash")
   // Sticky depth, 1-5. Follows the learner across topics rather than resetting.
+  // DEFAULT_CARD_DEPTH in packages/schemas: the app falls back to the same
+  // number when it names a card's depth before the card has arrived.
   defaultDepth Int           @default(2) @map("default_depth")
   // The profile. Every field is optional on purpose: a required form standing
   // between signing up and the first topic is the setup cost A14 bans. All

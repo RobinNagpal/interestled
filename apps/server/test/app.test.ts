@@ -692,13 +692,13 @@ describe("card generation", () => {
     expect(written?.update.createdAt).toBeInstanceOf(Date);
   });
 
-  it("refuses a rewrite once the hour's ceiling is reached", async () => {
+  it("refuses a rewrite once the hour's card writing has hit its ceiling", async () => {
     // Every other generating call either creates nodes or is answered from the
     // cache the second time. This one costs a model call per press, so without
     // a ceiling the deployment's bill has none.
     const { db } = cardDb(mapRows(), "n2");
     const stub = db as unknown as { conceptCard: { count: ReturnType<typeof vi.fn> } };
-    stub.conceptCard.count = vi.fn(async () => 40);
+    stub.conceptCard.count = vi.fn(async () => 60);
     const { provider: recorder, prompts } = recording();
     const response = await createApp(db, { provider: recorder }).request(
       "/api/nodes/n2/card?rewrite=1",
@@ -707,6 +707,19 @@ describe("card generation", () => {
 
     expect(response.status).toBe(409);
     expect(prompts).toEqual([]);
+  });
+
+  it("lets an ordinary read through at that same count, since only a rewrite is checked", async () => {
+    // Reading is bounded by how many nodes there are, so refusing it would only
+    // ever mean refusing to show the next node.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as { conceptCard: { count: ReturnType<typeof vi.fn> } };
+    stub.conceptCard.count = vi.fn(async () => 60);
+    const { provider: recorder } = recording();
+    const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
+      headers: { Authorization: "Bearer good" },
+    });
+    expect(response.status).toBe(200);
   });
 
   it("reads \"rewrite=false\" as not a rewrite, rather than as a rewrite", async () => {

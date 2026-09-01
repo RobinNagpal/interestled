@@ -18,7 +18,7 @@ Write this node as one part of that sequence:
   would sit just as well on a neighbouring node, it belongs on neither.
 
 The slots are one continuous explanation read top to bottom, not separate notes that
-share a subject. (Reference notes are the exception: that style asks for flat entries
+share a subject. (Reference notes are the exception — that shape asks for flat entries
 to look up, and it overrides this paragraph.)
 
 {{depthGuide}}
@@ -29,7 +29,7 @@ to look up, and it overrides this paragraph.)
 
 ## Length
 
-{{readWords}} words in all — about {{readTime}} of reading — of which
+Write about {{readTime}} of reading — {{readWords}} words in all, of which
 {{mechanismWords}} are the mechanism. Never pad to reach it: if the idea is done in
 half of that, stop. Length comes from covering more of this node, never from
 restating it.
@@ -55,11 +55,11 @@ Leave it out when the node already is one case — a historical episode, one tex
 event. It has no second case to instantiate it with, and the material belongs in the
 mechanism instead.
 
-**misconception** — `{"belief", "correction"}`. State what people actually get wrong
-HERE as the plausible wrong belief, then what is true. Only where a reader could
-still hold that belief having read everything above, and the correction names the step
-above that rules it out. Leave it out when the node is descriptive and nothing in it is
-misread: the subject's headline mistake belongs to the topic, not to this node.
+**misconception** — `{"belief", "correction"}`. Only where a reader could still hold a
+wrong belief having read everything above: what people actually get wrong HERE, as the
+plausible belief, then what is true — and the correction names the step above that
+rules it out. Leave it out when the node is descriptive and nothing in it is misread:
+the subject's headline mistake belongs to the topic, not to this node.
 
 **jargon** — required. Every technical term you used, with a one-line meaning at this
 depth. Empty array if you used none.

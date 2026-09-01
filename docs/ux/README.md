@@ -316,7 +316,9 @@ asking about twice — and no value on it could say *everyday words, all the ter
 which is what someone learning a subject in a second language is asking for. Every
 option that offered the terms demanded the dense prose around them. Asking the two
 separately is nine combinations instead of five, and each one is a sentence someone
-would actually say about how they want to be written to. The create screen's answers were previously fixed for the
+would actually say about how they want to be written to.
+
+The create screen's answers were previously fixed for the
 life of the topic, which is backwards: reading the map is exactly what tells a learner
 the goal they gave was not the one they meant, and every generation after that was still
 reading the old one. Saving regenerates nothing — the answers change what the *next*
@@ -391,14 +393,12 @@ changing any of this reaches nobody until the prompt revision in the cache key m
 
 How long a card runs is the learner's setting, not a constant. Ten minutes a node means
 roughly two thousand words, of which four fifths are the mechanism — it is the slot that
-explains, so it is the slot that gets the time, and splitting the minutes evenly is what
-made a long card arrive as four sections of throat-clearing around two minutes of
-explanation. That share is then divided by what one item is written to (two short
-sentences, about forty-five words) to get the number of items asked for, because a fixed
-count and a fixed item length between them already decide how long a card is: naming a
-read time as well is asking for three things that cannot all be true, and the read time
-was the one that gave way. Length therefore still arrives as more items rather than
-longer ones — a paragraph nobody reads is not made readable by being one of five instead
+explains, so it is the slot that gets the time. That share divided by what one item is
+written to (two short sentences, about forty-five words) is the number of items asked
+for, because a fixed count and a fixed item length between them already decide how long
+a card is: naming a read time as well was asking for three things that cannot all be
+true, and the read time was the one that gave way. Length therefore still arrives as
+more items rather than longer ones — a paragraph nobody reads is not made readable by being one of five instead
 of one of forty. Changing the setting moves the map's own minute estimates with it,
 scaled so a node the model judged twice its neighbours stays twice its neighbours: a
 card written to ten minutes under a map still promising three is the map lying about
@@ -417,41 +417,41 @@ the screen, which is the app showing its working.
 - *Covers:* W13 (one thing at a time), A1 (long unbroken text), A5 (no preamble), A13
   (one visual, nothing decorative).
 
-One more control sits with them, and it changes nothing: *Write it again*, at the
-settings the card already has. Generation is not deterministic, so the same request
-twice is a genuinely different explanation — and until it existed the only way to ask
-for one was to move a setting somewhere the reader did not want it and back again.
-It is the one press here that always costs a model call, so the panel names the
-settings it will use, and the count of cards written in an hour is capped per learner:
-every other generating call either creates nodes or is answered from the cache the
-second time round, and this one would otherwise have no ceiling at all.
-
-The wait itself now says what is being written — *depth 3 of 5 — the mechanism · about
-3 min · short and crisp*. Ten to thirty seconds against a label that says only that
-something is happening is a wait nobody can tell from a hang, and it is also the one
-moment the answers given on the settings screen are visible anywhere in the product.
-The rule that turns a topic and a node into those settings is shared between the server
-and the app rather than written twice, because a wait that describes a card other than
-the one that arrives is worse than a wait that describes nothing.
-
 ### The controls under a card
 
-Four things decide how a card comes out, and all four sit under it: how deep it goes,
-how long it takes to read, whose words it is in, and which angle it is written from.
-Each one is a setting the generator actually reads, and the panel states where the card
-in front of you stands on each — *Depth 3 of 5 · the mechanism*, *about 5 min*. A
-control that cannot say what it changed is one the reader concludes is broken, which is
-what a row of five identical-looking buttons became: two of them did nothing at the
-ends of the scale, and a press that refetches an identical card is indistinguishable
-from a press that does nothing at all. A step that has nowhere left to go is now drawn
-as spent rather than offered.
+Everything that decides how a card comes out sits under it: how deep it goes, how long
+it takes to read, how hard the English is, how much terminology it carries, whether it
+is prose or notes, and which angle it is written from. Each one is a setting the
+generator actually reads, and the panel states where the card in front of you stands on
+each — *Depth 3 of 5 · the mechanism*, *about 5 min*. A control that cannot say what it
+changed is one the reader concludes is broken, which is what a row of five
+identical-looking buttons became: two of them did nothing at the ends of the scale, and
+a press that refetches an identical card is indistinguishable from a press that does
+nothing at all. A step that has nowhere left to go is now drawn as spent rather than
+offered.
 
 *Simpler* and *deeper* move one rung of the mechanism. *Shorter* and *longer* move one
 rung of the read-time ladder for this card alone — the topic's setting is the default,
-not a ceiling. The register chips are the same five the topic is written in. *More
+not a ceiling. The register chips are the same ones the topic is written in. *More
 concrete*, *why it matters* and *where this breaks* ask the same depth a different way,
 and *plain* is the way back to the card as written, which the old panel had no version
 of.
+
+One more control changes nothing at all: *write it again*, at the settings the card
+already has. Generation is not deterministic, so the same request twice is a different
+explanation, and the only way to ask for one used to be moving a setting somewhere you
+did not want it and back. It is the one press here that always costs a model call, so
+the cards written in an hour are capped per learner — every other generating call either
+creates nodes or is answered from the cache the second time round, and this one has no
+ceiling of its own.
+
+The wait now says what is being written — *depth 3 of 5 — the mechanism · about 3 min ·
+medium English · some detail*. Ten to thirty seconds against a label saying only that
+something is happening is a wait nobody can tell from a hang, and it is the one moment
+the settings screen's answers are visible anywhere in the product. The rule turning a
+topic and a node into those settings is shared between the server and the app rather
+than written twice, because a wait describing a card other than the one that arrives is
+worse than a wait describing nothing.
 
 Depth is sticky: three presses of *deeper* and later cards start deeper, so the learner
 sets their level by using the product rather than by declaring it. Cards are cached per

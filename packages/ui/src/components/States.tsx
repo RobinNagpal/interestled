@@ -44,10 +44,8 @@ export function LoadingContent({
 }: {
   label: string;
   /**
-   * What is being written, shown at once rather than after the slow threshold:
-   * it is not an apology for the wait, it is the answer to what the wait is
-   * producing, and it is the one moment the settings a card was asked for are
-   * visible in the product.
+   * What is being written. Shown at once rather than after the slow threshold,
+   * because it is not an apology for the wait — it is what the wait produces.
    */
   detail?: string;
   hint?: string;

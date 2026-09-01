@@ -10,6 +10,14 @@ import {
 /** 1 is intuition, 5 is expert. Sticky per learner, changeable per card. */
 export const CardDepth = z.number().int().min(1).max(5);
 
+/**
+ * Where a learner starts before any card has moved them. It is also the default
+ * on users.default_depth — the screens have to name the depth a card is being
+ * written to before the card arrives, and guessing a second number there would
+ * describe a card the server never wrote.
+ */
+export const DEFAULT_CARD_DEPTH = 2;
+
 export type CardDepthT = z.infer<typeof CardDepth>;
 
 /**
@@ -78,10 +86,9 @@ export type CardSettingsT = z.infer<typeof CardSettings>;
  * card should read. Do not bump it for a change that only affects which nodes
  * get written.
  *
- * It is also what makes a tightened limit safe. A cached card is re-parsed by
+ * It is also what makes a tightened limit safe: a cached card is re-parsed by
  * CardContent on every read, so narrowing a cap would reject rows the old cap
- * accepted and put an error where a card used to be — except that a bumped
- * revision means no row written under the old cap is ever looked up again.
+ * accepted, unless a bumped revision means none of them is looked up again.
  *
  * 2: the slots are one continuous explanation rather than six separate notes.
  * 3: the mechanism carries the card in short sentences, and the example and the
@@ -118,47 +125,33 @@ export const WORDS_PER_MINUTE = 200;
 /**
  * How much of a card's reading time the mechanism carries. It is the slot that
  * explains, so it is the slot that gets the time; the claim is one sentence and
- * the two closing slots are short by design. Splitting the minutes evenly is
- * what made a ten-minute card arrive as four sections of throat-clearing around
- * two minutes of explanation.
+ * the two closing slots are short by design.
  */
 export const MECHANISM_SHARE = 0.8;
 
-/**
- * What one mechanism item is written to: two short sentences. The prompt asks
- * for this and the schema's per-item cap is well above it, because the cap is
- * the outer bound of a badly behaved item rather than the target.
- */
+/** What one mechanism item is written to: two short sentences. */
 export const MECHANISM_ITEM_WORDS = 45;
 
 /**
- * The most items a card may carry: what the mechanism's share of the longest
- * card holds, plus the quarter the prompt's range runs over its target. Derived
- * rather than chosen, so the top of the range the prompt asks for can never be
- * a length the schema then refuses.
+ * The most items a card may carry: the mechanism's share of the longest card,
+ * plus the quarter the prompt's range runs over its target. Derived rather than
+ * chosen, so a count the prompt asks for can never be one the schema refuses.
  */
 export const MAX_MECHANISM_ITEMS = Math.ceil(
   ((CARD_MINUTES_MAX * WORDS_PER_MINUTE * MECHANISM_SHARE) / MECHANISM_ITEM_WORDS) * 1.25,
 );
 
 /**
- * The card's slots. The shape stays identical everywhere it applies — that is
- * what lets the eye stop hunting for where the point is — but three of the six
- * are what the card always is and two are what a particular node may not have.
+ * The card's slots, in the order they are read. The shape stays identical
+ * wherever a slot applies — that is what lets the eye stop hunting for where the
+ * point is — but two of the five are things a particular node may not have.
  *
- * `claim` and `mechanism` are required, because they are the card: the answer
- * first, then why it behaves that way. `example` and `misconception` are
- * optional, because a slot the node cannot fill honestly gets filled dishonestly.
- * A node that is itself one case — a historical episode, one text, one event —
- * has no second case to instantiate it with, and asking for one anyway returns
- * the node restated under a heading that promises something new. Likewise a
- * purely descriptive node has no wrong belief to correct, so the slot comes back
- * carrying the topic's headline mistake for the fourth card running.
- *
- * They stay in the prompt as slots to be earned rather than skipped: the
- * mechanism and the misconception are the two parts normally missing from an
- * explanation, and the point of naming them is that they get written where they
- * apply. What the prompt supplies, and the schema cannot, is when that is.
+ * `claim`, `mechanism` and `jargon` are required, because they are the card: the
+ * answer first, then why it behaves that way, then the words that took. The
+ * other two are optional, because a slot the node cannot fill honestly gets
+ * filled dishonestly — and both stay in the prompt as slots to be earned, with
+ * the test for earning them stated there. When a slot applies is a judgement
+ * about the node, which is the one thing the schema cannot make.
  *
  * The limits are the outer bound of a ten-minute card, not the size of an
  * ordinary one — what a particular card is written to is the minutes in
@@ -171,8 +164,8 @@ export const CardContent = z.object({
   /**
    * Short sentences, and length arrives as more of them: a paragraph nobody
    * reads is not made readable by being one of five rather than one of forty.
-   * The cap is roughly twice the words the prompt asks an item to be written
-   * to, so it binds on a runaway paragraph and on nothing else.
+   * The cap is roughly twice what the prompt asks an item to be, so it binds on
+   * a runaway paragraph and on nothing else.
    */
   mechanism: z.array(z.string().min(1).max(500)).min(1).max(MAX_MECHANISM_ITEMS),
   example: z

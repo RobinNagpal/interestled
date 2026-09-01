@@ -62,27 +62,30 @@ const MAX_TOPICS_PER_USER = 100;
  */
 const MAX_GENERATED_NODES_PER_HOUR = 400;
 /**
- * Writing a card again at settings it already has is the one generating call a
- * learner can make without limit: every other one either creates nodes or is
- * answered from the cache the second time. A button that costs a model call per
- * press and nothing else needs its own ceiling, or the deployment's bill has
- * none.
+ * Cards written in an hour, of which a rewrite is the only kind a learner can
+ * ask for without limit — opening a node writes its card once and is answered
+ * from the cache after that. High enough that an hour of ordinary reading never
+ * approaches it, since what it is protecting against is a button pressed in a
+ * loop rather than a long session.
  */
-const MAX_REWRITTEN_CARDS_PER_HOUR = 40;
+const MAX_CARDS_WRITTEN_PER_HOUR = 60;
 
 /**
- * Cards written in the last hour, against the ceiling. Ordinary card generation
- * is not counted: it is bounded already by how many nodes there are to open and
- * answered from the cache thereafter, and counting it would make a long reading
- * session refuse to show the next node.
+ * The hour's card writing, against that ceiling — every card, however it came
+ * to be written, because the model spend is the same either way and a rewrite
+ * measured against its own share of it would ignore the reading that used the
+ * rest. Only rewrites are checked: reading is bounded by how many nodes there
+ * are, so refusing it would only ever mean refusing to show the next node.
  */
 export async function assertRewriteBudget(db: Db, userId: string): Promise<void> {
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const recent = await db.conceptCard.count({
     where: { node: { topic: { userId } }, createdAt: { gte: hourAgo } },
   });
-  if (recent >= MAX_REWRITTEN_CARDS_PER_HOUR) {
-    throw new ConflictError("That is a lot of rewriting in one hour — the limit resets shortly.");
+  if (recent >= MAX_CARDS_WRITTEN_PER_HOUR) {
+    throw new ConflictError(
+      "That is a lot of card writing in one hour — the limit resets shortly.",
+    );
   }
 }
 

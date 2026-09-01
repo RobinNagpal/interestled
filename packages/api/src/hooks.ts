@@ -208,20 +208,22 @@ export function useCard(
  * A mutation rather than a refetch, because a refetch is what the cache is for:
  * the same key answered from the same row is exactly what this control exists to
  * go around. The result is written back under that key, so the card on screen
- * becomes the new one and the controls keep reading the settings it was written
- * to — and the old card stays up while it is written, the same as every other
- * rewrite, because thirty seconds of skeleton is what makes a control feel
- * broken rather than slow.
+ * becomes the new one — and the old one stays up until it lands, since the query
+ * behind it is never invalidated.
  */
 export function useRewriteCard(
   nodeId: string,
-  settings: Partial<CardSettingsT> = {},
-): UseMutationResult<CardViewT, Error, void> {
+): UseMutationResult<CardViewT, Error, Partial<CardSettingsT>> {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: () => api.getCard(nodeId, settings, { rewrite: true }),
-    onSuccess: (card) => client.setQueryData(keys.card(nodeId, settings), card),
+    mutationFn: (settings: Partial<CardSettingsT>) =>
+      api.getCard(nodeId, settings, { rewrite: true }),
+    // The settings the press actually asked for, not whatever the controls are
+    // on when the answer lands: a rewrite runs for ten to thirty seconds, and a
+    // control moved while it is in flight would otherwise file the new card
+    // under a key it was not written to and overwrite the card that was.
+    onSuccess: (card, settings) => client.setQueryData(keys.card(nodeId, settings), card),
   });
 }
 

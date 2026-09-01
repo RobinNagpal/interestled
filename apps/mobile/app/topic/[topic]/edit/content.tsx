@@ -7,13 +7,13 @@ import { editHref } from "@interestled/domain";
 import {
   Button,
   ErrorState,
-  Input,
-  LoadingContent,
-  SectionTitle,
   ENGLISH_COPY,
   ENGLISH_OPTIONS,
   FORMAT_COPY,
   FORMAT_OPTIONS,
+  Input,
+  LoadingContent,
+  SectionTitle,
   TECHNICAL_COPY,
   TECHNICAL_OPTIONS,
 } from "@interestled/ui";
@@ -120,10 +120,8 @@ function ContentForm({
 
   return (
     <ScrollView contentContainerClassName="gap-5 p-4">
-      {/* Two questions where there was one. The old single chip could not say
-          "everyday words, all the terminology", which is what someone learning a
-          subject in a second language is asking for — every value that offered
-          the terms also demanded the dense prose around them. */}
+      {/* Two questions where there was one, because the old single chip could
+          not say "everyday words, all the terminology". */}
       <View className="gap-2">
         <SectionTitle>English</SectionTitle>
         <ChipRow

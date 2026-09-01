@@ -168,14 +168,11 @@ describe("mapPrompt", () => {
       }),
     );
     expect(technical).toContain("the field's own terms");
-    // The enum value itself would mean nothing to the model.
-    expect(technical).not.toContain(TechnicalDetail.High);
   });
 
   it("asks the two axes separately, so plain words can carry the real terms", () => {
-    // What the single style chip could never say, and what someone learning a
-    // subject in a second language is actually asking for: every value that
-    // offered the terminology also demanded the dense prose around it.
+    // What the single style chip could never say: every value that offered the
+    // terminology also demanded the dense prose around it.
     const prompt = mapPrompt(
       mapInput({
         content: {
@@ -198,6 +195,8 @@ describe("mapPrompt", () => {
       mapInput({ content: { ...contentSettingsOf(topic), format: ContentFormat.ReferenceNotes } }),
     );
     expect(notes).toContain("look up rather than read through");
+    // What it changes about the writing, never the enum value that named it.
+    expect(notes).not.toContain(ContentFormat.ReferenceNotes);
   });
 
   it("uses the default content instructions until the learner writes their own", () => {
@@ -398,9 +397,6 @@ describe("cardPrompt", () => {
     );
     expect(prompt).toContain("about 10 minutes");
     expect(unwrapped(prompt)).toContain("2000 words in all");
-    // Four fifths of it is the mechanism, and that is what the item count is
-    // computed from: without it the read time is a number in the prompt that
-    // nothing else obeys.
     expect(unwrapped(prompt)).toContain("1600 are the mechanism");
     // Length comes from more items, not from longer ones — a wall of text is
     // still a wall of text at ten minutes (A1).

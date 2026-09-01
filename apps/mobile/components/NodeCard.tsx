@@ -17,28 +17,28 @@ import {
   DEPTH_COPY,
   ErrorState,
   InlineMarkdown,
-  JargonList,
-  LoadingContent,
-  Markdown,
   ENGLISH_COPY,
   ENGLISH_OPTIONS,
   FORMAT_COPY,
   FORMAT_OPTIONS,
+  JargonList,
+  LoadingContent,
+  Markdown,
+  SectionTitle,
   TECHNICAL_COPY,
   TECHNICAL_OPTIONS,
-  SectionTitle,
   settingsSummary,
 } from "@interestled/ui";
-import { CARD_MINUTES_MAX, Step } from "@interestled/schemas";
+import { CARD_MINUTES_MAX, DEFAULT_CARD_DEPTH, Step } from "@interestled/schemas";
 import type { CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
 import { ChipRow } from "./ChipRow";
 import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
 
 /**
- * One concept, one screen, always the same six slots. Opening it marks the node
- * Seen and nothing further — reading can never complete a node, or the map stops
- * being honest and everything resting on it collapses.
+ * One concept, one screen, always the same slots in the same order. Opening it
+ * marks the node Seen and nothing further — reading can never complete a node,
+ * or the map stops being honest and everything resting on it collapses.
  */
 export function NodeCard({
   topicSlug,
@@ -56,14 +56,14 @@ export function NodeCard({
   // must get.
   const [overrides, setOverrides] = useState<Partial<CardSettingsT>>({});
   const card = useCard(node.id, overrides);
-  const rewrite = useRewriteCard(node.id, overrides);
+  const rewrite = useRewriteCard(node.id);
   const { user } = useAuth();
 
   if (card.isPending) {
     // The same rule the server writes to, so the wait names the card that
     // actually arrives rather than a guess at it.
     const asking = {
-      ...defaultCardSettings(topic, node, user?.defaultDepth ?? 3),
+      ...defaultCardSettings(topic, node, user?.defaultDepth ?? DEFAULT_CARD_DEPTH),
       ...overrides,
     };
     return (
@@ -163,10 +163,13 @@ export function NodeCard({
       <CardControls
         settings={asked}
         rewriting={card.isPlaceholderData || card.isFetching || rewrite.isPending}
-        onRewrite={() => rewrite.mutate()}
+        onRewrite={() => rewrite.mutate(overrides)}
         rewriteError={rewrite.error === null ? undefined : messageOf(rewrite.error)}
         changed={Object.keys(overrides).length > 0}
-        onChange={(change) => setOverrides((current) => ({ ...current, ...change }))}
+        onChange={(change) => {
+          rewrite.reset();
+          setOverrides((current) => ({ ...current, ...change }));
+        }}
         onReset={() => setOverrides({})}
       />
 
@@ -311,9 +314,6 @@ function CardControls({
         <Text className="text-sm text-ink-soft">{ENGLISH_COPY[settings.englishLevel].body}</Text>
       </ControlRow>
 
-      {/* Asked apart from the English, because the two do not answer each other:
-          plain sentences carrying the real terminology is a card the single
-          chip here could not ask for. */}
       <ControlRow title="Technical detail">
         <ChipRow
           options={TECHNICAL_OPTIONS}
@@ -343,12 +343,12 @@ function CardControls({
       </ControlRow>
 
       {/* Every control above changes what the card is. This one changes nothing
-          and asks for it again: generation is not deterministic, so the same
-          settings twice is a genuinely different explanation, and until now the
-          only way to ask for one was to move a setting to somewhere the reader
-          did not want and back. It is the one press here that always costs a
-          model call, so it says so. */}
-      <ControlRow title="Not landing?" value={settingsSummary(settings)}>
+          and asks for it again — generation is not deterministic, so the same
+          settings twice is a different explanation, and the only way to ask for
+          one used to be moving a setting somewhere the reader did not want it
+          and back. What it stands at is the four rows above, so it does not
+          repeat them. */}
+      <ControlRow title="Same settings, again">
         <Button
           label={rewriting ? "Writing it again…" : "Write it again"}
           tone="quiet"
