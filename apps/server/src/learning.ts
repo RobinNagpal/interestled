@@ -3,36 +3,29 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import {
   AttemptInput,
+  CardAngleSchema,
   CardContent,
   CardDepth,
-  DepthAction,
-  DepthActionSchema,
+  CardMinutes,
+  ContentStyleSchema,
   DrillKind,
   DrillKindSchema,
   NodeStatus,
   NodeStatusSchema,
+  cardVariant,
   contentSettingsOf,
   newId,
 } from "@interestled/schemas";
-import type { CardContentT, LearningNodeT, TopicT } from "@interestled/schemas";
-import { advance, depthAfter, masteryDrill, missingPrerequisites, nextDefaultDepth } from "@interestled/domain";
+import type { CardContentT, CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
+import { advance, masteryDrill, missingPrerequisites, nextDefaultDepth } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
 import { generateAtoms, generateCard, generateDrill, gradeAttempt } from "./llm";
+import { cardMinutes, defaultCardSettings } from "./llm";
 import type { LlmProvider } from "./llm";
 import { loadProfile } from "./profile";
 import { toDrill, toNode, toTopic } from "./rows";
-
-/** Variants that ask the same depth a different way, so they cache separately. */
-const BASE_VARIANT = "base";
-
-function variantFor(action: DepthAction | undefined): string {
-  if (action === undefined || action === DepthAction.Simpler || action === DepthAction.Deeper) {
-    return BASE_VARIANT;
-  }
-  return action;
-}
 
 async function loadNode(
   db: Db,
@@ -79,12 +72,10 @@ async function cardFor(
   userId: string,
   topic: TopicT,
   node: LearningNodeT,
-  depth: number,
-  variant: string,
+  settings: CardSettingsT,
 ): Promise<CardContentT> {
-  const cached = await db.conceptCard.findUnique({
-    where: { nodeId_depth_variant: { nodeId: node.id, depth, variant } },
-  });
+  const key = { nodeId: node.id, depth: settings.depth, variant: cardVariant(settings) };
+  const cached = await db.conceptCard.findUnique({ where: { nodeId_depth_variant: key } });
   if (cached !== null) {
     return CardContent.parse(cached.content);
   }
@@ -101,25 +92,51 @@ async function cardFor(
     topic,
     node,
     nodes: rows.map(toNode),
-    depth,
-    variant,
+    settings,
     profile,
   });
   // Two concurrent readers of the same uncached card both generate, and the
   // slower insert would collide on the unique key. The row is identical either
   // way, so treat the collision as the cache hit it effectively is.
   await db.conceptCard.upsert({
-    where: { nodeId_depth_variant: { nodeId: node.id, depth, variant } },
-    create: { id: newId(), nodeId: node.id, depth, variant, content },
+    where: { nodeId_depth_variant: key },
+    create: { id: newId(), ...key, content },
     update: {},
   });
   return content;
 }
 
+/**
+ * The four controls under a card, each optional. What the learner has not
+ * overridden comes from the topic and the node, so the plain URL still returns
+ * the plain card — and an override travels in the query rather than being
+ * stored, because it is a thing they wanted once, on one node, not a new
+ * setting for the topic.
+ */
 const CardQuery = z.object({
   depth: z.coerce.number().int().min(1).max(5).optional(),
-  action: DepthActionSchema.optional(),
+  minutes: z.coerce.number().int().pipe(CardMinutes).optional(),
+  style: ContentStyleSchema.optional(),
+  angle: CardAngleSchema.optional(),
 });
+
+function settingsFrom(
+  query: z.infer<typeof CardQuery>,
+  topic: TopicT,
+  node: LearningNodeT,
+  defaultDepth: number,
+): CardSettingsT {
+  const base = defaultCardSettings(topic, node, query.depth ?? defaultDepth);
+  return {
+    ...base,
+    // An explicit length wins over what the map promised for this node: "longer"
+    // is the learner asking for more of it now, and a control the node's own
+    // estimate can veto is a control that does nothing.
+    minutes: query.minutes === undefined ? base.minutes : cardMinutes(query.minutes),
+    style: query.style ?? base.style,
+    angle: query.angle ?? base.angle,
+  };
+}
 
 export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
@@ -132,21 +149,20 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
     const userId = c.get("userId");
     const { node, topic } = await loadNode(db, userId, c.req.param("id"));
     await refuseGroup(db, node);
-    const query = c.req.valid("query");
-    const base = CardDepth.parse(query.depth ?? c.get("defaultDepth"));
-    const depth = query.action === undefined ? base : depthAfter(base, query.action);
-    const variant = variantFor(query.action);
+    const settings = settingsFrom(c.req.valid("query"), topic, node, c.get("defaultDepth"));
 
-    const content = await cardFor(db, provider(), userId, topic, node, depth, variant);
+    const content = await cardFor(db, provider(), userId, topic, node, settings);
 
     if (node.status === NodeStatus.Untouched) {
       await db.learningNode.update({ where: { id: node.id }, data: { status: NodeStatus.Seen } });
     }
     // Depth follows the learner rather than resetting per node.
-    if (depth !== c.get("defaultDepth")) {
+    if (settings.depth !== c.get("defaultDepth")) {
       await db.user.update({
         where: { id: userId },
-        data: { defaultDepth: nextDefaultDepth(CardDepth.parse(c.get("defaultDepth")), depth) },
+        data: {
+          defaultDepth: nextDefaultDepth(CardDepth.parse(c.get("defaultDepth")), settings.depth),
+        },
       });
     }
 
@@ -156,8 +172,10 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
     });
     return c.json({
       node: { ...node, status: node.status === NodeStatus.Untouched ? NodeStatus.Seen : node.status },
-      depth,
-      variant,
+      // Answered back, so the controls can show what the card was actually
+      // written to rather than what was asked for — the two differ at the ends
+      // of each scale.
+      settings,
       content,
       // Advisory, never a gate: shown as a note with a link on the node itself.
       missingPrerequisites: missingPrerequisites(node, all.map(toNode)).map((row) => ({
@@ -179,8 +197,14 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
     if (existing !== null) {
       return c.json(toDrill(existing));
     }
-    const depth = CardDepth.parse(c.get("defaultDepth"));
-    const card = await cardFor(db, provider(), userId, topic, node, depth, BASE_VARIANT);
+    const card = await cardFor(
+      db,
+      provider(),
+      userId,
+      topic,
+      node,
+      defaultCardSettings(topic, node, c.get("defaultDepth")),
+    );
     const generated = await generateDrill(provider(), {
       node,
       kind,
@@ -246,7 +270,8 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
         // Deliberately swallowed: the answer is already graded and the node has
         // already moved, so a model failure here must not turn a successful
         // attempt into an error the learner sees. The next pass retries it.
-        await createAtoms(db, provider(), userId, topic, node).catch((error: unknown) => {
+        const settings = defaultCardSettings(topic, node, c.get("defaultDepth"));
+        await createAtoms(db, provider(), userId, topic, node, settings).catch((error: unknown) => {
           console.error("atom extraction failed", error);
         });
       }
@@ -279,9 +304,11 @@ async function createAtoms(
   userId: string,
   topic: TopicT,
   node: LearningNodeT,
+  settings: CardSettingsT,
 ): Promise<void> {
-  // cardFor already reads the cache, so this is a hit in the normal case.
-  const content = await cardFor(db, provider, userId, topic, node, 2, BASE_VARIANT);
+  // The learner's own default settings, so this is the card they just read
+  // rather than a second generation of the same node at another depth.
+  const content = await cardFor(db, provider, userId, topic, node, settings);
   const atoms = await generateAtoms(provider, {
     node,
     card: content,

@@ -204,6 +204,22 @@ answer. Cards, drills and review items are cached deliberately; `gradeAttempt` i
 one call that must be live, and it runs at `temperature: 0` so the same answer does
 not get two different verdicts.
 
+**The card's own settings are what the controls under it change.** `CardSettings`
+(depth, minutes, style, angle) is what `cardPrompt` reads, what the card cache is keyed
+by — `cardVariant` builds the variant half, depth has its own column — and what the card
+route answers back, so the panel can state where the card stands rather than guessing.
+The topic's settings are the defaults; each control is an override for one card. A
+control that does not reach the prompt is a control that does nothing, which is what
+"Simpler" was at depth 1: a refetch returning the identical card.
+
+**A card is written to the learner's read time, not to a constant.** `CARD_MINUTES_MAX`
+is the ceiling the six slots can hold, and `CardContent`'s limits are the outer bound of
+a card that long — not the size of an ordinary one, which is the minutes in the
+settings. Length arrives as more mechanism items, never longer ones. Changing a topic's
+`averageReadTime` rescales its leaves' minutes (`rescaleMinutes` in `topics.ts`), because
+the node's own estimate is what the default card length is capped to: without that the
+setting is half-applied and a ten-minute topic still writes three-minute cards.
+
 **Every topic carries its own writing settings** — `style`, `averageReadTime` and
 `contentInstructions`, defaulting to `prompts/content-instructions.md` when the learner
 has written none. `contentSettingsOf(topic)` is what every generating call passes, and

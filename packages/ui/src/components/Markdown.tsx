@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 import {
   MarkdownBlockKind,
   MarkdownSpanKind,
+  linkTarget,
   parseMarkdown,
   parseSpans,
 } from "../markdown/parse";
@@ -34,9 +35,9 @@ const HEADING_CLASS: Record<number, string> = {
   6: "text-sm font-semibold text-ink",
 };
 
-function openLink(href: string): void {
+function openLink(target: string): void {
   // A link that cannot be opened must not take the screen down with it.
-  void Linking.openURL(href).catch(() => undefined);
+  void Linking.openURL(target).catch(() => undefined);
 }
 
 function Spans({ spans }: { spans: readonly MarkdownSpanT[] }): ReactElement {
@@ -77,17 +78,27 @@ function renderSpan(span: MarkdownSpanT): ReactNode {
           <Spans spans={span.children} />
         </Text>
       );
-    case MarkdownSpanKind.Link:
+    case MarkdownSpanKind.Link: {
+      const target = linkTarget(span.href);
+      // A link nothing may open is drawn as its own words: styling it would
+      // offer a tap that does nothing.
+      if (target === null) {
+        return <Spans spans={span.children} />;
+      }
       return (
-        <Text className="text-accent underline" onPress={() => openLink(span.href)}>
+        <Text className="text-accent underline" onPress={() => openLink(target)}>
           <Spans spans={span.children} />
         </Text>
       );
+    }
   }
 }
 
 /** The default body style, so most callers pass nothing. */
 const BODY = "text-base leading-6 text-ink";
+
+/** The list gutter: wide enough for "9." at any size, and free to grow past it. */
+const MARKER = { minWidth: 22 } as const;
 
 export interface MarkdownProps {
   text: string;
@@ -218,7 +229,11 @@ function List({
     <View className="gap-1">
       {items.map((item, index) => (
         <View key={index} className="flex-row gap-2">
-          <Text className={`${className} w-5 text-right`}>{markerOf(index)}</Text>
+          {/* A gutter that can grow: fixed at one width, "10." wraps onto a
+              second line and takes the whole row with it. */}
+          <Text className={`${className} text-right`} style={MARKER}>
+            {markerOf(index)}
+          </Text>
           <View className="flex-1">
             <Blocks blocks={item.blocks} className={className} />
           </View>

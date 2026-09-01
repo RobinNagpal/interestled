@@ -3,7 +3,7 @@ import {
   Atom,
   AuthResult,
   CardContent,
-  CardDepth,
+  CardSettings,
   Drill,
   LearningNode,
   NodeStatusSchema,
@@ -18,8 +18,7 @@ import {
 import type {
   AtomT,
   AttemptInputT,
-  CardDepthT,
-  DepthAction,
+  CardSettingsT,
   DrillKind,
   DrillT,
   LearningNodeT,
@@ -130,8 +129,8 @@ export const TopicDetail = z.object({
 
 export const CardView = z.object({
   node: LearningNode,
-  depth: CardDepth,
-  variant: z.string(),
+  /** What this card was actually written to, which is what the controls show. */
+  settings: CardSettings,
   content: CardContent,
   missingPrerequisites: z.array(NodeRef),
 });
@@ -198,7 +197,7 @@ export interface ApiClient {
   moveNode(slug: string, nodeId: string, direction: MoveDirection): Promise<TopicDetailT>;
   deleteNode(slug: string, nodeId: string): Promise<TopicDetailT>;
 
-  getCard(nodeId: string, options?: { depth?: CardDepthT; action?: DepthAction }): Promise<CardViewT>;
+  getCard(nodeId: string, settings?: Partial<CardSettingsT>): Promise<CardViewT>;
   getDrill(nodeId: string, kind?: DrillKind): Promise<DrillT>;
   submitAttempt(input: AttemptInputT): Promise<AttemptResultT>;
   setNodeStatus(nodeId: string, status: NodeStatus): Promise<LearningNodeT>;
@@ -265,13 +264,21 @@ export function createApiClient(config: ClientConfig): ApiClient {
     deleteNode: (slug, nodeId) =>
       request(config, `/api/topics/${encodeURIComponent(slug)}/nodes/${nodeId}`, "DELETE", TopicDetail),
 
-    getCard: (nodeId, options) => {
+    getCard: (nodeId, settings) => {
+      // Only what the learner actually changed: an empty query is the plain
+      // card, written to the topic's own settings.
       const query = new URLSearchParams();
-      if (options?.depth !== undefined) {
-        query.set("depth", String(options.depth));
+      if (settings?.depth !== undefined) {
+        query.set("depth", String(settings.depth));
       }
-      if (options?.action !== undefined) {
-        query.set("action", options.action);
+      if (settings?.minutes !== undefined) {
+        query.set("minutes", String(settings.minutes));
+      }
+      if (settings?.style !== undefined) {
+        query.set("style", settings.style);
+      }
+      if (settings?.angle !== undefined) {
+        query.set("angle", settings.angle);
       }
       const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
       return get(`/api/nodes/${nodeId}/card${suffix}`, CardView);

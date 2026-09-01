@@ -15,6 +15,7 @@ import {
 } from "@interestled/schemas";
 import type {
   CardContentT,
+  CardSettingsT,
   DrillKind,
   GeneratedAtomT,
   GeneratedMapNodeT,
@@ -152,8 +153,7 @@ export function generateCard(
     topic: TopicT;
     node: LearningNodeT;
     nodes: readonly LearningNodeT[];
-    depth: number;
-    variant: string;
+    settings: CardSettingsT;
     profile: ProfileT;
   },
 ): Promise<CardContentT> {

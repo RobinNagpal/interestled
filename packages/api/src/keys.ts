@@ -1,3 +1,5 @@
+import type { CardSettingsT } from "@interestled/schemas";
+
 /** One place for cache keys, so an invalidation cannot miss a screen. */
 export const keys = {
   me: ["me"] as const,
@@ -9,8 +11,21 @@ export const keys = {
   topicDefaults: ["topic-defaults"] as const,
   /** Every card, at every depth and variant — what changing a topic's settings drops. */
   cards: ["card"] as const,
-  card: (nodeId: string, depth: number | null, variant: string | null) =>
-    ["card", nodeId, depth, variant] as const,
+  /**
+   * Keyed by the settings the card was asked for, so two sets of controls never
+   * share an entry. Written out field by field rather than by spreading the
+   * object: a key built from `Object.values` would change meaning the day a
+   * field is added, and every cached card would quietly become a miss.
+   */
+  card: (nodeId: string, settings: Partial<CardSettingsT>) =>
+    [
+      "card",
+      nodeId,
+      settings.depth ?? null,
+      settings.minutes ?? null,
+      settings.style ?? null,
+      settings.angle ?? null,
+    ] as const,
   drill: (nodeId: string, kind: string | null) => ["drill", nodeId, kind] as const,
   review: ["review"] as const,
 };

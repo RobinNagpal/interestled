@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import {
+  MAX_NODE_MINUTES,
   MoveDirection,
   MoveDirectionSchema,
   SUMMARY_MAX,
@@ -289,6 +290,9 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     }
     const updated = await db.topic.update({ where: { id: topic.id }, data: input });
     await db.conceptCard.deleteMany({ where: { node: { topicId: topic.id } } });
+    if (input.averageReadTime !== topic.averageReadTime) {
+      await rescaleMinutes(db, topic.id, topic.averageReadTime, input.averageReadTime);
+    }
     return c.json(toTopic(updated));
   });
 
@@ -411,4 +415,45 @@ async function loadMapNode(
     throw new NotFoundError("Node not found");
   }
   return { nodes, node };
+}
+
+
+/**
+ * Move the map's own minute estimates when the learner changes how long a node
+ * should take.
+ *
+ * Without this the setting is half-applied: the next card is written to ten
+ * minutes while every row on the map still says three, and the map is then
+ * lying about what it costs — the one thing it may never do. The estimates are
+ * scaled rather than flattened, so a node the model judged twice the length of
+ * its neighbours stays twice the length of them.
+ *
+ * Branches are left alone: their time is the sum of the leaves under them, and
+ * a heading is not something anybody sits down and reads.
+ */
+async function rescaleMinutes(
+  db: Db,
+  topicId: string,
+  from: number,
+  to: number,
+): Promise<void> {
+  const rows = await db.learningNode.findMany({ where: { topicId } });
+  const parents = new Set(rows.map((row) => row.parentId).filter((id): id is string => id !== null));
+  const factor = to / Math.max(1, from);
+  const updates = rows
+    .filter((row) => !parents.has(row.id) && row.minutes > 0)
+    .map((row) => ({
+      id: row.id,
+      was: row.minutes,
+      minutes: Math.max(1, Math.min(MAX_NODE_MINUTES, Math.round(row.minutes * factor))),
+    }))
+    .filter((row) => row.minutes !== row.was);
+  if (updates.length === 0) {
+    return;
+  }
+  await db.$transaction(
+    updates.map((row) =>
+      db.learningNode.update({ where: { id: row.id }, data: { minutes: row.minutes } }),
+    ),
+  );
 }

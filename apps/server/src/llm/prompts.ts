@@ -1,6 +1,8 @@
 import {
+  CARD_MINUTES_MAX,
+  CardAngle,
+  CardDepth,
   ContentStyle,
-  DepthAction,
   DrillKind,
   LearningStyle,
   MAX_NODE_MINUTES,
@@ -9,12 +11,13 @@ import {
 } from "@interestled/schemas";
 import type {
   CardContentT,
+  CardSettingsT,
   LearningNodeT,
   ProfileT,
   TopicContentSettingsT,
   TopicT,
 } from "@interestled/schemas";
-import { mapOutline } from "./outline";
+import { mapOutline, neighbourClaims } from "./outline";
 import { promptFile } from "./promptFiles";
 import { render } from "./template";
 
@@ -221,13 +224,14 @@ const DEPTH_GUIDE: Record<number, string> = {
   5: "Depth 5: expert. Edge cases, failure modes, and where the standard account is wrong.",
 };
 
-const VARIANT_GUIDE: Record<string, string> = {
-  base: "",
-  [DepthAction.MoreConcrete]:
+/** The same depth asked a different way. Keyed by the enum, so a new angle without a line here fails the build. */
+const ANGLE_GUIDE: Record<CardAngle, string> = {
+  [CardAngle.Base]: "",
+  [CardAngle.MoreConcrete]:
     "Replace every abstraction with one specific instance. Real values throughout.",
-  [DepthAction.WhyItMatters]:
+  [CardAngle.WhyItMatters]:
     "Focus on consequence: what decision this changes, and what it costs to get wrong.",
-  [DepthAction.WhereThisBreaks]:
+  [CardAngle.WhereThisBreaks]:
     "Focus on the edges: when this model is wrong, and what people hit in practice.",
 };
 
@@ -235,13 +239,44 @@ const VARIANT_GUIDE: Record<string, string> = {
 const WORDS_PER_MINUTE = 200;
 
 /**
- * The most card there can be, whatever the topic's read time says. The six slots
- * hold about a thousand words between them before CardContent's own limits
- * refuse the card, so asking for a fifteen-minute one produces either padding or
- * a response the schema throws away. The rest of a long node is the drill and
- * the doing, which is where the minutes past this actually go.
+ * How many mechanism items a card of this length asks for. Length comes from the
+ * number of them rather than from longer ones: a paragraph nobody reads is not
+ * made readable by being one of five instead of one of ten (A1), and the slot
+ * that carries the actual explanation is the one worth growing.
  */
-const CARD_MINUTES_MAX = 4;
+function mechanismItems(minutes: number): string {
+  if (minutes <= 3) {
+    return "1-5";
+  }
+  if (minutes <= 5) {
+    return "4-7";
+  }
+  return minutes <= 7 ? "5-9" : "7-12";
+}
+
+/**
+ * The settings a card is written to when the learner has not overridden any of
+ * them: the topic's own style and read time, and the node's own estimate where
+ * that is shorter — a longer card than the map admits to is the map lying about
+ * time, which is the one thing it is not allowed to do.
+ */
+export function defaultCardSettings(
+  topic: TopicT,
+  node: LearningNodeT,
+  depth: number,
+): CardSettingsT {
+  return {
+    depth: CardDepth.parse(depth),
+    minutes: cardMinutes(Math.min(node.minutes || topic.averageReadTime, topic.averageReadTime)),
+    style: topic.style,
+    angle: CardAngle.Base,
+  };
+}
+
+/** Never zero (a branch), never past what the six slots can hold. */
+export function cardMinutes(minutes: number): number {
+  return Math.max(1, Math.min(minutes, CARD_MINUTES_MAX));
+}
 
 export function cardPrompt(input: {
   topic: TopicT;
@@ -252,27 +287,28 @@ export function cardPrompt(input: {
    * is not spent early.
    */
   nodes: readonly LearningNodeT[];
-  depth: number;
-  variant: string;
+  /** Depth, length, register and angle — the topic's, or this card's overrides. */
+  settings: CardSettingsT;
   profile: ProfileT;
 }): string {
-  // The setting says how long a card should take; the node's own estimate is
-  // what the map has already promised this one costs. Taking the smallest keeps
-  // both true — a longer card than the map admits to is the map lying about
-  // time, which is the one thing it is not allowed to do.
-  const minutes = Math.max(
-    1,
-    Math.min(input.node.minutes, input.topic.averageReadTime, CARD_MINUTES_MAX),
-  );
+  const minutes = cardMinutes(input.settings.minutes);
   return render(promptFile("card"), {
     topic: input.topic.title,
     node: input.node.title,
     claim: input.node.claim,
     outline: mapOutline(input.nodes, input.node),
-    depthGuide: DEPTH_GUIDE[input.depth] ?? DEPTH_GUIDE[3]!,
-    variantGuide: VARIANT_GUIDE[input.variant] ?? "",
+    neighbours: neighbourClaims(input.nodes, input.node),
+    depthGuide: DEPTH_GUIDE[input.settings.depth] ?? DEPTH_GUIDE[3]!,
+    angleGuide: ANGLE_GUIDE[input.settings.angle],
     learner: learnerBlock(input.profile),
-    contentRules: contentRulesBlock(contentSettingsOf(input.topic)),
+    // The card's own style and length, not the topic's: a control that did not
+    // reach the prompt is a control that does nothing.
+    contentRules: contentRulesBlock({
+      style: input.settings.style,
+      contentInstructions: input.topic.contentInstructions,
+      averageReadTime: minutes,
+    }),
+    mechanismItems: mechanismItems(minutes),
     readTime: minutesText(minutes),
     readWords: String(minutes * WORDS_PER_MINUTE),
   });

@@ -1,4 +1,4 @@
-import { buildTree } from "@interestled/domain";
+import { buildTree, inMapOrder, leafNodes } from "@interestled/domain";
 import type { NodeTreeT } from "@interestled/domain";
 import type { LearningNodeT } from "@interestled/schemas";
 
@@ -33,6 +33,39 @@ export function mapOutline(nodes: readonly LearningNodeT[], current: LearningNod
   // guess which of thirty titles it is writing.
   if (!nodes.some((node) => node.id === current.id)) {
     lines.push(`- ${current.title}${HERE}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * What the node before and the node after actually say, in their own words.
+ *
+ * The outline gives the model the shape; this gives it the two claims most
+ * likely to be written twice. "Everything above has been covered" is a rule the
+ * model can only follow for what it can see, and the neighbours are where the
+ * overlap lands: the section that opens a card and the one that closes it both
+ * drift towards whatever the group as a whole is about.
+ */
+export function neighbourClaims(
+  nodes: readonly LearningNodeT[],
+  current: LearningNodeT,
+): string {
+  // Reading order comes off the whole tree: the leaves alone have parents that
+  // are not in the list, so ordering them directly would interleave the groups.
+  const leafIds = new Set(leafNodes(nodes).map((node) => node.id));
+  const leaves = inMapOrder(nodes).filter((node) => leafIds.has(node.id));
+  const index = leaves.findIndex((node) => node.id === current.id);
+  if (index === -1) {
+    return "";
+  }
+  const lines: string[] = [];
+  const before = leaves[index - 1];
+  const after = leaves[index + 1];
+  if (before !== undefined) {
+    lines.push(`- The node before it, "${before.title}", covers: ${before.claim}`);
+  }
+  if (after !== undefined) {
+    lines.push(`- The node after it, "${after.title}", covers: ${after.claim}`);
   }
   return lines.join("\n");
 }

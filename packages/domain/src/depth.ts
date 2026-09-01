@@ -1,26 +1,34 @@
-import { DepthAction } from "@interestled/schemas";
+import { READ_TIMES, Step } from "@interestled/schemas";
 import type { CardDepthT } from "@interestled/schemas";
 
 /**
- * Where a depth button lands. Only two of the five actually move the depth
- * number — the other three are the same level asked a different way, which is
- * why they can be cached separately without disturbing the learner's default.
+ * One rung down or up the depth scale. Written here rather than as `depth - 1`
+ * at the call site because the clamp is the whole of it: a control that runs off
+ * the end of its own scale is one that looks broken, so the screen asks where a
+ * step lands and disables the button when the answer is where it already is.
  */
-export function depthAfter(current: CardDepthT, action: DepthAction): CardDepthT {
-  switch (action) {
-    case DepthAction.Simpler:
-      return clamp(current - 1);
-    case DepthAction.Deeper:
-      return clamp(current + 1);
-    case DepthAction.MoreConcrete:
-    case DepthAction.WhyItMatters:
-    case DepthAction.WhereThisBreaks:
-      return current;
-  }
+export function depthAfter(current: CardDepthT, step: Step): CardDepthT {
+  return clamp(step === Step.Up ? current + 1 : current - 1);
 }
 
 function clamp(value: number): CardDepthT {
   return Math.min(5, Math.max(1, value));
+}
+
+/**
+ * One rung along the read-time ladder, from any number of minutes — a node's own
+ * estimate need not be on the ladder, and "longer than 6" still has to mean 7.
+ * `ceiling` is what a card may be written to, which is below the ladder's top.
+ */
+export function readTimeAfter(current: number, step: Step, ceiling: number): number {
+  const rungs = READ_TIMES.filter((minutes) => minutes <= ceiling);
+  const next =
+    step === Step.Up
+      ? rungs.find((minutes) => minutes > current)
+      : [...rungs].reverse().find((minutes) => minutes < current);
+  // No rung that way is the end of the scale, and the end of the scale is where
+  // you already are — which is what disables the button rather than moving it.
+  return next ?? current;
 }
 
 /**
