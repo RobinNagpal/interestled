@@ -58,12 +58,30 @@ export const CardSettings = z.object({
 export type CardSettingsT = z.infer<typeof CardSettings>;
 
 /**
+ * Which generation of the card prompt wrote a cached card.
+ *
+ * Cards are cached forever and keyed by the settings alone, so changing how a
+ * card is written changes nothing a learner ever sees: every node already opened
+ * keeps the card the old prompt produced, and the change shows up only on nodes
+ * nobody has read yet. Bumping this retires the lot in one line — it is part of
+ * the variant string, so there is no migration and nothing to delete. The
+ * superseded rows are never read again and go with their node.
+ *
+ * Bump it when a change to card.md or the system prompt changes how an existing
+ * card should read. Do not bump it for a change that only affects which nodes
+ * get written.
+ *
+ * 2: the slots are one continuous explanation rather than six separate notes.
+ */
+export const CARD_PROMPT_REVISION = 2;
+
+/**
  * The cache key's variant half. Depth has a column of its own, so this carries
  * the rest: two settings that would produce different writing must never share
  * a cached card, and two that would not must never generate twice.
  */
 export function cardVariant(settings: CardSettingsT): string {
-  return `${settings.angle}|${settings.minutes}|${settings.style}`;
+  return `r${CARD_PROMPT_REVISION}|${settings.angle}|${settings.minutes}|${settings.style}`;
 }
 
 const JargonTerm = z.object({

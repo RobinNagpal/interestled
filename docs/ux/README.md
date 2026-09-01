@@ -354,6 +354,19 @@ this way" and "what people get wrong" both pull towards whatever the topic as a 
 about. Nothing true of the whole topic may sit on one node of it: if a sentence would
 serve a neighbouring node equally well, it belongs on neither.
 
+The six slots are also one explanation rather than six notes about the same subject.
+The mechanism items run in order, each starting from what the one above it
+established; the example is that mechanism happening on one case, in the same words
+for the same things; the misconception is a belief a reader could still hold having
+read both, corrected by pointing back at the step that rules it out. Two habits break
+this, and both had to be named explicitly. A model asked for "separate" items answers
+with headings glued to sentences — *Central bank monetization: the Reichsbank bought
+bills with printed marks* — which reads as a glossary, not an argument. And "delete
+recaps and transitions" (A17) is about the three minutes of *last time we covered*;
+taken as a ban on the half-clause that joins two sentences, it produces exactly the
+disconnected fragments the guideline exists to prevent. Cards are cached forever, so
+changing any of this reaches nobody until the prompt revision in the cache key moves.
+
 How long a card runs is the learner's setting, not a constant. Ten minutes a node means
 roughly two thousand words, which arrives as more mechanism items rather than longer
 ones — a paragraph nobody reads is not made readable by being one of five instead of one

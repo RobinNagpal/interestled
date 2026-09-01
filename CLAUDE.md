@@ -199,6 +199,25 @@ comes off the tree rather than off the level count, so two- and three-level maps
 separate path. It is read on a cache miss only: a hit must not become a second query on
 every card view.
 
+**A card is one explanation, not six notes about the same subject.** The slots are
+read top to bottom in one sitting, so each one starts from what the one above it
+established: the mechanism items are a chain in order rather than a set, the example
+is that mechanism happening, and the misconception is a belief still holdable after
+reading both. Two things in the prompts do the work, and both are easy to undo by
+accident. `card.md` bans the label pattern (`Central bank monetization: the Reichsbank
+bought…` — a heading glued to a sentence), which is what a model reaches for when
+asked for "separate" items. And the `SYSTEM` rule is *cut recaps*, not *cut
+transitions*: guideline A17 is about the three minutes of "last time we covered", and
+reading it as a ban on connectives is what produced cards written as disconnected
+fragments. Both halves are covered by tests.
+
+**Changing how a card is written reaches nobody until `CARD_PROMPT_REVISION` moves.**
+Cards are cached forever, keyed by `(nodeId, depth, cardVariant(settings))`, so a
+rewritten `card.md` shows up only on nodes nobody has opened. The revision is part of
+the variant string — bumping it retires every cached card with no migration and
+nothing to delete, and the superseded rows go with their node. Bump it whenever the
+change is to how an existing card should read.
+
 **Never cache a grading call.** A cached verdict is a verdict on somebody else's
 answer. Cards, drills and review items are cached deliberately; `gradeAttempt` is the
 one call that must be live, and it runs at `temperature: 0` so the same answer does
