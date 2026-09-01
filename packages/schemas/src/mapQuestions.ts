@@ -63,38 +63,65 @@ export const MAP_QUESTION_OPTIONS = 4;
  * can tell in two seconds which of four samples they want and cannot answer
  * "how technical should the examples be" at all.
  */
+/**
+ * How long one line of a sample may be.
+ *
+ * Generous, because the prompt asks two of the seven questions for whole
+ * sentences — the first two sentences of a write-up, the opening of a worked
+ * example — and a cap that a normal answer to the question overruns is not a
+ * guard, it is a generation that fails every time somebody writes a long
+ * sentence. It is still a cap: a sample is a line to be read at a glance, and
+ * six of these is the most an option may carry.
+ */
+const SAMPLE_LINE_MAX = 500;
+
 export const MapQuestionOption = z.object({
   label: z.string().trim().min(1).max(80),
   /** Rendered as Markdown, one line each. Never empty: the sample is the point. */
-  sample: z.array(z.string().trim().min(1).max(300)).min(1).max(6),
+  sample: z.array(z.string().trim().min(1).max(SAMPLE_LINE_MAX)).min(1).max(6),
 });
 
 export const MapQuestion = z.object({
   kind: MapQuestionKindSchema,
-  /** One line, in the second person. It is a heading on the screen. */
-  question: z.string().trim().min(1).max(160),
+  /**
+   * One line, in the second person. It is a heading on the screen — but two of
+   * the seven have to name the heading or the write-up they are about, so the
+   * cap has room for a long title inside the sentence.
+   */
+  question: z.string().trim().min(1).max(240),
   options: z.array(MapQuestionOption).length(MAP_QUESTION_OPTIONS),
 });
 
 /**
- * All seven, once each, in the order above. A plain array schema would let the
- * model drop the outline question and send two about code, and nothing
- * downstream would notice — the answers are keyed by kind, so a missing kind is
- * a question the learner is never asked and a repeated one is an answer that
- * overwrites another.
+ * All seven, once each — and then put in the order above rather than refused for
+ * being in a different one.
+ *
+ * The completeness is load-bearing and the order is not. Answers are keyed by
+ * kind, so a missing kind is a question the learner is never asked and a
+ * repeated one is an answer that overwrites another; both have to fail. But the
+ * order is only what the screen counts "3 of 7" through, and refusing a set that
+ * has all seven because the model listed code before examples spends a whole
+ * generation on something a sort fixes. The transform is what makes the order
+ * true afterwards, so nothing downstream has to sort again.
  */
 export const MapQuestionSet = z
   .array(MapQuestion)
   .length(MAP_QUESTION_COUNT)
   .superRefine((questions, ctx) => {
-    MAP_QUESTION_KINDS.forEach((kind, index) => {
-      if (questions[index]?.kind !== kind) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [index, "kind"],
-          message: `question ${index + 1} must have kind "${kind}"`,
-        });
-      }
+    const present = new Set(questions.map((question) => question.kind));
+    const missing = MAP_QUESTION_KINDS.filter((kind) => !present.has(kind));
+    if (missing.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `no question of kind ${missing.map((kind) => `"${kind}"`).join(", ")}`,
+      });
+    }
+  })
+  .transform((questions) => {
+    const byKind = new Map(questions.map((question) => [question.kind, question]));
+    return MAP_QUESTION_KINDS.flatMap((kind) => {
+      const question = byKind.get(kind);
+      return question === undefined ? [] : [question];
     });
   });
 

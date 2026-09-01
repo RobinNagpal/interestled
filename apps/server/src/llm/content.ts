@@ -72,6 +72,16 @@ export interface MapInput {
   chosen: readonly ChosenOptionT[];
 }
 
+/**
+ * Seven questions, four options each, most of them carrying several lines of
+ * sample — twenty-eight samples is more text than the map itself, and it is one
+ * of the two calls in the app that a thinking model spends real tokens
+ * deliberating over before it writes anything. Sharing the map's budget is what
+ * makes the whole reply arrive cut in half, which reaches the learner as a shape
+ * error rather than as the budget it is.
+ */
+const QUESTIONS_OUTPUT_TOKENS = 16384;
+
 const QuestionList = z.object({ questions: MapQuestionSet });
 
 export interface MapQuestionsInput {
@@ -89,10 +99,14 @@ export interface MapQuestionsInput {
 
 /**
  * The seven questions, generated from the same answers the map would have been
- * generated from. It runs a little hotter than the rest: four options that are
- * really the same option is the one way this call fails, and the default 0.3 is
- * tuned for a map that should come out the same twice, which is the opposite of
- * what four alternatives need.
+ * generated from.
+ *
+ * A little hotter than the rest, because four options that are really the same
+ * option is the one way this call is useless, and the default 0.3 is tuned for a
+ * map that should come out the same twice. Only a little: this is also the
+ * strictest schema in the app — seven named kinds, four options each — and
+ * sampling noise costs a whole retry when it drifts off that. The differences
+ * between the four options are the prompt's job, not the temperature's.
  */
 export async function generateMapQuestions(
   provider: LlmProvider,
@@ -102,9 +116,8 @@ export async function generateMapQuestions(
     system: SYSTEM,
     prompt: mapQuestionsPrompt(input),
     schema: QuestionList,
-    temperature: 0.8,
-    // Seven questions with four samples each is as much text as a small map.
-    maxOutputTokens: MAP_OUTPUT_TOKENS,
+    temperature: 0.4,
+    maxOutputTokens: QUESTIONS_OUTPUT_TOKENS,
   });
   return result.questions;
 }

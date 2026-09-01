@@ -26,6 +26,15 @@ describe("MapQuestionSet", () => {
     expect(MapQuestionSet.safeParse(sevenQuestions).success).toBe(true);
   });
 
+  it("names the kind that is missing, so the retry knows what to add", () => {
+    const broken = [...sevenQuestions.slice(0, 6), question(MapQuestionKind.Outline)];
+    const parsed = MapQuestionSet.safeParse(broken);
+    expect(parsed.success).toBe(false);
+    expect(parsed.success ? "" : parsed.error.issues.map((issue) => issue.message).join(" ")).toContain(
+      '"opening"',
+    );
+  });
+
   it("refuses a set with a kind missing", () => {
     // Six questions and a repeat is the shape a model actually returns when it
     // loses count, and it is the worst one to accept: the answers are keyed by
@@ -34,9 +43,27 @@ describe("MapQuestionSet", () => {
     expect(MapQuestionSet.safeParse(broken).success).toBe(false);
   });
 
-  it("refuses the seven in the wrong order", () => {
+  it("sorts the seven into asking order rather than refusing a different one", () => {
+    // The completeness matters and the order does not: refusing a set that has
+    // all seven because the model listed code before examples spends a whole
+    // generation on something a sort fixes.
     const swapped = [sevenQuestions[1]!, sevenQuestions[0]!, ...sevenQuestions.slice(2)];
-    expect(MapQuestionSet.safeParse(swapped).success).toBe(false);
+    const parsed = MapQuestionSet.safeParse(swapped);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.map((entry) => entry.kind)).toEqual([...MAP_QUESTION_KINDS]);
+  });
+
+  it("takes a sample line long enough for the two sentences it asks for", () => {
+    // Question 7 asks for the first two sentences of a write-up, so a cap a
+    // normal answer overruns is not a guard — it is a call that fails whenever
+    // somebody writes a long sentence.
+    const long = "a".repeat(420);
+    const [first, ...rest] = sevenQuestions;
+    const withLongSample = [
+      { ...first!, options: first!.options.map((option) => ({ ...option, sample: [long] })) },
+      ...rest,
+    ];
+    expect(MapQuestionSet.safeParse(withLongSample).success).toBe(true);
   });
 
   it("refuses a question with three options, or five", () => {
