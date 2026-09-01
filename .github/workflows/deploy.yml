@@ -83,13 +83,26 @@ jobs:
 
       - name: Sync web app to S3
         run: |
-          # Hashed assets are cached forever; index.html must always revalidate
-          # so a new deploy is picked up immediately.
+          # Hashed assets are cached forever; the two HTML entry points must
+          # always revalidate so a new deploy is picked up immediately.
+          #
+          # `downloads/*` is excluded from the delete as well: the Android APK
+          # there is written by .github/workflows/android.yml and is no part of
+          # this build, so a sync that owned the whole bucket would remove it
+          # every time the web app shipped.
           aws s3 sync apps/mobile/dist "s3://$S3_BUCKET" \
             --delete \
             --exclude index.html \
+            --exclude "android-install/*" \
+            --exclude "downloads/*" \
             --cache-control "public,max-age=31536000,immutable"
           aws s3 cp apps/mobile/dist/index.html "s3://$S3_BUCKET/index.html" \
+            --cache-control "no-cache"
+          # Copied from public/ by `expo export`. A tester who has seen this
+          # page once must still get the current one, so it revalidates like
+          # the app shell rather than being cached with the hashed assets.
+          aws s3 cp apps/mobile/dist/android-install/index.html \
+            "s3://$S3_BUCKET/android-install/index.html" \
             --cache-control "no-cache"
 
       - name: Invalidate CloudFront

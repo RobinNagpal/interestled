@@ -4,8 +4,10 @@ Everything runs on AWS under **https://interestled.com**:
 
 ```
 interestled.com (Route 53 → CloudFront, ACM cert)
-├── /*      → S3 bucket             (Expo web export, private, read via OAC)
-└── /api/*  → api.interestled.com:443  (shared Lightsail host, Caddy → :7072)
+├── /*                → S3 bucket             (Expo web export, private, read via OAC)
+├── /android-install  → S3 bucket             (static install page, from public/)
+├── /downloads/*      → S3 bucket             (the Android APK)
+└── /api/*            → api.interestled.com:443  (shared Lightsail host, Caddy → :7072)
 ```
 
 The API is **not** a Lambda. It is a systemd service on a Lightsail instance
@@ -70,6 +72,93 @@ deadline, so CloudFront is the only ceiling on the hop. If generation starts
 timing out, request a CloudFront quota increase — there is nothing else to
 raise. (On Lambda this also needed a function timeout; a long-lived process has
 no equivalent, which is one thing the move simplified.)
+
+## The Android build
+
+`https://interestled.com/android-install` is a page with one button on it, and
+the button downloads the APK built from the latest commit on `main`. That is the
+whole distribution channel: no Play Store listing, no EAS account, no invite
+list — a link you can send someone, and they have the app.
+
+```
+push to main
+   ├── deploy.yml   → dist/ + public/android-install/index.html → S3
+   └── android.yml  → expo prebuild → gradle assembleRelease    → S3 /downloads/
+```
+
+| Path | Written by | Cache-Control |
+|---|---|---|
+| `/android-install` | `deploy.yml`, from `apps/mobile/public/android-install/index.html` | `no-cache` |
+| `/downloads/interestled.apk` | `android.yml` | `no-cache` |
+| `/downloads/build.json` | `android.yml` | `no-cache` |
+| `/downloads/builds/interestled-<version>-<code>-<sha>.apk` | `android.yml` | immutable |
+
+**The two workflows share a bucket and must not delete each other's files.**
+The web deploy syncs with `--delete`, which owns every key it is not told to
+leave alone, so `downloads/*` is excluded there. Nothing else stops a web
+deploy from removing the APK.
+
+**Nothing about the APK is cached.** `interestled.apk` and `build.json` are
+served `no-cache` and the build invalidates `/downloads/*`, because the one
+promise the page makes is that the button gives you the current build. The
+per-build copies under `builds/` are immutable, since their names say which
+build they are; keep those and you can point a tester at the build before the
+one that broke.
+
+**`EXPO_PUBLIC_API_URL` is load-bearing here in a way it is not on the web.**
+The web export leaves it empty on purpose — CloudFront serves the app and the
+API from one origin, so a relative path is right. An APK has no origin, so the
+Android build bakes in `vars.SITE_URL`; built without it, the app installs and
+then fails on its first request.
+
+### Why not EAS
+
+Expo's build service would do this too, and it is the obvious answer. It is not
+the one taken because the APK would live on Expo's servers behind Expo's URL,
+which is the opposite of the requirement, and pulling it back to S3 means
+keeping the account, the token and the free-tier queue in exchange for a
+`prebuild` the runner can do itself in fifteen minutes. `ubuntu-latest` already
+has the Android SDK and the JDK; `node-linker=hoisted` in `.npmrc` already
+makes autolinking work in this workspace. So there is no vendor here at all,
+and `make apk` reproduces exactly what CI does.
+
+### Signing
+
+The APK is signed with the debug keystore the Expo template ships, which is
+what `assembleRelease` uses out of the box. Two consequences worth knowing
+before this goes wider than people you can talk to:
+
+- **The key is public.** Anyone can build an APK that Android accepts as an
+  update to this one. For a link you hand to testers this is proportionate —
+  they are already installing an unsigned-by-a-store app — but it is not a
+  basis for wide distribution.
+- **An Expo SDK upgrade could change the shipped keystore.** If it does, the
+  next build will not install over the previous one and testers have to
+  uninstall first. It is a fixed file in the template today, so this is a
+  latent risk rather than a live one.
+
+The fix for both is the same and is worth doing when the Play Store is: mint a
+real keystore, hold it as a repository secret, and point the `release`
+`signingConfig` at it instead. That is where the `preview` profile in
+`apps/mobile/eas.json` still points, if you ever want EAS to do it.
+
+### The pretty URL needs one `terraform apply`
+
+`/android-install` has no dot in it, so the CloudFront viewer-request function
+would otherwise treat it as a client-side route and answer with the SPA shell.
+The function now answers it from `/android-install/index.html` first — but the
+function is Terraform, not the deploy workflow, so it ships with
+`terraform apply`, not with a push. Until that apply runs, the page is reachable
+at `/android-install/index.html` and the APK at `/downloads/interestled.apk`;
+both of those have dots and need nothing.
+
+### Adding iOS
+
+Not here. iOS builds need a paid Apple Developer account and a signing identity
+to produce anything installable, and ad-hoc distribution needs each tester's
+device UDID registered in advance — the "send someone a link" shape this page
+exists for does not exist on iOS outside TestFlight. The page says so and points
+at the web app.
 
 ## Before this is public
 
@@ -156,6 +245,11 @@ Push to `main`. `.github/workflows/deploy.yml`:
    `current`, rewrites `/etc/interestled-api.env`, and restarts `interestled-api`;
 5. polls `https://api.interestled.com/health` and dumps the service's journal if it
    never answers.
+
+`.github/workflows/android.yml` runs beside it on the same push, building the
+APK and writing it to `/downloads/` — separately, because a fifteen-minute
+Gradle build must not hold up the API and a broken native build must not stop a
+deploy. See *The Android build* above.
 
 The bundle is staged and swapped rather than written in place, so systemd can
 never restart into a half-transferred directory. The environment file is
