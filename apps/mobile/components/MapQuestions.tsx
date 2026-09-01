@@ -32,23 +32,50 @@ export function MapQuestions({
 }): ReactElement {
   // One step past the last question is the summary, which is where the finish
   // button lives — so nobody builds a map by tapping an option they misread.
+  const summary = questions.length;
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<MapAnswerT[]>([]);
+  // Set when a question is reopened from the summary, so answering it goes back
+  // there rather than walking through every question after it a second time.
+  const [returning, setReturning] = useState(false);
 
   const answerFor = (question: MapQuestionT): number | null =>
     answers.find((answer) => answer.kind === question.kind)?.optionIndex ?? null;
+
+  const advance = (): void => {
+    setStep((current) => (returning ? summary : current + 1));
+    setReturning(false);
+  };
 
   const choose = (question: MapQuestionT, optionIndex: number): void => {
     setAnswers((current) => [
       ...current.filter((answer) => answer.kind !== question.kind),
       { kind: question.kind, optionIndex },
     ]);
-    setStep((current) => current + 1);
+    advance();
   };
 
   const skip = (question: MapQuestionT): void => {
     setAnswers((current) => current.filter((answer) => answer.kind !== question.kind));
-    setStep((current) => current + 1);
+    advance();
+  };
+
+  const reopen = (at: number): void => {
+    setReturning(true);
+    setStep(at);
+  };
+
+  /**
+   * Straight to the summary, with everything from here on left unanswered.
+   * Without it the learner who has said what they care about has to tap "Skip
+   * this one" four more times to get to the button, which is the same setup cost
+   * making every question skippable was meant to avoid.
+   */
+  const skipRest = (): void => {
+    const remaining = new Set(questions.slice(step).map((entry) => entry.kind));
+    setAnswers((current) => current.filter((answer) => !remaining.has(answer.kind)));
+    setReturning(false);
+    setStep(summary);
   };
 
   const question = questions[step];
@@ -63,15 +90,18 @@ export function MapQuestions({
             <Pressable
               key={entry.kind}
               accessibilityRole="button"
-              accessibilityLabel={`Change your answer to: ${entry.question}`}
+              accessibilityLabel={`Change your answer: ${entry.question}`}
               disabled={busy}
-              onPress={() => setStep(index)}
+              onPress={() => reopen(index)}
               className="gap-1 border-b border-line pb-3"
             >
-              <Text className="text-xs text-ink-faint">{entry.question}</Text>
-              <Text className={option === undefined ? "text-sm text-ink-faint" : "text-sm text-ink"}>
-                {option === undefined ? "Skipped" : option.label}
-              </Text>
+              {/* Both lines are model-written, so both are Markdown. */}
+              <InlineMarkdown text={entry.question} className="text-xs text-ink-faint" />
+              {option === undefined ? (
+                <Text className="text-sm text-ink-faint">Skipped</Text>
+              ) : (
+                <InlineMarkdown text={option.label} className="text-sm text-ink" />
+              )}
             </Pressable>
           );
         })}
@@ -85,7 +115,7 @@ export function MapQuestions({
     <View className="gap-4">
       <View className="gap-1">
         <SectionTitle>{`${step + 1} of ${questions.length}`}</SectionTitle>
-        <Text className="text-base font-medium text-ink">{question.question}</Text>
+        <InlineMarkdown text={question.question} className="text-base font-medium text-ink" />
       </View>
 
       <View className="gap-3">
@@ -100,15 +130,26 @@ export function MapQuestions({
       </View>
 
       <View className="flex-row gap-2">
-        {step > 0 ? (
+        {step > 0 || returning ? (
           <View className="flex-1">
-            <Button label="Back" tone="secondary" onPress={() => setStep(step - 1)} />
+            <Button
+              label="Back"
+              tone="secondary"
+              onPress={() => {
+                setStep(returning ? summary : step - 1);
+                setReturning(false);
+              }}
+            />
           </View>
         ) : null}
         <View className="flex-1">
           <Button label="Skip this one" tone="secondary" onPress={() => skip(question)} />
         </View>
       </View>
+
+      {step < summary - 1 && !returning ? (
+        <Button label="Skip the rest" tone="secondary" onPress={skipRest} />
+      ) : null}
     </View>
   );
 }

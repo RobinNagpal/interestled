@@ -200,7 +200,9 @@ bill has no ceiling. Note what it counts: rebuilding a map or one group creates 
 topic, so a topic count alone would leave every rebuild outside the budget entirely —
 nodes generated in the last hour is the limit that actually binds. The seven choices
 need a third counter for the same reason in reverse: they are generated *before* any
-topic or node exists, so `map_plans` rows in the last hour are what bounds them.
+topic or node exists, so `map_plans` rows in the last hour are what bounds them — and
+that counter guards the questions endpoints only. Gating the build on it too would tell
+a learner who had just answered seven questions that they could not have the map.
 
 **What the model writes is Markdown, and it is rendered as Markdown.** Every string
 value the model returns — claims, mechanism items, drill prompts, review answers,

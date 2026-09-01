@@ -84,33 +84,49 @@ const MAX_GENERATED_NODES_PER_HOUR = 400;
  * questions and never built the map would sit outside the budget entirely. One
  * plan row is written per questions call, which makes the rows the counter.
  *
- * Higher than the topic limit because answering seven questions and then
+ * Higher than the topic limit because asking, reading the four samples and
  * changing your mind is a thing people do, and each of those is a plan with no
  * topic behind it.
  */
 const MAX_MAP_PLANS_PER_HOUR = 30;
 
-async function assertWithinBudget(db: Db, userId: string, isNewTopic: boolean): Promise<void> {
+/**
+ * Which of the three model calls this is about, so each counter guards the call
+ * that actually spends the tokens.
+ *
+ * `plan` is deliberately not checked on the build routes. The plan cap has to
+ * stop someone generating a thirty-first set of questions; if it also stopped
+ * the build, a learner who had just answered seven questions would be told they
+ * could not have the map they answered them for.
+ */
+interface BudgetFor {
+  /** Creating a topic, or asking the questions for one. */
+  newTopic: boolean;
+  /** Asking the seven questions, whether or not a topic exists yet. */
+  newPlan: boolean;
+}
+
+async function assertWithinBudget(db: Db, userId: string, about: BudgetFor): Promise<void> {
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const [recentTopics, totalTopics, recentNodes, recentPlans] = await Promise.all([
-    isNewTopic ? db.topic.count({ where: { userId, createdAt: { gte: hourAgo } } }) : Promise.resolve(0),
-    isNewTopic ? db.topic.count({ where: { userId } }) : Promise.resolve(0),
+    about.newTopic ? db.topic.count({ where: { userId, createdAt: { gte: hourAgo } } }) : Promise.resolve(0),
+    about.newTopic ? db.topic.count({ where: { userId } }) : Promise.resolve(0),
     db.learningNode.count({ where: { topic: { userId }, createdAt: { gte: hourAgo } } }),
-    db.mapPlan.count({ where: { userId, createdAt: { gte: hourAgo } } }),
+    about.newPlan ? db.mapPlan.count({ where: { userId, createdAt: { gte: hourAgo } } }) : Promise.resolve(0),
   ]);
-  if (isNewTopic && recentTopics >= MAX_TOPICS_PER_HOUR) {
+  if (about.newTopic && recentTopics >= MAX_TOPICS_PER_HOUR) {
     throw new ConflictError(
       `That is ${MAX_TOPICS_PER_HOUR} new topics in an hour — the limit resets shortly.`,
     );
   }
-  if (isNewTopic && totalTopics >= MAX_TOPICS_PER_USER) {
+  if (about.newTopic && totalTopics >= MAX_TOPICS_PER_USER) {
     throw new ConflictError(`You have reached ${MAX_TOPICS_PER_USER} topics. Delete one to add another.`);
   }
   if (recentNodes >= MAX_GENERATED_NODES_PER_HOUR) {
     throw new ConflictError("That is a lot of map building in one hour — the limit resets shortly.");
   }
-  if (recentPlans >= MAX_MAP_PLANS_PER_HOUR) {
-    throw new ConflictError("That is a lot of map building in one hour — the limit resets shortly.");
+  if (about.newPlan && recentPlans >= MAX_MAP_PLANS_PER_HOUR) {
+    throw new ConflictError("That is a lot of maps started in one hour — the limit resets shortly.");
   }
 }
 
@@ -220,6 +236,7 @@ async function resolveChoices(
   answers: MapAnswersT,
 ): Promise<ChosenOptionT[]> {
   if (planId === undefined) {
+    assertNoOrphanAnswers(answers);
     return [];
   }
   const row = await db.mapPlan.findFirst({ where: { id: planId, userId } });
@@ -229,6 +246,17 @@ async function resolveChoices(
   // Parsed rather than trusted: the column is Json, which is the one shape
   // Prisma cannot describe, so this is the boundary where it becomes typed.
   return chosenOptions(MapQuestionSet.parse(row.questions), answers);
+}
+
+/**
+ * Answers with no plan id name options nobody can look up — "the second one" of
+ * a set of four this request never says. Refusing beats building a map that
+ * silently ignores every pick the learner made.
+ */
+function assertNoOrphanAnswers(answers: MapAnswersT): void {
+  if (answers.length > 0) {
+    throw new ConflictError("Those choices arrived without their questions — answer them again.");
+  }
 }
 
 /** How far back a retry looks for the answers the failed build was made from. */
@@ -257,6 +285,7 @@ async function rebuildChoices(
     await linkPlan(db, userId, planId, topicId, answers);
     return chosen;
   }
+  assertNoOrphanAnswers(answers);
   // The most recent plan that was actually answered, rather than simply the most
   // recent: opening the rebuild sheet writes a plan, and closing it again leaves
   // that unanswered row sitting on top of the one the last build used.
@@ -266,9 +295,15 @@ async function rebuildChoices(
     take: RECENT_PLANS,
   });
   for (const plan of previous) {
-    const answered = MapAnswers.parse(plan.answers);
-    if (answered.length > 0) {
-      return chosenOptions(MapQuestionSet.parse(plan.questions), answered);
+    // safeParse here and a throwing parse in resolveChoices, because the two are
+    // reading rows of different ages. There the learner answered seconds ago and
+    // an unreadable row means something is wrong now; here the row can be weeks
+    // old and written by a build before MapQuestionKind last changed, and
+    // refusing it would leave that topic unable to be rebuilt at all.
+    const questions = MapQuestionSet.safeParse(plan.questions);
+    const answered = MapAnswers.safeParse(plan.answers);
+    if (questions.success && answered.success && answered.data.length > 0) {
+      return chosenOptions(questions.data, answered.data);
     }
   }
   return [];
@@ -337,7 +372,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
   router.post("/questions", zValidator("json", TopicCreateInput), async (c) => {
     const input = c.req.valid("json");
     const userId = c.get("userId");
-    await assertWithinBudget(db, userId, true);
+    await assertWithinBudget(db, userId, { newTopic: true, newPlan: true });
     return c.json(
       await createPlan(db, provider(), userId, null, {
         title: input.title,
@@ -363,7 +398,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     const userId = c.get("userId");
     const topic = await findTopic(db, userId, c.req.param("slug"));
     const input = c.req.valid("json");
-    await assertWithinBudget(db, userId, false);
+    await assertWithinBudget(db, userId, { newTopic: false, newPlan: true });
     const nodes = await db.learningNode.findMany({
       where: { topicId: topic.id },
       include: { prerequisites: { select: { prerequisiteId: true } } },
@@ -391,7 +426,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
   router.post("/", zValidator("json", TopicCreateInput), async (c) => {
     const input = c.req.valid("json");
     const userId = c.get("userId");
-    await assertWithinBudget(db, userId, true);
+    await assertWithinBudget(db, userId, { newTopic: true, newPlan: false });
     // Before the topic row, so a plan id that is not theirs costs them nothing
     // and leaves no half-made topic behind.
     const chosen = await resolveChoices(db, userId, input.planId, input.answers);
@@ -429,7 +464,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     const topic = await findTopic(db, userId, c.req.param("slug"));
     const input = c.req.valid("json");
     const levels = input.levels ?? topic.levels;
-    await assertWithinBudget(db, userId, false);
+    await assertWithinBudget(db, userId, { newTopic: false, newPlan: false });
     const chosen = await rebuildChoices(db, userId, topic.id, input.planId, input.answers);
     // Nodes from the previous map would collide with the new ones on the path
     // constraint, and the cascade takes their cards and drills with them.
@@ -529,7 +564,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     if (!isBranch(node, nodes)) {
       throw new ConflictError("That is a node, not a group — there is nothing under it to rebuild.");
     }
-    await assertWithinBudget(db, userId, false);
+    await assertWithinBudget(db, userId, { newTopic: false, newPlan: false });
 
     const childLevels = topic.levels - node.depth;
     const siblings = nodes.filter(

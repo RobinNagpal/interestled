@@ -848,6 +848,46 @@ describe("map plans", () => {
     expect(topics).toEqual([]);
   });
 
+  it("refuses answers that arrive without the questions they answer", async () => {
+    // "The second one" of a set of four this request never names. Building a map
+    // that silently dropped every pick would be worse than saying so.
+    const { db, created: topics } = planDb([]);
+    const { provider } = recorder(MAP);
+    const response = await post(db, provider, "/api/topics", {
+      title: "Kubernetes",
+      answers: [{ kind: MapQuestionKind.Outline, optionIndex: 1 }],
+    });
+
+    expect(response.status).toBe(409);
+    expect(topics).toEqual([]);
+  });
+
+  it("stops a thirty-first set of questions, but never a build", async () => {
+    // The plan cap exists to stop someone generating questions all day. If it
+    // also gated the build, a learner who had just answered seven questions
+    // would be told they could not have the map they answered them for.
+    const spent: PlanRow[] = Array.from({ length: 30 }, (_, index) => ({
+      id: `p${index}`,
+      userId: "u1",
+      topicId: null,
+      questions: JSON.parse(QUESTIONS).questions,
+      answers: [],
+      createdAt: new Date(),
+    }));
+    const { db } = planDb(spent);
+    const { provider } = recorder(QUESTIONS, MAP);
+
+    const asked = await post(db, provider, "/api/topics/questions", { title: "Kubernetes" });
+    expect(asked.status).toBe(409);
+
+    const built = await post(db, provider, "/api/topics", {
+      title: "Kubernetes",
+      planId: "p0",
+      answers: [{ kind: MapQuestionKind.Outline, optionIndex: 1 }],
+    });
+    expect(built.status).toBe(201);
+  });
+
   it("builds a map with no choices at all, so a skipped question changes nothing else", async () => {
     const { db } = planDb([]);
     const { provider, prompts } = recorder(MAP);

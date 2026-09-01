@@ -151,8 +151,9 @@ export const TopicContentSettings = z.object({
  *
  * Optional and empty-by-default rather than required: the plan is one extra
  * model call in front of the map, so a build with no plan behind it must still
- * produce a map. That is also what keeps the server answering the old bundle for
- * the seconds between the migration and the deploy.
+ * produce a map. It is also what keeps a web client cached from before this
+ * shipped working — it posts no planId, and gets a map built the way it always
+ * was rather than a 400.
  */
 export const MapChoicesInput = z.object({
   planId: Id.optional(),
