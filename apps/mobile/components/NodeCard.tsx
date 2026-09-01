@@ -110,23 +110,30 @@ export function NodeCard({
         ))}
       </Card>
 
-      <Card className="gap-2">
-        <SectionTitle>Concretely</SectionTitle>
-        <Markdown text={content.example.setup} />
-        <Markdown
-          text={`→ ${content.example.result}`}
-          className="text-base leading-6 text-ink-soft"
-        />
-      </Card>
+      {/* Both of these are written only where the node has one. A heading over
+          the node restated in other words is worse than no heading: it promises
+          something new and delivers the paragraph just read. */}
+      {content.example === undefined ? null : (
+        <Card className="gap-2">
+          <SectionTitle>Concretely</SectionTitle>
+          <Markdown text={content.example.setup} />
+          <Markdown
+            text={`→ ${content.example.result}`}
+            className="text-base leading-6 text-ink-soft"
+          />
+        </Card>
+      )}
 
-      <Card className="gap-2">
-        <SectionTitle>What people get wrong</SectionTitle>
-        <Markdown
-          text={content.misconception.belief}
-          className="text-base leading-6 text-ink-soft"
-        />
-        <Markdown text={content.misconception.correction} />
-      </Card>
+      {content.misconception === undefined ? null : (
+        <Card className="gap-2">
+          <SectionTitle>What people get wrong</SectionTitle>
+          <Markdown
+            text={content.misconception.belief}
+            className="text-base leading-6 text-ink-soft"
+          />
+          <Markdown text={content.misconception.correction} />
+        </Card>
+      )}
 
       <JargonList terms={content.jargon} />
 

@@ -5,8 +5,12 @@ import {
   ContentStyle,
   DrillKind,
   LearningStyle,
+  MAX_MECHANISM_ITEMS,
   MAX_NODE_MINUTES,
+  MECHANISM_ITEM_WORDS,
+  MECHANISM_SHARE,
   MapLevels,
+  WORDS_PER_MINUTE,
   contentSettingsOf,
 } from "@interestled/schemas";
 import type {
@@ -235,23 +239,32 @@ const ANGLE_GUIDE: Record<CardAngle, string> = {
     "Focus on the edges: when this model is wrong, and what people hit in practice.",
 };
 
-/** Ordinary adult prose. Only used to turn the minutes into a length the model can aim at. */
-const WORDS_PER_MINUTE = 200;
+/** How many of a card's words are the mechanism, at this length. */
+function mechanismWords(minutes: number): number {
+  return Math.round(minutes * WORDS_PER_MINUTE * MECHANISM_SHARE);
+}
 
 /**
- * How many mechanism items a card of this length asks for. Length comes from the
- * number of them rather than from longer ones: a paragraph nobody reads is not
- * made readable by being one of five instead of one of ten (A1), and the slot
- * that carries the actual explanation is the one worth growing.
+ * How many mechanism items a card of this length asks for.
+ *
+ * It is the mechanism's own word budget divided by what one item is written to,
+ * because that is the only arithmetic under which the read time is honoured at
+ * all: a fixed count and a fixed item length between them already decide how
+ * long the card is, so naming a read time as well is asking for three things
+ * that cannot all be true — and the one that gave way was the read time. Length
+ * still arrives as more items rather than longer ones: a paragraph nobody reads
+ * is not made readable by being one of five instead of one of forty (A1).
+ *
+ * The range runs a quarter either side of the target, so the model can stop
+ * where the idea stops, and its top is held under MAX_MECHANISM_ITEMS — a count
+ * the prompt asks for and the schema then refuses is a card that fails
+ * validation for doing as it was told.
  */
 function mechanismItems(minutes: number): string {
-  if (minutes <= 3) {
-    return "1-5";
-  }
-  if (minutes <= 5) {
-    return "4-7";
-  }
-  return minutes <= 7 ? "5-9" : "7-12";
+  const target = mechanismWords(minutes) / MECHANISM_ITEM_WORDS;
+  const low = Math.max(1, Math.round(target * 0.75));
+  const high = Math.min(MAX_MECHANISM_ITEMS, Math.max(low + 2, Math.round(target * 1.25)));
+  return `${low}-${high}`;
 }
 
 /**
@@ -273,7 +286,7 @@ export function defaultCardSettings(
   };
 }
 
-/** Never zero (a branch), never past what the six slots can hold. */
+/** Never zero (a branch), never past what one card can hold. */
 export function cardMinutes(minutes: number): number {
   return Math.max(1, Math.min(minutes, CARD_MINUTES_MAX));
 }
@@ -309,6 +322,8 @@ export function cardPrompt(input: {
       averageReadTime: minutes,
     }),
     mechanismItems: mechanismItems(minutes),
+    itemWords: String(MECHANISM_ITEM_WORDS),
+    mechanismWords: String(mechanismWords(minutes)),
     readTime: minutesText(minutes),
     readWords: String(minutes * WORDS_PER_MINUTE),
   });
@@ -337,7 +352,11 @@ export function drillPrompt(input: {
     node: input.node.title,
     claim: input.card.claim,
     mechanism: input.card.mechanism.join(" "),
-    misconception: input.card.misconception.belief,
+    // A card written on a node with no wrong belief to correct has no
+    // misconception, and the empty string is what closes the block around it —
+    // the label with nothing after it is worse than no label, because the model
+    // answers it.
+    misconception: input.card.misconception?.belief ?? "",
     kind: input.kind,
     kindGuide: DRILL_GUIDE[input.kind],
   });
@@ -360,12 +379,19 @@ export function atomsPrompt(input: {
   card: CardContentT;
   content: TopicContentSettingsT;
 }): string {
+  const { example, misconception } = input.card;
   return render(promptFile("atoms"), {
     contentRules: contentRulesBlock(input.content),
     node: input.node.title,
     claim: input.card.claim,
     mechanism: input.card.mechanism.join(" "),
-    example: `${input.card.example.setup} → ${input.card.example.result}`,
-    misconception: `${input.card.misconception.belief} (in fact: ${input.card.misconception.correction})`,
+    // Both slots are written only where the node has one, so both lines are
+    // dropped rather than sent empty: review items are extracted from what the
+    // card actually said, and a labelled blank invites the model to fill it.
+    example: example === undefined ? "" : `${example.setup} → ${example.result}`,
+    misconception:
+      misconception === undefined
+        ? ""
+        : `${misconception.belief} (in fact: ${misconception.correction})`,
   });
 }

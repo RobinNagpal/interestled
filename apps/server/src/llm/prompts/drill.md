@@ -1,8 +1,8 @@
 Node: {{node}}
 Claim: {{claim}}
 Mechanism: {{mechanism}}
-Common misconception: {{misconception}}
-
+{{#misconception}}Common misconception: {{misconception}}
+{{/misconception}}
 {{contentRules}}
 Write one drill of kind "{{kind}}".
 {{kindGuide}}

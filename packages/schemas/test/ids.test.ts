@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { Id, newId } from "../src/ids";
 import { Email, Password } from "../src/auth";
-import { CARD_PROMPT_REVISION, CardAngle, CardContent, cardVariant } from "../src/cards";
+import {
+  CARD_MINUTES_MAX,
+  CARD_PROMPT_REVISION,
+  CardAngle,
+  CardContent,
+  MAX_MECHANISM_ITEMS,
+  MECHANISM_ITEM_WORDS,
+  MECHANISM_SHARE,
+  WORDS_PER_MINUTE,
+  cardVariant,
+} from "../src/cards";
 import {
   GeneratedThreeLevelMap,
   GeneratedTwoLevelMap,
@@ -72,13 +82,28 @@ describe("CardContent", () => {
 
   it("caps an item rather than the count, so length never becomes a wall of text", () => {
     // A ten-minute card is more items, never longer ones — a paragraph nobody
-    // reads is not made readable by being one of five instead of one of twelve.
-    const many = { ...valid, mechanism: Array.from({ length: 12 }, () => "line") };
+    // reads is not made readable by being one of five instead of one of forty.
+    const many = {
+      ...valid,
+      mechanism: Array.from({ length: MAX_MECHANISM_ITEMS }, () => "line"),
+    };
     expect(CardContent.safeParse(many).success).toBe(true);
-    const tooMany = { ...valid, mechanism: Array.from({ length: 13 }, () => "line") };
+    const tooMany = {
+      ...valid,
+      mechanism: Array.from({ length: MAX_MECHANISM_ITEMS + 1 }, () => "line"),
+    };
     expect(CardContent.safeParse(tooMany).success).toBe(false);
-    const tooLong = { ...valid, mechanism: ["x".repeat(601)] };
+    const tooLong = { ...valid, mechanism: ["x".repeat(501)] };
     expect(CardContent.safeParse(tooLong).success).toBe(false);
+  });
+
+  it("holds enough items for the mechanism's share of the longest card", () => {
+    // The read time is honoured by the item count, so the count the prompt asks
+    // for at ten minutes must be a count the schema accepts. If this drops below
+    // what mechanismItems returns, a card fails validation for doing as it was
+    // told — which is the failure this cap exists to make impossible.
+    const words = CARD_MINUTES_MAX * WORDS_PER_MINUTE * MECHANISM_SHARE;
+    expect(MAX_MECHANISM_ITEMS).toBeGreaterThanOrEqual(Math.round(words / MECHANISM_ITEM_WORDS));
   });
 
   it("keys a cached card by everything that changes how it is written", () => {
@@ -99,9 +124,26 @@ describe("CardContent", () => {
     expect(cardVariant(base)).toContain(`r${CARD_PROMPT_REVISION}`);
   });
 
-  it("requires the misconception — the slot exists to force it to be written", () => {
-    const { misconception: _omitted, ...without } = valid;
-    expect(CardContent.safeParse(without).success).toBe(false);
+  it("takes a card with no example and no misconception", () => {
+    // A node that is itself one case has no second case to instantiate it with,
+    // and a descriptive node has no wrong belief to correct. Demanding both
+    // anyway is what put the node back on the screen under a heading promising
+    // something new — the padding this optionality exists to stop.
+    const { example: _e, misconception: _m, ...bare } = valid;
+    expect(CardContent.safeParse(bare).success).toBe(true);
+  });
+
+  it("still requires the claim and the mechanism, which are the card", () => {
+    const { claim: _c, ...noClaim } = valid;
+    expect(CardContent.safeParse(noClaim).success).toBe(false);
+    expect(CardContent.safeParse({ ...valid, mechanism: [] }).success).toBe(false);
+  });
+
+  it("refuses a half-written optional slot rather than dropping the half", () => {
+    // Optional is the whole object or none of it: a belief with no correction
+    // is a wrong statement on the screen with nothing answering it.
+    const halfway = { ...valid, misconception: { belief: "b" } };
+    expect(CardContent.safeParse(halfway).success).toBe(false);
   });
 });
 

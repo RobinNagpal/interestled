@@ -334,15 +334,26 @@ on the map ever locks — a missing prerequisite is a note you can walk past, no
 
 ### Concept card
 
-One concept, one screen, and always the same six slots: a one-line claim, one visual,
-three to five sentences of mechanism, one worked example with real numbers, the thing
-people usually get wrong, and the depth buttons. Keeping the shape identical everywhere
-means the eye stops hunting for where the point is and starts reading the point.
+One concept, one screen, and always the same slots in the same order: a one-line claim,
+the mechanism in short sentences, one worked example with real numbers, the thing people
+usually get wrong, and the depth buttons. Keeping the shape identical everywhere means
+the eye stops hunting for where the point is and starts reading the point.
 
 It also forces the generator to produce the two parts that are normally missing — the
 *mechanism*, not just the definition, and the *misconception*, which is where most of
 the real learning happens. The card opens on the claim, so the answer arrives before any
 context does.
+
+The example and the misconception are written where they apply rather than always. A
+node that is itself one case — a historical episode, one text, one event — has no second
+case to instantiate itself with, so the example slot came back as the node restated
+under a heading promising something new; a purely descriptive node has no wrong belief
+to correct, so the misconception came back carrying the topic's headline mistake for the
+fourth card running. Neither is a shape the schema could have caught, because both are
+valid cards made of padding, and padding is the thing the fixed shape was meant to
+prevent. So the two slots stay in the prompt as slots to be earned, with the test for
+earning them stated — and a card with no example is drawn with no example section, not
+with an empty one.
 
 Each card is written into the map rather than beside it: the generator is given every
 heading of the topic, in reading order, with the node it is writing marked, plus what
@@ -354,7 +365,7 @@ this way" and "what people get wrong" both pull towards whatever the topic as a 
 about. Nothing true of the whole topic may sit on one node of it: if a sentence would
 serve a neighbouring node equally well, it belongs on neither.
 
-The six slots are also one explanation rather than six notes about the same subject.
+The slots are also one explanation rather than separate notes about the same subject.
 The mechanism items run in order, each starting from what the one above it
 established; the example is that mechanism happening on one case, in the same words
 for the same things; the misconception is a belief a reader could still hold having
@@ -368,11 +379,19 @@ disconnected fragments the guideline exists to prevent. Cards are cached forever
 changing any of this reaches nobody until the prompt revision in the cache key moves.
 
 How long a card runs is the learner's setting, not a constant. Ten minutes a node means
-roughly two thousand words, which arrives as more mechanism items rather than longer
-ones — a paragraph nobody reads is not made readable by being one of five instead of one
-of twelve. Changing the setting moves the map's own minute estimates with it, scaled so
-a node the model judged twice its neighbours stays twice its neighbours: a card written
-to ten minutes under a map still promising three is the map lying about time.
+roughly two thousand words, of which four fifths are the mechanism — it is the slot that
+explains, so it is the slot that gets the time, and splitting the minutes evenly is what
+made a long card arrive as four sections of throat-clearing around two minutes of
+explanation. That share is then divided by what one item is written to (two short
+sentences, about forty-five words) to get the number of items asked for, because a fixed
+count and a fixed item length between them already decide how long a card is: naming a
+read time as well is asking for three things that cannot all be true, and the read time
+was the one that gave way. Length therefore still arrives as more items rather than
+longer ones — a paragraph nobody reads is not made readable by being one of five instead
+of one of forty. Changing the setting moves the map's own minute estimates with it,
+scaled so a node the model judged twice its neighbours stays twice its neighbours: a
+card written to ten minutes under a map still promising three is the map lying about
+time.
 
 What comes back is Markdown, and it is drawn as Markdown — `kubectl get pods` set as
 code, a list of parallel items set as a list. The alternative is the marks themselves on
