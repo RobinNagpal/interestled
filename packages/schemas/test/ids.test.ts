@@ -6,8 +6,8 @@ import {
   CARD_PROMPT_REVISION,
   CardAngle,
   CardContent,
-  MAX_MECHANISM_ITEMS,
-  MECHANISM_ITEM_WORDS,
+  MAX_MECHANISM_SECTIONS,
+  MECHANISM_SECTION_WORDS,
   MECHANISM_SHARE,
   WORDS_PER_MINUTE,
   cardVariant,
@@ -73,9 +73,10 @@ describe("Password", () => {
 });
 
 describe("CardContent", () => {
+  const section = { heading: "Why it holds", body: "Because of this." };
   const valid = {
     claim: "A claim.",
-    mechanism: ["Because of this."],
+    mechanism: [section],
     example: { setup: "s", result: "r" },
     misconception: { belief: "b", correction: "c" },
     jargon: [],
@@ -85,30 +86,47 @@ describe("CardContent", () => {
     expect(CardContent.safeParse(valid).success).toBe(true);
   });
 
-  it("caps an item rather than the count, so length never becomes a wall of text", () => {
-    // A ten-minute card is more items, never longer ones — a paragraph nobody
-    // reads is not made readable by being one of five instead of one of forty.
+  it("caps a section rather than the count, so length never becomes a wall of text", () => {
+    // A ten-minute card is more sections, never longer ones — a wall of text is
+    // not made readable by being one of five instead of one of twenty.
     const many = {
       ...valid,
-      mechanism: Array.from({ length: MAX_MECHANISM_ITEMS }, () => "line"),
+      mechanism: Array.from({ length: MAX_MECHANISM_SECTIONS }, () => section),
     };
     expect(CardContent.safeParse(many).success).toBe(true);
     const tooMany = {
       ...valid,
-      mechanism: Array.from({ length: MAX_MECHANISM_ITEMS + 1 }, () => "line"),
+      mechanism: Array.from({ length: MAX_MECHANISM_SECTIONS + 1 }, () => section),
     };
     expect(CardContent.safeParse(tooMany).success).toBe(false);
-    const tooLong = { ...valid, mechanism: ["x".repeat(501)] };
+    const tooLong = { ...valid, mechanism: [{ ...section, body: "x".repeat(801) }] };
     expect(CardContent.safeParse(tooLong).success).toBe(false);
   });
 
-  it("holds enough items for the mechanism's share of the longest card", () => {
-    // The read time is honoured by the item count, so the count the prompt asks
-    // for at ten minutes must be a count the schema accepts. If this drops below
-    // what mechanismItems returns, a card fails validation for doing as it was
-    // told — which is the failure this cap exists to make impossible.
+  it("wants a heading over every paragraph, and a paragraph under every heading", () => {
+    // Half a section is worse than none: a heading with nothing under it is a
+    // promise the card does not keep, and a paragraph with no heading breaks the
+    // run of them the reader is using to navigate.
+    expect(CardContent.safeParse({ ...valid, mechanism: [{ heading: "H" }] }).success).toBe(false);
+    expect(CardContent.safeParse({ ...valid, mechanism: [{ body: "B" }] }).success).toBe(false);
+    // And the shape it replaced, so an old cached row cannot be read as a new one.
+    expect(CardContent.safeParse({ ...valid, mechanism: ["Because of this."] }).success).toBe(false);
+  });
+
+  it("keeps a heading short enough to be one, rather than a sentence in bold", () => {
+    const sentence = { ...section, heading: "x".repeat(81) };
+    expect(CardContent.safeParse({ ...valid, mechanism: [sentence] }).success).toBe(false);
+  });
+
+  it("holds enough sections for the mechanism's share of the longest card", () => {
+    // The read time is honoured by the section count, so the count the prompt
+    // asks for at ten minutes must be a count the schema accepts. If this drops
+    // below what mechanismSections returns, a card fails validation for doing as
+    // it was told — which is the failure this cap exists to make impossible.
     const words = CARD_MINUTES_MAX * WORDS_PER_MINUTE * MECHANISM_SHARE;
-    expect(MAX_MECHANISM_ITEMS).toBeGreaterThanOrEqual(Math.round(words / MECHANISM_ITEM_WORDS));
+    expect(MAX_MECHANISM_SECTIONS).toBeGreaterThanOrEqual(
+      Math.round(words / MECHANISM_SECTION_WORDS),
+    );
   });
 
   it("keys a cached card by everything that changes how it is written", () => {

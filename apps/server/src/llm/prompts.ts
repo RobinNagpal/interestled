@@ -4,9 +4,9 @@ import {
   DrillKind,
   EnglishLevel,
   LearningStyle,
-  MAX_MECHANISM_ITEMS,
+  MAX_MECHANISM_SECTIONS,
   MAX_NODE_MINUTES,
-  MECHANISM_ITEM_WORDS,
+  MECHANISM_SECTION_WORDS,
   MECHANISM_SHARE,
   MapLevels,
   TechnicalDetail,
@@ -328,25 +328,25 @@ function mechanismWords(minutes: number): number {
 }
 
 /**
- * How many mechanism items a card of this length asks for.
+ * How many mechanism sections a card of this length asks for.
  *
- * It is the mechanism's own word budget divided by what one item is written to,
- * because that is the only arithmetic under which the read time is honoured at
- * all: a fixed count and a fixed item length between them already decide how
- * long the card is, so naming a read time as well is asking for three things
+ * It is the mechanism's own word budget divided by what one section is written
+ * to, because that is the only arithmetic under which the read time is honoured
+ * at all: a fixed count and a fixed section length between them already decide
+ * how long the card is, so naming a read time as well is asking for three things
  * that cannot all be true — and the one that gave way was the read time. Length
- * still arrives as more items rather than longer ones: a paragraph nobody reads
- * is not made readable by being one of five instead of one of forty (A1).
+ * still arrives as more sections rather than longer ones: a wall of text is not
+ * made readable by being one of five instead of one of twenty (A1).
  *
  * The range runs a quarter either side of the target, so the model can stop
- * where the idea stops, and its top is held under MAX_MECHANISM_ITEMS — a count
- * the prompt asks for and the schema then refuses is a card that fails
+ * where the idea stops, and its top is held under MAX_MECHANISM_SECTIONS — a
+ * count the prompt asks for and the schema then refuses is a card that fails
  * validation for doing as it was told.
  */
-function mechanismItems(minutes: number): string {
-  const target = mechanismWords(minutes) / MECHANISM_ITEM_WORDS;
+function mechanismSections(minutes: number): string {
+  const target = mechanismWords(minutes) / MECHANISM_SECTION_WORDS;
   const low = Math.max(1, Math.round(target * 0.75));
-  const high = Math.min(MAX_MECHANISM_ITEMS, Math.max(low + 2, Math.round(target * 1.25)));
+  const high = Math.min(MAX_MECHANISM_SECTIONS, Math.max(low + 2, Math.round(target * 1.25)));
   return `${low}-${high}`;
 }
 
@@ -382,12 +382,24 @@ export function cardPrompt(input: {
       contentInstructions: input.topic.contentInstructions,
       averageReadTime: minutes,
     }),
-    mechanismItems: mechanismItems(minutes),
-    itemWords: String(MECHANISM_ITEM_WORDS),
+    mechanismSections: mechanismSections(minutes),
+    sectionWords: String(MECHANISM_SECTION_WORDS),
     mechanismWords: String(mechanismWords(minutes)),
     readTime: minutesText(minutes),
     readWords: String(minutes * WORDS_PER_MINUTE),
   });
+}
+
+/**
+ * The mechanism as one block of prose for the calls downstream of the card.
+ *
+ * A drill and a review item are written against what the card said, not against
+ * how it was laid out, so the headings go in with the bodies — dropping them
+ * would lose the step each paragraph is about, and sending them as a list would
+ * offer the model a shape to copy that has nothing to do with a drill.
+ */
+function mechanismProse(card: CardContentT): string {
+  return card.mechanism.map((section) => `${section.heading}. ${section.body}`).join(" ");
 }
 
 const DRILL_GUIDE: Record<DrillKind, string> = {
@@ -412,7 +424,7 @@ export function drillPrompt(input: {
     contentRules: contentRulesBlock(input.content),
     node: input.node.title,
     claim: input.card.claim,
-    mechanism: input.card.mechanism.join(" "),
+    mechanism: mechanismProse(input.card),
     // A card written on a node with no wrong belief to correct has no
     // misconception, and the empty string is what closes the block around it —
     // the label with nothing after it is worse than no label, because the model
@@ -445,7 +457,7 @@ export function atomsPrompt(input: {
     contentRules: contentRulesBlock(input.content),
     node: input.node.title,
     claim: input.card.claim,
-    mechanism: input.card.mechanism.join(" "),
+    mechanism: mechanismProse(input.card),
     // Both slots are written only where the node has one, so both lines are
     // dropped rather than sent empty: review items are extracted from what the
     // card actually said, and a labelled blank invites the model to fill it.

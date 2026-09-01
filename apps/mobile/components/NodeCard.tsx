@@ -15,6 +15,7 @@ import {
   Button,
   Card,
   DEPTH_COPY,
+  Disclosure,
   ErrorState,
   InlineMarkdown,
   ENGLISH_COPY,
@@ -123,13 +124,18 @@ export function NodeCard({
         </View>
       ) : null}
 
-      {/* Paragraph spacing, not list spacing: the items are one argument in
-          order, each starting from what the one above it established, and the
-          airier gap the other sections use reads them as separate notes. */}
-      <Card className="gap-2">
+      {/* One card rather than one per section: the sections are a single
+          argument in order, and boxing each of them draws the seams the prompt
+          spends its length trying to write across. The heading is set as a
+          heading and never parsed as Markdown — it is a title, like every other
+          title in the product. */}
+      <Card className="gap-4">
         <SectionTitle>Why it behaves this way</SectionTitle>
-        {content.mechanism.map((line, index) => (
-          <Markdown key={index} text={line} />
+        {content.mechanism.map((section, index) => (
+          <View key={index} className="gap-1">
+            <Text className="text-base font-semibold text-ink">{section.heading}</Text>
+            <Markdown text={section.body} />
+          </View>
         ))}
       </Card>
 
@@ -261,16 +267,20 @@ function CardControls({
   const longer = readTimeAfter(settings.minutes, Step.Up, CARD_MINUTES_MAX);
 
   return (
-    <Card className="gap-4">
-      <View className="flex-row items-center justify-between">
-        <SectionTitle>How this card is written</SectionTitle>
-        {rewriting ? (
-          <View className="flex-row items-center gap-2">
-            <ActivityIndicator color="#2563eb" />
-            <Text className="text-xs text-ink-soft">Rewriting…</Text>
-          </View>
-        ) : null}
-      </View>
+    <Disclosure
+      title="How this card is written"
+      // What the closed row says about what is inside. Folding the panel away
+      // behind a title alone would make it something the reader has to open to
+      // find out whether it holds anything they want — and this is also the one
+      // place the settings the card was actually written to are ever stated.
+      summary={rewriting ? "Rewriting…" : settingsSummary(settings)}
+    >
+      {rewriting ? (
+        <View className="flex-row items-center gap-2">
+          <ActivityIndicator color="#2563eb" />
+          <Text className="text-xs text-ink-soft">Writing the next one…</Text>
+        </View>
+      ) : null}
 
       <ControlRow
         title="Depth"
@@ -361,6 +371,6 @@ function CardControls({
       {/* The way back, which the old panel had no version of: once a card had
           been asked for a different way there was no returning to the plain one. */}
       {changed ? <Button label="Back to how the topic is written" tone="quiet" onPress={onReset} /> : null}
-    </Card>
+    </Disclosure>
   );
 }

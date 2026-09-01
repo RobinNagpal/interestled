@@ -38,15 +38,21 @@ restating it.
 
 **claim** — required. One sentence: the answer, before any context.
 
-**mechanism** — required, {{mechanismItems}} items, in order, on why it behaves this way.
+**mechanism** — required, {{mechanismSections}} sections of `{"heading", "body"}`, in
+order, on why it behaves this way. Each is a short paragraph with a name over it.
 
-- Short sentences. One or two per item, about {{itemWords}} words, never a paragraph.
-  The card gets longer by having more items, not longer ones.
-- Each item starts from what the one before it established. If the items could be
-  shuffled without a reader noticing, they are a list rather than an explanation.
-- Never label an item. No term followed by a colon, no bolded opener naming what
-  the item is about: write "The Reichsbank bought bills with printed marks", not
-  "Central bank monetization: the Reichsbank bought bills with printed marks".
+- The body is two to four short sentences, about {{sectionWords}} words. Never longer:
+  the card gets longer by having more sections, not bigger ones.
+- Each sentence follows from the one before it. Keep the words that join them — so,
+  which means, until, that is why — and never open a body by restating its own heading.
+- Each section starts from what the one above it established, and the first one starts
+  where the claim stopped. If the sections could be reordered without a reader
+  noticing, they are a glossary rather than an explanation: reorder and rewrite until
+  each one needs the one above it.
+- The heading says what this step of the argument does, in plain text and at most six
+  words. "Why the printing could not stop" is a heading; "Central bank monetization"
+  is a label on a term, which is what makes the card read as a list of definitions.
+  Plain text, so no `**` or backticks in it — the body is where Markdown goes.
 
 **example** — `{"setup", "result"}`. Only where this node states a general rule and the
 example is a different case the rule runs on: one concrete case with real values, that
@@ -66,4 +72,4 @@ depth. Empty array if you used none.
 
 Leave `example` or `misconception` out of the JSON entirely rather than filling it.
 
-Return JSON: {"claim","mechanism":[],"example":{"setup","result"},"misconception":{"belief","correction"},"jargon":[{"term","gloss"}]}
+Return JSON: {"claim","mechanism":[{"heading","body"}],"example":{"setup","result"},"misconception":{"belief","correction"},"jargon":[{"term","gloss"}]}

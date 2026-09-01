@@ -95,8 +95,9 @@ export type CardSettingsT = z.infer<typeof CardSettings>;
  *    misconception are written only where they apply.
  * 4: how hard the English is and how much terminology appears are asked
  *    separately, so the same card reads differently under either answer.
+ * 5: the mechanism is headed sections rather than a run of unlabelled items.
  */
-export const CARD_PROMPT_REVISION = 4;
+export const CARD_PROMPT_REVISION = 5;
 
 /**
  * The cache key's variant half. Depth has a column of its own, so this carries
@@ -129,17 +130,47 @@ export const WORDS_PER_MINUTE = 200;
  */
 export const MECHANISM_SHARE = 0.8;
 
-/** What one mechanism item is written to: two short sentences. */
-export const MECHANISM_ITEM_WORDS = 45;
+/**
+ * What one mechanism section is written to: a heading and a short paragraph
+ * under it, two to four sentences long.
+ *
+ * It was 45 — one unlabelled item — and a ten-minute card was then thirty-odd
+ * of them running down the screen with nothing to navigate by. A heading every
+ * forty-five words is not a document, it is a glossary; at eighty there is a
+ * paragraph under each one worth giving a name to.
+ */
+export const MECHANISM_SECTION_WORDS = 80;
 
 /**
- * The most items a card may carry: the mechanism's share of the longest card,
+ * The most sections a card may carry: the mechanism's share of the longest card,
  * plus the quarter the prompt's range runs over its target. Derived rather than
  * chosen, so a count the prompt asks for can never be one the schema refuses.
  */
-export const MAX_MECHANISM_ITEMS = Math.ceil(
-  ((CARD_MINUTES_MAX * WORDS_PER_MINUTE * MECHANISM_SHARE) / MECHANISM_ITEM_WORDS) * 1.25,
+export const MAX_MECHANISM_SECTIONS = Math.ceil(
+  ((CARD_MINUTES_MAX * WORDS_PER_MINUTE * MECHANISM_SHARE) / MECHANISM_SECTION_WORDS) * 1.25,
 );
+
+/**
+ * One step of the explanation: what this part is, and the part itself.
+ *
+ * The heading is plain text, like every other title in the product — it is set
+ * as a heading rather than parsed as one, so a `**bold**` in it would render as
+ * asterisks. The body is Markdown like the rest of the card.
+ *
+ * The pair replaced a bare string, and the rule the bare string needed goes with
+ * it: `card.md` used to ban `Central bank monetization: the Reichsbank bought…`,
+ * a heading glued to a sentence, because that is what a model reaches for when
+ * asked for separate items with nowhere to put a name. Now there is somewhere to
+ * put it. What the prompt has to keep saying is the other half — that the
+ * sections are still one argument in order, not entries in a glossary that
+ * happen to share a subject.
+ */
+const MechanismSection = z.object({
+  heading: z.string().min(1).max(80),
+  body: z.string().min(1).max(800),
+});
+
+export type MechanismSectionT = z.infer<typeof MechanismSection>;
 
 /**
  * The card's slots, in the order they are read. The shape stays identical
@@ -162,12 +193,12 @@ export const MAX_MECHANISM_ITEMS = Math.ceil(
 export const CardContent = z.object({
   claim: z.string().min(1).max(300),
   /**
-   * Short sentences, and length arrives as more of them: a paragraph nobody
-   * reads is not made readable by being one of five rather than one of forty.
-   * The cap is roughly twice what the prompt asks an item to be, so it binds on
-   * a runaway paragraph and on nothing else.
+   * Short paragraphs under headings, and length arrives as more of them: a wall
+   * of text is not made readable by being one of five rather than one of forty.
+   * The body cap is well above what the prompt asks a section to be, so it binds
+   * on a runaway paragraph and on nothing else.
    */
-  mechanism: z.array(z.string().min(1).max(500)).min(1).max(MAX_MECHANISM_ITEMS),
+  mechanism: z.array(MechanismSection).min(1).max(MAX_MECHANISM_SECTIONS),
   example: z
     .object({
       setup: z.string().min(1).max(1500),

@@ -363,8 +363,8 @@ on the map ever locks — a missing prerequisite is a note you can walk past, no
 ### Concept card
 
 One concept, one screen, and always the same slots in the same order: a one-line claim,
-the mechanism in short sentences, one worked example with real numbers, the thing people
-usually get wrong, and the depth buttons. Keeping the shape identical everywhere means
+the mechanism as short paragraphs under headings, one worked example with real numbers,
+the thing people usually get wrong, and the controls. Keeping the shape identical everywhere means
 the eye stops hunting for where the point is and starts reading the point.
 
 It also forces the generator to produce the two parts that are normally missing — the
@@ -393,28 +393,36 @@ this way" and "what people get wrong" both pull towards whatever the topic as a 
 about. Nothing true of the whole topic may sit on one node of it: if a sentence would
 serve a neighbouring node equally well, it belongs on neither.
 
+The mechanism is headed sections — a short paragraph with a name over it — because a
+ten-minute card was otherwise thirty unlabelled paragraphs running down the screen with
+nothing to navigate by, and a reader who looks away loses their place with no way to
+find it again. A heading every forty-five words would be a glossary; at eighty there is
+a paragraph under each one worth giving a name to.
+
 The slots are also one explanation rather than separate notes about the same subject.
-The mechanism items run in order, each starting from what the one above it
-established; the example is that mechanism happening on one case, in the same words
-for the same things; the misconception is a belief a reader could still hold having
-read both, corrected by pointing back at the step that rules it out. Two habits break
-this, and both had to be named explicitly. A model asked for "separate" items answers
-with headings glued to sentences — *Central bank monetization: the Reichsbank bought
-bills with printed marks* — which reads as a glossary, not an argument. And "delete
-recaps and transitions" (A17) is about the three minutes of *last time we covered*;
-taken as a ban on the half-clause that joins two sentences, it produces exactly the
-disconnected fragments the guideline exists to prevent. Cards are cached forever, so
+The sections run in order, each starting from what the one above it established; the
+example is that mechanism happening on one case, in the same words for the same things;
+the misconception is a belief a reader could still hold having read both, corrected by
+pointing back at the step that rules it out. Two habits break this, and both had to be
+named explicitly. A heading is the step of the argument the paragraph makes, not the
+name of a term: headings like *Central bank monetization* turn the card into a list of
+definitions, and the paragraphs under them stop needing each other, which is the same
+failure the old ban on gluing a name to a sentence was guarding against when there was
+nowhere else to put one. And "delete recaps and transitions" (A17) is about the three
+minutes of *last time we covered*; taken as a ban on the half-clause that joins two
+sentences, it produces exactly the disconnected fragments the guideline exists to
+prevent — inside a section as much as between them. Cards are cached forever, so
 changing any of this reaches nobody until the prompt revision in the cache key moves.
 
 How long a card runs is the learner's setting, not a constant. Ten minutes a node means
 roughly two thousand words, of which four fifths are the mechanism — it is the slot that
-explains, so it is the slot that gets the time. That share divided by what one item is
-written to (two short sentences, about forty-five words) is the number of items asked
-for, because a fixed count and a fixed item length between them already decide how long
-a card is: naming a read time as well was asking for three things that cannot all be
-true, and the read time was the one that gave way. Length therefore still arrives as
-more items rather than longer ones — a paragraph nobody reads is not made readable by being one of five instead
-of one of forty. Changing the setting moves the map's own minute estimates with it,
+explains, so it is the slot that gets the time. That share divided by what one section
+is written to (a heading and two to four short sentences, about eighty words) is the
+number of sections asked for, because a fixed count and a fixed section length between
+them already decide how long a card is: naming a read time as well was asking for three
+things that cannot all be true, and the read time was the one that gave way. Length
+therefore still arrives as more sections rather than longer ones — a wall of text is not
+made readable by being one of five instead of one of twenty. Changing the setting moves the map's own minute estimates with it,
 scaled so a node the model judged twice its neighbours stays twice its neighbours: a
 card written to ten minutes under a map still promising three is the map lying about
 time.
@@ -436,10 +444,19 @@ the screen, which is the app showing its working.
 
 Everything that decides how a card comes out sits under it: how deep it goes, how long
 it takes to read, how hard the English is, how much terminology it carries, whether it
-is prose or notes, and which angle it is written from. Each one is a setting the
-generator actually reads, and the panel states where the card in front of you stands on
-each — *Depth 3 of 5 · the mechanism*, *about 5 min*. A control that cannot say what it
-changed is one the reader concludes is broken, which is what a row of five
+is prose or notes, and which angle it is written from. Six rows of chips is a second
+screen under the first, and most readers want none of it most of the time — so it is
+folded away, and the closed row says what the card in front of them was written to:
+*How this card is written — depth 3 of 5 — the mechanism · about 5 min · medium
+English · some detail*. That is the difference between a panel and a drawer labelled
+*Settings*: a drawer has to be opened to find out whether it holds anything you want,
+and this one answers the question from outside. It is also the only place the settings
+a card was actually written to are stated once the card has arrived.
+
+Opened, each one is a setting the generator actually reads, and the panel states where
+the card stands on each — *Depth 3 of 5 · the mechanism*, *about 5 min*. A control that
+cannot say what it changed is one the reader concludes is broken, which is what a row of
+five
 identical-looking buttons became: two of them did nothing at the ends of the scale, and
 a press that refetches an identical card is indistinguishable from a press that does
 nothing at all. A step that has nowhere left to go is now drawn as spent rather than
