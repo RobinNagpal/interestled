@@ -28,6 +28,7 @@ export function defaultCardSettings(
     englishLevel: topic.englishLevel,
     technicalDetail: topic.technicalDetail,
     format: topic.format,
+    paragraphLength: topic.paragraphLength,
     angle: CardAngle.Base,
   };
 }

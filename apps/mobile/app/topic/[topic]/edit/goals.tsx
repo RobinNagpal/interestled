@@ -5,17 +5,9 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import { useTopic, useUpdateTopicInfo } from "@interestled/api";
 import { editHref } from "@interestled/domain";
 import { Button, ErrorState, Input, LoadingContent } from "@interestled/ui";
-import { TimeBudget } from "@interestled/schemas";
 import type { TopicT } from "@interestled/schemas";
 import { messageOf } from "../../../../lib/errors";
 import { backHeader, goBack } from "../../../../lib/nav";
-import { ChipRow } from "../../../../components/ChipRow";
-
-const BUDGETS: { value: TimeBudget; label: string }[] = [
-  { value: TimeBudget.Quick, label: "20 minutes" },
-  { value: TimeBudget.Week, label: "A week" },
-  { value: TimeBudget.Ongoing, label: "Ongoing" },
-];
 
 /**
  * The create screen's answers, after the fact. They were asked once and then
@@ -72,11 +64,10 @@ function GoalsForm({ topicSlug, topic }: { topicSlug: string; topic: TopicT }): 
   const [summary, setSummary] = useState(topic.summary);
   const [goal, setGoal] = useState(topic.goal);
   const [level, setLevel] = useState(topic.level);
-  const [timeBudget, setTimeBudget] = useState<TimeBudget>(topic.timeBudget);
 
   const submit = (): void => {
     save.mutate(
-      { title, summary, goal, level, timeBudget },
+      { title, summary, goal, level },
       // Back to the hub, not another copy of it pushed on top.
       { onSuccess: () => goBack(editHref(topicSlug)) },
     );
@@ -108,14 +99,9 @@ function GoalsForm({ topicSlug, topic }: { topicSlug: string; topic: TopicT }): 
         onChangeText={setLevel}
         multiline
         maxLength={600}
-        placeholder={"I use Docker daily\nNever run anything in production\nWant to own a small cluster"}
-        hint="This is the answer that saves you the most time."
+        placeholder={"I use Docker daily\nI have never run anything in production"}
+        hint="This is the answer that saves you the most time — it is what gets left out."
       />
-      <View className="gap-2">
-        <Text className="text-sm font-medium text-ink-soft">How much time have you got?</Text>
-        <ChipRow options={BUDGETS} selected={timeBudget} onSelect={(value) => setTimeBudget(value)} />
-      </View>
-
       <Text className="text-sm text-ink-faint">
         The map you already have stays exactly as it is, with everything you have done on it. These
         answers are read the next time something is built.

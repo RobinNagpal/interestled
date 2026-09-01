@@ -3,15 +3,10 @@ import {
   CardContent,
   GeneratedAtom,
   GeneratedLeafChildren,
-  GeneratedSectionChildren,
-  GeneratedThreeLevelMap,
   GeneratedTwoLevelMap,
-  MapLevels,
   MapQuestionSet,
   Verdict,
   flattenLeafChildren,
-  flattenSectionChildren,
-  flattenThreeLevelMap,
   flattenTwoLevelMap,
 } from "@interestled/schemas";
 import type {
@@ -24,6 +19,7 @@ import type {
   GeneratedMapT,
   LearningNodeT,
   MapQuestionT,
+  MapShapeT,
   ProfileT,
   TopicContentSettingsT,
   TopicT,
@@ -71,14 +67,14 @@ const MAP_OUTPUT_TOKENS = 32768;
 export interface MapInput {
   title: string;
   goal: string;
-  timeBudget: string;
   level: string;
-  levels: MapLevels;
+  /** The counts the schema will hold the reply to. */
+  shape: MapShapeT;
+  /** The learner's instruction lines, seeded from that shape and then theirs. */
+  mapInstructions: string;
   profile: ProfileT;
   /** How this topic is written: register, standing instructions, and node length. */
   content: TopicContentSettingsT;
-  /** What to change, when the learner asked for the map again. "" the first time. */
-  instructions: string;
   /** The seven answers, resolved. Empty when the learner skipped every one. */
   answered: readonly AnsweredQuestionT[];
 }
@@ -88,14 +84,11 @@ const QuestionList = z.object({ questions: MapQuestionSet });
 export interface MapQuestionsInput {
   title: string;
   goal: string;
-  timeBudget: string;
   level: string;
-  levels: MapLevels;
   profile: ProfileT;
   content: TopicContentSettingsT;
-  instructions: string;
-  /** The map being replaced, on a rebuild. Empty when the topic is new. */
-  current: readonly LearningNodeT[];
+  /** The instruction lines, so the options fit the map actually being asked for. */
+  mapInstructions: string;
 }
 
 /**
@@ -126,28 +119,16 @@ export async function generateMapQuestions(
 }
 
 /**
- * The map, nested as deep as the learner asked for. The two level counts are
- * separate schemas rather than one recursive shape: a recursive schema would let
- * the model return four levels or one, and the whole point of the question on
- * the create screen is that the answer is honoured. Each is flattened into rows
- * here, so nothing downstream has to know which shape came back.
+ * The map: headings, and the nodes under each. One shape rather than two — the
+ * heading counts say how wide and how many, which is what the level count used
+ * to be gesturing at, and a schema per level count was a second place for the
+ * same question to be answered differently.
  */
 export async function generateMap(provider: LlmProvider, input: MapInput): Promise<GeneratedMapT> {
-  const prompt = mapPrompt(input);
-  if (input.levels === MapLevels.Three) {
-    return flattenThreeLevelMap(
-      await generateJson(provider, {
-        system: SYSTEM,
-        prompt,
-        schema: GeneratedThreeLevelMap,
-        maxOutputTokens: MAP_OUTPUT_TOKENS,
-      }),
-    );
-  }
   return flattenTwoLevelMap(
     await generateJson(provider, {
       system: SYSTEM,
-      prompt,
+      prompt: mapPrompt(input),
       schema: GeneratedTwoLevelMap,
       maxOutputTokens: MAP_OUTPUT_TOKENS,
     }),
@@ -160,15 +141,14 @@ export interface SubtreeInput {
   trail: readonly string[];
   claim: string;
   siblingTitles: readonly string[];
-  /** How many levels sit below this group: 1 for nodes, 2 for groups of nodes. */
-  childLevels: number;
   profile: ProfileT;
   instructions: string;
 }
 
 /**
- * Everything under one group, rebuilt. Returned flat and relative to the parent,
- * with depths already set, so the caller only has to attach it.
+ * The nodes under one heading, rebuilt. Returned flat and relative to the
+ * parent, with depths already set, so the caller only has to attach it. A map is
+ * two levels, so what hangs under a heading is always nodes.
  */
 export async function generateSubtree(
   provider: LlmProvider,
@@ -176,23 +156,10 @@ export async function generateSubtree(
   parentKey: string,
   childDepth: number,
 ): Promise<GeneratedMapNodeT[]> {
-  const prompt = subtreePrompt(input);
-  if (input.childLevels >= 2) {
-    return flattenSectionChildren(
-      await generateJson(provider, {
-        system: SYSTEM,
-        prompt,
-        schema: GeneratedSectionChildren,
-        maxOutputTokens: MAP_OUTPUT_TOKENS,
-      }),
-      parentKey,
-      childDepth,
-    );
-  }
   return flattenLeafChildren(
     await generateJson(provider, {
       system: SYSTEM,
-      prompt,
+      prompt: subtreePrompt(input),
       schema: GeneratedLeafChildren,
       maxOutputTokens: MAP_OUTPUT_TOKENS,
     }),

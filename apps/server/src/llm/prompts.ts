@@ -8,13 +8,20 @@ import {
   MAX_NODE_MINUTES,
   MECHANISM_SECTION_WORDS,
   MECHANISM_SHARE,
-  MapLevels,
+  MapDepth,
+  PARAGRAPH_SENTENCES,
+  mapShapeOf,
+  totalMinutes,
   TechnicalDetail,
   WORDS_PER_MINUTE,
   contentSettingsOf,
 } from "@interestled/schemas";
 import type {
   AnsweredQuestionT,
+  ParagraphLength,
+  MapShapeT,
+  MinutesPerDay,
+  StudyDays,
   CardContentT,
   CardSettingsT,
   LearningNodeT,
@@ -24,7 +31,7 @@ import type {
   TopicT,
 } from "@interestled/schemas";
 import { cardMinutes } from "@interestled/domain";
-import { mapOutline, neighbourClaims, plainOutline } from "./outline";
+import { mapOutline, neighbourClaims } from "./outline";
 import { promptFile } from "./promptFiles";
 import { render } from "./template";
 
@@ -118,12 +125,73 @@ const FORMAT_GUIDE: Record<ContentFormat, string> = {
     "something to look up rather than read through — the rule, the exact conditions it holds under, and the real values, each stated flat on its own. No linking sentences between them.",
 };
 
-/** What a topic is written to before the learner has written anything of their own. */
-export const DEFAULT_CONTENT_INSTRUCTIONS = promptFile("content-instructions");
+/**
+ * What a topic is written to before the learner has written anything of their
+ * own, seeded from the settings they did choose.
+ *
+ * Seeded rather than fixed, because the instruction the settings can state
+ * exactly — "each paragraph is 4-5 sentences long" — is worth more to a model
+ * than the enum value behind it, and worth more to the learner as a sentence
+ * they can edit than as a chip they cannot argue with.
+ */
+export function seedContentInstructions(paragraphLength: ParagraphLength): string {
+  return render(promptFile("content-instructions"), {
+    sentences: PARAGRAPH_SENTENCES[paragraphLength],
+  });
+}
 
-/** The stored value, or the default when the learner has not overridden it. */
-function effectiveContentInstructions(stored: string): string {
-  return stored.trim() === "" ? DEFAULT_CONTENT_INSTRUCTIONS : stored.trim();
+/** The stored value, or the seed when the learner has not overridden it. */
+function effectiveContentInstructions(content: TopicContentSettingsT): string {
+  return content.contentInstructions.trim() === ""
+    ? seedContentInstructions(content.paragraphLength)
+    : content.contentInstructions.trim();
+}
+
+/** What each depth means, as the line the instruction seed states. */
+const MAP_DEPTH_GUIDE: Record<MapDepth, string> = {
+  [MapDepth.Orientation]: "what it is, and when you would reach for it",
+  [MapDepth.Working]: "enough to use it for the everyday cases",
+  [MapDepth.Mechanism]: "the mechanism underneath, in the field's own terms",
+  [MapDepth.Internals]: "the layer below that — internals, protocols, the maths",
+  [MapDepth.Expert]: "edge cases, failure modes, and where the standard account is wrong",
+};
+
+/** "1 day" reads wrong; the prompts are read as English. */
+function daysText(days: number): string {
+  return days === 1 ? "a single day" : `${days} days`;
+}
+
+/**
+ * The map instruction lines, seeded from the shape settings.
+ *
+ * This is the text the learner is shown before the map is built and can edit
+ * before pressing the button. It is what makes the settings legible: "5 main
+ * headings, 4 sub-headings under each" is a sentence somebody can disagree with,
+ * where two number chips are a thing they have to imagine the effect of.
+ */
+export function seedMapInstructions(shape: MapShapeT): string {
+  return render(promptFile("map-instructions"), {
+    mainHeadings: String(shape.mainHeadings),
+    subHeadings: String(shape.subHeadings),
+    totalTime: minutesText(totalMinutes(shape)),
+    perDay: minutesText(shape.minutesPerDay),
+    days: daysText(shape.days),
+    depth: MAP_DEPTH_GUIDE[shape.depth] ?? MAP_DEPTH_GUIDE[MapDepth.Working],
+  });
+}
+
+/** The stored lines, or the seed when the learner has not edited them. */
+export function effectiveMapInstructions(topic: {
+  mapInstructions: string;
+  mainHeadings: number;
+  subHeadings: number;
+  minutesPerDay: MinutesPerDay;
+  days: StudyDays;
+  depth: MapDepth;
+}): string {
+  return topic.mapInstructions.trim() === ""
+    ? seedMapInstructions(mapShapeOf(topic))
+    : topic.mapInstructions.trim();
 }
 
 /**
@@ -141,7 +209,7 @@ function contentRulesBlock(content: TopicContentSettingsT): string {
     englishRule: ENGLISH_GUIDE[content.englishLevel],
     technicalRule: TECHNICAL_GUIDE[content.technicalDetail],
     formatRule: FORMAT_GUIDE[content.format],
-    contentInstructions: effectiveContentInstructions(content.contentInstructions),
+    contentInstructions: effectiveContentInstructions(content),
   });
 }
 
@@ -211,34 +279,34 @@ export function choicesBlock(answered: readonly AnsweredQuestionT[]): string {
 export function mapPrompt(input: {
   title: string;
   goal: string;
-  timeBudget: string;
   level: string;
-  levels: MapLevels;
+  /** The shape settings, which the instruction lines below were seeded from. */
+  shape: MapShapeT;
+  /** What the learner's instruction lines say. Seeded, then theirs to edit. */
+  mapInstructions: string;
   profile: ProfileT;
   /** How this topic is written: register, standing instructions, and node length. */
   content: TopicContentSettingsT;
-  /** What to change, when the learner asked for the map again. "" the first time. */
-  instructions: string;
-  /** The seven answers, resolved. Empty when every question was skipped. */
+  /** The choices, resolved. Empty when every question was skipped. */
   answered: readonly AnsweredQuestionT[];
 }): string {
-  const shape = render(
-    promptFile(input.levels === MapLevels.Three ? "map-three-levels" : "map-two-levels"),
-    shapeBlocks(input.content.averageReadTime),
-  );
   return render(promptFile("map"), {
     title: input.title,
-    goal: input.goal || "(not stated — infer the most common goal)",
-    timeBudget: input.timeBudget,
+    goal: input.goal,
     level: input.level,
+    // The counts reach the shape block as well as the instruction lines: the
+    // lines are the learner's to rewrite, and the block is what the schema will
+    // actually refuse a reply for.
+    shape: render(promptFile("map-two-levels"), {
+      ...shapeBlocks(input.content.averageReadTime),
+      mainHeadings: String(input.shape.mainHeadings),
+      subHeadings: String(input.shape.subHeadings),
+    }),
+    mapInstructions: input.mapInstructions,
     learner: learnerBlock(input.profile),
     contentRules: contentRulesBlock(input.content),
-    // Before the instructions, so the words they typed win over the option they
-    // tapped — the instructions block says it takes everything above it.
     choices: choicesBlock(input.answered),
-    instructions: instructionBlock(input.instructions),
     archetypes: promptFile("archetypes"),
-    shape,
     ordering: promptFile("ordering"),
   });
 }
@@ -255,27 +323,19 @@ export function mapPrompt(input: {
 export function mapQuestionsPrompt(input: {
   title: string;
   goal: string;
-  timeBudget: string;
   level: string;
-  levels: MapLevels;
   profile: ProfileT;
   content: TopicContentSettingsT;
-  instructions: string;
-  /** The map as it stands, when this is a rebuild. Empty for a new topic. */
-  current: readonly LearningNodeT[];
+  /** What the learner's instruction lines say, seeded or edited. */
+  mapInstructions: string;
 }): string {
   return render(promptFile("map-questions"), {
     title: input.title,
-    goal: input.goal || "(not stated — infer the most common goal)",
-    timeBudget: input.timeBudget,
+    goal: input.goal,
     level: input.level,
-    levelCount: String(input.levels),
+    mapInstructions: input.mapInstructions,
     learner: learnerBlock(input.profile),
     contentRules: contentRulesBlock(input.content),
-    instructions: instructionBlock(input.instructions),
-    current: render(promptFile("map-current"), {
-      current: input.current.length === 0 ? "" : plainOutline(input.current),
-    }),
   });
 }
 
@@ -292,16 +352,11 @@ export function subtreePrompt(input: {
   claim: string;
   /** Titles of the groups beside this one, which the replacement must not repeat. */
   siblingTitles: readonly string[];
-  /** 1 when the children are nodes, 2 when they are groups of nodes. */
-  childLevels: number;
   profile: ProfileT;
   instructions: string;
 }): string {
   const average = input.topic.averageReadTime;
-  const shape = render(
-    promptFile(input.childLevels >= 2 ? "subtree-sections" : "subtree-leaves"),
-    input.childLevels >= 2 ? shapeBlocks(average) : { leafRules: leafRules(average) },
-  );
+  const shape = render(promptFile("subtree-leaves"), { leafRules: leafRules(average) });
   return render(promptFile("subtree"), {
     topic: input.topic.title,
     goal: input.topic.goal || "(not stated)",
@@ -390,6 +445,7 @@ export function cardPrompt(input: {
     // The card's own register and length, not the topic's: a control that did not
     // reach the prompt is a control that does nothing.
     contentRules: contentRulesBlock({
+      paragraphLength: input.settings.paragraphLength,
       englishLevel: input.settings.englishLevel,
       technicalDetail: input.settings.technicalDetail,
       format: input.settings.format,

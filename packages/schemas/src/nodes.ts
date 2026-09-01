@@ -1,7 +1,14 @@
 import { z } from "zod";
 import { Id } from "./ids";
 import { NodePath, Slug } from "./slugs";
-import { MAX_NODE_MINUTES, MapLevels, TopicArchetypeSchema } from "./topics";
+import { MAX_NODE_MINUTES, TopicArchetypeSchema } from "./topics";
+
+/**
+ * How deep a node may sit. A map is two levels now — headings and the nodes
+ * under them — but rows built before that are three deep, and a cap of 2 would
+ * refuse to read them. It stays at 3 until those are gone.
+ */
+export const MAX_NODE_DEPTH = 3;
 
 /**
  * A node's state on the map. The order here is the order of advancement, and
@@ -37,7 +44,7 @@ export const LearningNode = z.object({
   /** Every ancestor slug joined by "/". This is what the URL carries. */
   path: NodePath,
   /** 1-based level, so `depth <= topic.levels` always holds. Derived from `path`. */
-  depth: z.number().int().min(1).max(MapLevels.Three),
+  depth: z.number().int().min(1).max(MAX_NODE_DEPTH),
   title: z.string().min(1).max(120),
   /** One sentence answering "what is this, really?". Shown on the map. */
   claim: z.string().min(1).max(300),
@@ -169,7 +176,7 @@ export const GeneratedSectionChildren = z
 export const GeneratedMapNode = z.object({
   key: Key,
   parentKey: Key.nullable(),
-  depth: z.number().int().min(1).max(MapLevels.Three),
+  depth: z.number().int().min(1).max(MAX_NODE_DEPTH),
   title: z.string().min(1).max(120),
   claim: z.string().min(1).max(300),
   /** 0 on a branch — see LearningNode.minutes. */

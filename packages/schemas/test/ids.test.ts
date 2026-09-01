@@ -21,6 +21,7 @@ import {
 } from "../src/nodes";
 import {
   ContentFormat,
+  ParagraphLength,
   EnglishLevel,
   TechnicalDetail,
   TopicArchetype,
@@ -138,10 +139,16 @@ describe("CardContent", () => {
       englishLevel: EnglishLevel.Medium,
       technicalDetail: TechnicalDetail.Medium,
       format: ContentFormat.Prose,
+      paragraphLength: ParagraphLength.Medium,
       angle: CardAngle.Base,
     };
     expect(cardVariant(base)).toBe(cardVariant({ ...base }));
     expect(cardVariant({ ...base, minutes: 10 })).not.toBe(cardVariant(base));
+    // Paragraph length is the newest of them and the easiest to forget: it
+    // changes the writing without changing the depth, the register or the length.
+    expect(cardVariant({ ...base, paragraphLength: ParagraphLength.Long })).not.toBe(
+      cardVariant(base),
+    );
     // Both axes, separately: they are two questions, so a card asked the same
     // English at a different level of detail is a different card and must not
     // be answered from the other one's row.

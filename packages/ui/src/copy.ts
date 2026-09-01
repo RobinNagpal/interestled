@@ -1,4 +1,11 @@
-import { CardAngle, ContentFormat, EnglishLevel, TechnicalDetail } from "@interestled/schemas";
+import {
+  CardAngle,
+  ContentFormat,
+  EnglishLevel,
+  PARAGRAPH_SENTENCES,
+  ParagraphLength,
+  TechnicalDetail,
+} from "@interestled/schemas";
 import type { CardSettingsT } from "@interestled/schemas";
 
 /**
@@ -65,6 +72,19 @@ export const FORMAT_COPY: Record<ContentFormat, { label: string; body: string }>
 export const FORMAT_OPTIONS = Object.values(ContentFormat).map((value) => ({
   value,
   label: FORMAT_COPY[value].label,
+}));
+
+/**
+ * How long a paragraph runs, labelled by the sentence count — the thing actually
+ * being chosen, rather than a word for it.
+ *
+ * Here rather than on a screen because both places that offer it must offer the
+ * same three: the topic's settings screen, and the panel under a card where the
+ * learner overrides them for that card alone.
+ */
+export const PARAGRAPH_OPTIONS = Object.values(ParagraphLength).map((value) => ({
+  value,
+  label: PARAGRAPH_SENTENCES[value],
 }));
 
 /** The same depth, asked a different way. "Plain" is the way back to the card as written. */

@@ -12,6 +12,7 @@ import {
   ResumePoint,
   StudySession,
   Topic,
+  MapShape,
   TopicContentSettings,
   User,
   Verdict,
@@ -31,8 +32,8 @@ import type {
   ProfileUpdateInputT,
   RegisterInputT,
   ReviewInputT,
+  MapShapeT,
   TopicContentSettingsInputT,
-  TopicContentSettingsT,
   TopicCreateInputT,
   TopicInfoInputT,
   TopicQuestionsInputT,
@@ -146,6 +147,13 @@ export const AttemptResult = z.object({
   capability: z.string(),
 });
 
+/** Everything the settings screens need to show what a topic falls back to. */
+export const TopicDefaults = TopicContentSettings.merge(MapShape).extend({
+  mapInstructions: z.string(),
+});
+
+const MapInstructions = z.object({ mapInstructions: z.string() });
+
 export const ReviewBatch = z.object({ atoms: z.array(Atom), dueCount: z.number() });
 
 export const SessionPlan = z.object({
@@ -165,6 +173,7 @@ export type TopicDetailT = z.infer<typeof TopicDetail>;
 export type CardViewT = z.infer<typeof CardView>;
 export type AttemptResultT = z.infer<typeof AttemptResult>;
 export type ReviewBatchT = z.infer<typeof ReviewBatch>;
+export type TopicDefaultsT = z.infer<typeof TopicDefaults>;
 export type SessionPlanT = z.infer<typeof SessionPlan>;
 export type SessionSummaryViewT = z.infer<typeof SessionSummaryView>;
 
@@ -199,8 +208,14 @@ export interface ApiClient {
    * it, so the next open of a node writes it under the new settings.
    */
   updateTopicContentSettings(slug: string, input: TopicContentSettingsInputT): Promise<TopicT>;
-  /** The defaults a topic falls back to, so the settings screen can show them. */
-  getTopicDefaults(): Promise<TopicContentSettingsT>;
+  /** The defaults a topic falls back to, so the settings screens can show them. */
+  getTopicDefaults(): Promise<TopicDefaultsT>;
+  /**
+   * The instruction lines a set of shape settings seeds. Rendered server-side
+   * from the same prompt file the map is built with, so the box on the screen
+   * shows the sentence the model will actually be sent.
+   */
+  seedMapInstructions(shape: MapShapeT): Promise<string>;
 
   /** The three map edits. Each answers with the whole map, already rebuilt. */
   regenerateNode(slug: string, nodeId: string, instructions: string): Promise<TopicDetailT>;
@@ -275,7 +290,9 @@ export function createApiClient(config: ClientConfig): ApiClient {
         Topic,
         input,
       ),
-    getTopicDefaults: () => get("/api/topics/defaults", TopicContentSettings),
+    getTopicDefaults: () => get("/api/topics/defaults", TopicDefaults),
+    seedMapInstructions: async (shape) =>
+      (await post("/api/topics/map-instructions", MapInstructions, shape)).mapInstructions,
 
     regenerateNode: (slug, nodeId, instructions) =>
       post(`/api/topics/${encodeURIComponent(slug)}/nodes/${nodeId}/regenerate`, TopicDetail, {
@@ -306,6 +323,9 @@ export function createApiClient(config: ClientConfig): ApiClient {
       }
       if (settings?.format !== undefined) {
         query.set("format", settings.format);
+      }
+      if (settings?.paragraphLength !== undefined) {
+        query.set("paragraphLength", settings.paragraphLength);
       }
       if (settings?.angle !== undefined) {
         query.set("angle", settings.angle);

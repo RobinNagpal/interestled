@@ -79,12 +79,27 @@ model Topic {
   // TopicArchetype, stored as a plain string — the enum lives in
   // packages/schemas, so a new archetype needs no migration.
   archetype           String
-  timeBudget          String         @map("time_budget")
+  // Superseded by the map shape columns below. Kept, with a default, only so the
+  // old bundle can still insert during the seconds between the migration and the
+  // deploy; drop it in the next schema change.
+  timeBudget          String         @default("week") @map("time_budget")
   // Where they are now and where they want to get to, in their own words.
   level               String         @default("")
-  // MapLevels: 2 or 3. Stored as an int rather than an enum for the same reason
-  // every other fixed set here is — the enum lives in packages/schemas.
+  // Superseded by mainHeadings/subHeadings. Same deploy-gap reason as timeBudget
+  // above, and the same instruction: drop it in the next schema change.
   levels              Int            @default(2)
+  // How the map is shaped and sized. Heading counts say the shape; minutes a day
+  // times days says the size; depth says how far into the subject it goes. The
+  // enums live in packages/schemas, so the columns are plain ints.
+  mainHeadings        Int            @default(5) @map("main_headings")
+  subHeadings         Int            @default(4) @map("sub_headings")
+  minutesPerDay       Int            @default(20) @map("minutes_per_day")
+  days                Int            @default(14)
+  depth               Int            @default(2)
+  // The instruction lines the map is built from. "" means the learner has not
+  // edited them and the seed rendered from the columns above applies — storing a
+  // copy of the seed would freeze it at the wording it had that day.
+  mapInstructions     String         @default("") @map("map_instructions")
   // EnglishLevel, TechnicalDetail and ContentFormat, each a plain string — the
   // enums live in packages/schemas, so another value on any of them is a code
   // change with no migration behind it. The defaults are here for the seconds
@@ -103,6 +118,8 @@ model Topic {
   // the default in src/llm/prompts/content-instructions.md applies — storing a
   // copy of the default instead would freeze it at the value it had that day.
   contentInstructions String         @default("") @map("content_instructions")
+  // ParagraphLength, as a plain string. Seeds the content instructions above.
+  paragraphLength     String         @default("medium") @map("paragraph_length")
   // Minutes: what a node on this map is built to cost, and what a card is
   // written to. 1-5, the same band LearningNode.minutes is capped to.
   averageReadTime     Int            @default(3) @map("average_read_time")

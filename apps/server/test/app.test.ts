@@ -11,9 +11,9 @@ import {
   MapPlanView,
   MapQuestionKind,
   NodeStatus,
+  ParagraphLength,
   TechnicalDetail,
   ReadTime,
-  TimeBudget,
   TopicArchetype,
   TopicStatus,
   cardVariant,
@@ -163,9 +163,14 @@ function topicRow(): Record<string, unknown> {
     summary: "Run a small cluster",
     goal: "deploy a service",
     archetype: TopicArchetype.Tool,
-    timeBudget: TimeBudget.Week,
+    mainHeadings: 5,
+    subHeadings: 4,
+    minutesPerDay: 20,
+    days: 14,
+    depth: 2,
+    mapInstructions: "",
+    paragraphLength: "medium",
     level: "",
-    levels: 2,
     englishLevel: EnglishLevel.Medium,
     technicalDetail: TechnicalDetail.Medium,
     format: ContentFormat.Prose,
@@ -248,12 +253,11 @@ describe("topic settings writes", () => {
       summary: "Run and debug a small cluster",
       goal: "deploy a service\nread the logs",
       level: "I use Docker daily",
-      timeBudget: TimeBudget.Ongoing,
     });
 
     expect(response.status).toBe(200);
     expect(updates).toEqual([
-      expect.objectContaining({ summary: "Run and debug a small cluster", timeBudget: TimeBudget.Ongoing }),
+      expect.objectContaining({ summary: "Run and debug a small cluster" }),
     ]);
     // No regeneration, and above all no nodes deleted.
     expect(deletedNodes).toEqual([]);
@@ -275,6 +279,9 @@ describe("topic settings writes", () => {
         englishLevel: EnglishLevel.Advanced,
         technicalDetail: TechnicalDetail.High,
         format: ContentFormat.Prose,
+        // Defaulted rather than sent: the screen always holds every setting, so
+        // a save that omitted one would be a screen that had lost it.
+        paragraphLength: ParagraphLength.Medium,
         contentInstructions: "No YAML in the examples",
         averageReadTime: ReadTime.Ten,
       },
@@ -641,6 +648,7 @@ describe("card generation", () => {
       cardVariant({
         depth: 5,
         minutes: 10,
+        paragraphLength: ParagraphLength.Medium,
         englishLevel: EnglishLevel.Simple,
         technicalDetail: TechnicalDetail.High,
         format: ContentFormat.ReferenceNotes,
@@ -1100,7 +1108,7 @@ describe("map plans", () => {
         userId: "u1",
         topicId: "t1",
         questions: JSON.parse(QUESTIONS).questions,
-        answers: [{ kind: MapQuestionKind.Code, optionIndexes: [3] }],
+        answers: [{ kind: MapQuestionKind.Known, optionIndexes: [3] }],
         createdAt: new Date(),
       },
     ]);
@@ -1111,6 +1119,6 @@ describe("map plans", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(prompts[0]).toContain("Sample 3 for code");
+    expect(prompts[0]).toContain("Sample 3 for known");
   });
 });

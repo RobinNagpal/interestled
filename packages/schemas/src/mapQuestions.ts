@@ -25,10 +25,10 @@ export enum MapQuestionKind {
   Scope = "scope",
   /** Four flavours of worked example, shown as examples rather than named. */
   Examples = "examples",
-  /** Whether code appears, and in what form. Four samples of it. */
-  Code = "code",
-  /** Whether numbers and formulas appear, and how far they are worked. */
-  Numbers = "numbers",
+  /** Four sets of things they said they know, to drop from the map entirely. */
+  Known = "known",
+  /** How much of what they already know still gets a mention on the way past. */
+  Recap = "recap",
   /** Four openings for the same node, so the register is chosen by reading it. */
   Opening = "opening",
 }
@@ -44,10 +44,10 @@ export const MapQuestionKindSchema = z.nativeEnum(MapQuestionKind);
 export const MAP_QUESTION_KINDS: readonly MapQuestionKind[] = [
   MapQuestionKind.Outline,
   MapQuestionKind.Breakdown,
+  MapQuestionKind.Known,
+  MapQuestionKind.Recap,
   MapQuestionKind.Scope,
   MapQuestionKind.Examples,
-  MapQuestionKind.Code,
-  MapQuestionKind.Numbers,
   MapQuestionKind.Opening,
 ];
 

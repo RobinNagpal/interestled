@@ -1,53 +1,42 @@
 import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { ScrollView, Text } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useCreateTopic, useMapQuestions } from "@interestled/api";
 import { topicHref } from "@interestled/domain";
 import { Button, ErrorState, Input, Sheet } from "@interestled/ui";
-import { MapLevels, TimeBudget } from "@interestled/schemas";
-import type { MapAnswerT, MapPlanViewT } from "@interestled/schemas";
+import { MapDepth, MinutesPerDay, StudyDays } from "@interestled/schemas";
+import type { MapAnswerT, MapPlanViewT, MapShapeT } from "@interestled/schemas";
 import { messageOf } from "../../lib/errors";
-import { ChipRow } from "../../components/ChipRow";
 import { MapQuestions } from "../../components/MapQuestions";
+import { MapShapeFields } from "../../components/MapShapeFields";
 
-const BUDGETS: { value: TimeBudget; label: string }[] = [
-  { value: TimeBudget.Quick, label: "20 minutes" },
-  { value: TimeBudget.Week, label: "A week" },
-  { value: TimeBudget.Ongoing, label: "Ongoing" },
-];
-
-/**
- * How deep the map goes. Two is the default and is named first, because the
- * map's whole job is to be taken in at a glance — a third level buys detail at
- * the cost of the thing the screen exists for, and is only worth it on a subject
- * wide enough that eight groups would not cover it.
- */
-const LEVELS: { value: string; label: string; body: string }[] = [
-  {
-    value: String(MapLevels.Two),
-    label: "Two levels",
-    body: "Groups, with the nodes you work through inside them. The whole map fits on a screen.",
-  },
-  {
-    value: String(MapLevels.Three),
-    label: "Three levels",
-    body: "Areas, then groups, then nodes. For a subject too wide to sit under eight headings.",
-  },
-];
+/** What the settings start at, matching MapShapeInput so the seed agrees with a save. */
+const DEFAULT_SHAPE: MapShapeT = {
+  mainHeadings: 5,
+  subHeadings: 4,
+  minutesPerDay: MinutesPerDay.Twenty,
+  days: StudyDays.Fortnight,
+  depth: MapDepth.Working,
+};
 
 /**
- * The calibration probe. Four questions, under a minute, and it measures rather
- * than asks — where they are now and where they want to get to decides which
- * whole branches get dropped before the learner ever sees them, and where the
- * map is allowed to stop.
+ * Three questions, then the shape of the map.
  *
- * The two long answers are boxes asking for points rather than one line each:
- * "deploy a service" and "debug it at 3am" are different goals, and a single
- * line quietly asks people to pick one of them.
+ * The three are what the map cannot be built without: what to learn, what for,
+ * and what they already know. The last is the highest-value answer on the
+ * screen — it decides which whole branches are dropped before the learner ever
+ * sees them, and two of the generated questions ask about it directly. Both long
+ * answers are boxes asking for points rather than one line each, because "deploy
+ * a service" and "debug it at 3am" are different answers and a single line
+ * quietly asks people to pick one.
  *
- * Between the form and the map sit the seven choices. They are the part the form
- * cannot get at: nobody can describe the shape they want a subject cut into, and
+ * Where they want to get to used to be half of the third question and is now the
+ * depth chip, because "the mechanism underneath" is a thing the map can be built
+ * to and a sentence about ambition is not.
+ *
+ * Between the form and the map sit the seven choices. They are the part no form
+ * can get at: nobody can describe the shape they want a subject cut into, and
  * everybody can pick it out of four.
  */
 export default function NewTopicScreen(): ReactElement {
@@ -56,17 +45,15 @@ export default function NewTopicScreen(): ReactElement {
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
   const [level, setLevel] = useState("");
-  const [timeBudget, setTimeBudget] = useState<TimeBudget>(TimeBudget.Week);
-  const [levels, setLevels] = useState<MapLevels>(MapLevels.Two);
-  // The shape question is asked on the way to generating rather than as a fifth
-  // field: it is about the map, not about the learner, and it only matters at
-  // the moment the button is pressed.
+  const [shape, setShape] = useState<MapShapeT>(DEFAULT_SHAPE);
+  const [mapInstructions, setMapInstructions] = useState("");
+  // The choices are asked on the way to generating rather than as more fields:
+  // they are about the map, not about the learner, and they only matter at the
+  // moment the button is pressed.
   const [asking, setAsking] = useState(false);
-  // The seven questions, once they have been written. Until then the sheet is
-  // still on the level count.
   const [plan, setPlan] = useState<MapPlanViewT | null>(null);
 
-  const input = { title, goal, timeBudget, level, levels, answers: [] };
+  const input = { title, goal, level, ...shape, mapInstructions, answers: [] };
 
   const close = (): void => {
     setAsking(false);
@@ -97,7 +84,7 @@ export default function NewTopicScreen(): ReactElement {
         autoFocus
       />
       <Input
-        label="What do you want to be able to do with it? Three points."
+        label="How do you plan to use this? Two or three points."
         value={goal}
         onChangeText={setGoal}
         multiline
@@ -106,22 +93,21 @@ export default function NewTopicScreen(): ReactElement {
         hint="This picks the shortest path through the map."
       />
       <Input
-        label="Where are you now, and where do you want to get to? 3-5 points."
+        label="What do you already know about it?"
         value={level}
         onChangeText={setLevel}
         multiline
         maxLength={600}
-        placeholder={"I use Docker daily\nNever run anything in production\nWant to own a small cluster"}
-        hint="This is the answer that saves you the most time."
+        placeholder={"I use Docker daily\nI have never run anything in production"}
+        hint="This is the answer that saves you the most time — it is what gets left out."
       />
-      <View className="gap-2">
-        <Text className="text-sm font-medium text-ink-soft">How much time have you got?</Text>
-        <ChipRow
-          options={BUDGETS}
-          selected={timeBudget}
-          onSelect={(value) => setTimeBudget(value)}
-        />
-      </View>
+
+      <MapShapeFields
+        shape={shape}
+        onShape={setShape}
+        instructions={mapInstructions}
+        onInstructions={setMapInstructions}
+      />
 
       {create.isError ? (
         <ErrorState
@@ -138,29 +124,16 @@ export default function NewTopicScreen(): ReactElement {
 
       <Sheet
         visible={asking}
-        title={plan === null ? "How deep should the map go?" : "Which of these do you want?"}
+        title={plan === null ? "Ready to build it?" : "Which of these do you want?"}
         body={
           plan === null
-            ? "You can change this later, and rebuild any one group on its own."
+            ? "Seven quick choices first. You can rebuild any one group later on its own."
             : "Seven choices, and any of them can be skipped."
         }
         onClose={() => (busy ? undefined : close())}
       >
         {plan === null ? (
           <>
-            <View className="gap-2">
-              <ChipRow
-                options={LEVELS.map((option) => ({ value: option.value, label: option.label }))}
-                selected={String(levels)}
-                onSelect={(value) =>
-                  setLevels(value === String(MapLevels.Three) ? MapLevels.Three : MapLevels.Two)
-                }
-              />
-              <Text className="text-sm text-ink-soft">
-                {LEVELS.find((option) => option.value === String(levels))?.body ?? ""}
-              </Text>
-            </View>
-
             {questions.isError ? <ErrorState message={messageOf(questions.error)} /> : null}
 
             <Button

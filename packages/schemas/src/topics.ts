@@ -17,14 +17,114 @@ export enum TopicArchetype {
 
 export const TopicArchetypeSchema = z.nativeEnum(TopicArchetype);
 
-/** How much time the learner has. Sets map size, not depth. */
-export enum TimeBudget {
-  Quick = "quick",
-  Week = "week",
-  Ongoing = "ongoing",
+/**
+ * Minutes in one sitting, and how many days of them. The two together are what
+ * the map is sized to.
+ *
+ * Two numbers rather than one total because "600 minutes" says nothing about
+ * whether that is a week or a quarter, and the map is a different shape either
+ * way. It also reads as a plan somebody can keep — "20 minutes a day for a
+ * fortnight" is a decision, where "five hours" is a wish.
+ */
+export enum MinutesPerDay {
+  Ten = 10,
+  Fifteen = 15,
+  Twenty = 20,
+  Thirty = 30,
+  Forty5 = 45,
+  Sixty = 60,
 }
 
-export const TimeBudgetSchema = z.nativeEnum(TimeBudget);
+export const MinutesPerDaySchema = z.nativeEnum(MinutesPerDay);
+
+export enum StudyDays {
+  One = 1,
+  Three = 3,
+  Week = 7,
+  Fortnight = 14,
+  Month = 30,
+  Quarter = 90,
+}
+
+export const StudyDaysSchema = z.nativeEnum(StudyDays);
+
+/**
+ * How far into the subject the whole map goes. Not how it is written and not
+ * how many headings it has — how much of the thing is covered at all.
+ *
+ * Distinct from the card's own depth control, which decides how far one
+ * explanation digs and follows the learner across every topic. This decides
+ * where the map stops, which is a property of the map.
+ */
+export enum MapDepth {
+  /** What it is and when you would reach for it. */
+  Orientation = 1,
+  /** Enough to use it for the everyday cases. */
+  Working = 2,
+  /** The mechanism underneath, in the field's own terms. */
+  Mechanism = 3,
+  /** The layer below that: internals, protocols, the maths. */
+  Internals = 4,
+  /** Edge cases, failure modes, and where the standard account is wrong. */
+  Expert = 5,
+}
+
+export const MapDepthSchema = z.nativeEnum(MapDepth);
+
+/**
+ * How many headings, and how many under each.
+ *
+ * The bounds are the generated-map schema's bounds, not a separate opinion: ask
+ * for ten main headings and the parse refuses the reply, which reaches the
+ * learner as a failed generation rather than as the setting it was.
+ */
+export const MAIN_HEADINGS_MIN = 3;
+export const MAIN_HEADINGS_MAX = 8;
+export const SUB_HEADINGS_MIN = 2;
+export const SUB_HEADINGS_MAX = 8;
+
+/**
+ * Everything that decides the shape and size of the map, as one object.
+ *
+ * This replaced TimeBudget ("20 minutes / a week / ongoing") and MapLevels
+ * ("two or three"). Both were answering these questions more vaguely and in a
+ * second place: the heading counts say the shape, and minutes a day times days
+ * says the size. Two columns saying the same thing is two chances for an edit to
+ * leave them disagreeing.
+ */
+export const MapShape = z.object({
+  mainHeadings: z.number().int().min(MAIN_HEADINGS_MIN).max(MAIN_HEADINGS_MAX),
+  subHeadings: z.number().int().min(SUB_HEADINGS_MIN).max(SUB_HEADINGS_MAX),
+  minutesPerDay: MinutesPerDaySchema,
+  days: StudyDaysSchema,
+  depth: MapDepthSchema,
+});
+
+export const MapShapeInput = z.object({
+  mainHeadings: MapShape.shape.mainHeadings.default(5),
+  subHeadings: MapShape.shape.subHeadings.default(4),
+  minutesPerDay: MinutesPerDaySchema.default(MinutesPerDay.Twenty),
+  days: StudyDaysSchema.default(StudyDays.Fortnight),
+  depth: MapDepthSchema.default(MapDepth.Working),
+});
+
+export type MapShapeT = z.infer<typeof MapShape>;
+
+/** The whole sitting count, which is what the instruction line states. */
+export function totalMinutes(shape: MapShapeT): number {
+  return shape.minutesPerDay * shape.days;
+}
+
+/** The shape settings alone, out of the topic every map call carries. */
+export function mapShapeOf(topic: { [K in keyof MapShapeT]: MapShapeT[K] }): MapShapeT {
+  return {
+    mainHeadings: topic.mainHeadings,
+    subHeadings: topic.subHeadings,
+    minutesPerDay: topic.minutesPerDay,
+    days: topic.days,
+    depth: topic.depth,
+  };
+}
 
 /** Map generation is one LLM call, so a topic is briefly incomplete. */
 export enum TopicStatus {
@@ -34,23 +134,6 @@ export enum TopicStatus {
 }
 
 export const TopicStatusSchema = z.nativeEnum(TopicStatus);
-
-/**
- * How many levels the map is built with. Two is groups of nodes; three adds an
- * area above the groups, which only earns its keep on a subject wide enough that
- * the level-1 list would otherwise be unreadable. Two is the default because the
- * map's job is to be seen whole in one screen, and a third level trades that
- * away for detail nobody asked for yet.
- *
- * Numeric on purpose: the value is also the depth a node may reach, so
- * `depth <= topic.levels` is the whole structural invariant.
- */
-export enum MapLevels {
-  Two = 2,
-  Three = 3,
-}
-
-export const MapLevelsSchema = z.nativeEnum(MapLevels);
 
 /** Shared with the server, which cuts a derived summary to fit rather than refusing it. */
 export const SUMMARY_MAX = 160;
@@ -162,6 +245,30 @@ export enum ContentFormat {
 export const ContentFormatSchema = z.nativeEnum(ContentFormat);
 
 /**
+ * How long one paragraph runs. It is the one thing about the shape of a card
+ * that a learner can feel immediately and could not otherwise say: "four or five
+ * sentences under a heading" is a different reading experience from a wall, and
+ * neither the English level nor the read time decides it.
+ *
+ * Stated as a range rather than a number, because the instruction is written for
+ * a model and "exactly 4 sentences" is a rule it will keep by padding.
+ */
+export enum ParagraphLength {
+  Short = "short",
+  Medium = "medium",
+  Long = "long",
+}
+
+export const ParagraphLengthSchema = z.nativeEnum(ParagraphLength);
+
+/** The sentence range each length means, and what the seeded instruction says. */
+export const PARAGRAPH_SENTENCES: Record<ParagraphLength, string> = {
+  [ParagraphLength.Short]: "2-3 sentences",
+  [ParagraphLength.Medium]: "4-5 sentences",
+  [ParagraphLength.Long]: "6-8 sentences",
+};
+
+/**
  * Everything that decides how this topic is written, as one object, because
  * every generation call needs all of it and a call that quietly got half would
  * produce content the settings screen says it did not ask for.
@@ -170,6 +277,7 @@ export const TopicContentSettings = z.object({
   englishLevel: EnglishLevelSchema,
   technicalDetail: TechnicalDetailSchema,
   format: ContentFormatSchema,
+  paragraphLength: ParagraphLengthSchema,
   /** "" means the default applies; see TopicContentSettingsInput. */
   contentInstructions: z.string(),
   averageReadTime: ReadTimeSchema,
@@ -192,34 +300,58 @@ export const MapChoicesInput = z.object({
 });
 
 /**
- * What the seven questions for an existing topic are generated from. The topic
- * itself is read server-side; this is only what the learner has just typed into
- * the rebuild sheet, so the questions are about the map they are asking for
- * rather than the one they already have.
+ * The instruction lines the map is built from, in the learner's own hands.
+ *
+ * Seeded from the shape settings — "Use 5 main headings, and 4 sub-headings
+ * under each", "the whole map should take about 280 minutes" — and then editable,
+ * because the settings can only say the things somebody thought to make a
+ * setting for. Once edited, the saved text is what reaches the model and what a
+ * rebuild shows: moving a chip afterwards does not silently rewrite a sentence
+ * the learner wrote.
+ *
+ * "" means nothing has been written yet, so the seeded text applies. Storing a
+ * copy of the seed instead would freeze it at the wording it had that day.
+ */
+export const MAP_INSTRUCTIONS_MAX = 2000;
+
+/**
+ * What the questions for an existing topic are generated from: the shape being
+ * asked for and the instructions in front of it. The old map is deliberately not
+ * sent — the learner is describing the map they want, not editing the one they
+ * have.
  */
 export const TopicQuestionsInput = z.object({
-  instructions: z.string().trim().max(600).default(""),
-  levels: MapLevelsSchema.optional(),
+  ...MapShapeInput.shape,
+  mapInstructions: z.string().trim().max(MAP_INSTRUCTIONS_MAX).default(""),
 });
 
+/**
+ * Three questions and nothing else: what to learn, what for, and what they
+ * already know.
+ *
+ * `goal` and `level` keep their column names and narrow their meaning. `goal`
+ * asks how they plan to use the knowledge, which is what it was already mostly
+ * being answered with. `level` asks only what they currently know — the "where
+ * do you want to get to" half moved out to the depth setting, where it is a
+ * number the map can actually be built to rather than a sentence somebody has to
+ * interpret.
+ */
 export const TopicCreateInput = z.object({
   title: z.string().trim().min(2, "Name the topic").max(120),
   /**
-   * What they want to be able to do, as up to three points. Free text rather
-   * than a list of strings: people write "debug it when it breaks" in one line
-   * and three separate boxes would only make that harder to say.
+   * How they plan to use this. Free text rather than a list of strings: people
+   * write "debug it when it breaks" in one line and three separate boxes would
+   * only make that harder to say.
    */
   goal: z.string().trim().max(600).default(""),
-  timeBudget: TimeBudgetSchema.default(TimeBudget.Week),
   /**
-   * Where they are now and where they want to get to, in 3-5 points. This
-   * replaced "what related things do you already use": the same calibration
-   * value — what to skip, which comparisons land — plus the target, which
-   * decides where the map is allowed to stop.
+   * What they already know about it. It is the highest-value answer on the
+   * form — it decides which whole branches are dropped before the learner ever
+   * sees them, and two of the generated questions ask about it directly.
    */
   level: z.string().trim().max(600).default(""),
-  /** Asked in a sheet on the way to generation, so the choice is never a surprise. */
-  levels: MapLevelsSchema.default(MapLevels.Two),
+  ...MapShapeInput.shape,
+  mapInstructions: z.string().trim().max(MAP_INSTRUCTIONS_MAX).default(""),
   ...MapChoicesInput.shape,
 });
 
@@ -238,7 +370,6 @@ export const TopicInfoInput = z.object({
   summary: TopicSummary.default(""),
   goal: z.string().trim().max(600).default(""),
   level: z.string().trim().max(600).default(""),
-  timeBudget: TimeBudgetSchema.default(TimeBudget.Week),
 });
 
 /**
@@ -255,17 +386,18 @@ export const TopicContentSettingsInput = z.object({
   englishLevel: EnglishLevelSchema.default(EnglishLevel.Medium),
   technicalDetail: TechnicalDetailSchema.default(TechnicalDetail.Medium),
   format: ContentFormatSchema.default(ContentFormat.Prose),
+  paragraphLength: ParagraphLengthSchema.default(ParagraphLength.Medium),
   contentInstructions: z.string().trim().max(2000).default(""),
   averageReadTime: ReadTimeSchema.default(DEFAULT_AVERAGE_READ_TIME),
 });
 
 /**
- * Rebuild the whole map, optionally under new instructions and at a new number
- * of levels, and with the seven choices answered again. The instructions are
- * free text because the useful ones are corrections ("too much YAML, more on
- * networking") that no set of chips would have anticipated; the choices are the
- * other half, and they are asked again on every rebuild because the map they
- * describe is being thrown away and replaced.
+ * Rebuild the whole map, under whatever the instruction lines now say, and with
+ * the choices answered again. The instructions arrive as text rather than as
+ * chips because the useful corrections ("less YAML, more on networking") are
+ * ones no set of chips would have anticipated; the choices are the other half,
+ * and they are asked again on every rebuild because the map they describe is
+ * being thrown away and replaced.
  */
 export const TopicRegenerateInput = z.object({
   ...TopicQuestionsInput.shape,
@@ -282,9 +414,10 @@ export const Topic = z.object({
   summary: z.string(),
   goal: z.string(),
   archetype: TopicArchetypeSchema,
-  timeBudget: TimeBudgetSchema,
+  ...MapShape.shape,
+  /** "" until the learner edits it, in which case the seed applies. */
+  mapInstructions: z.string(),
   level: z.string(),
-  levels: MapLevelsSchema,
   /** How this topic is written: register, standing instructions, and length. */
   ...TopicContentSettings.shape,
   status: TopicStatusSchema,
@@ -308,6 +441,7 @@ export function contentSettingsOf(topic: TopicT): TopicContentSettingsT {
     englishLevel: topic.englishLevel,
     technicalDetail: topic.technicalDetail,
     format: topic.format,
+    paragraphLength: topic.paragraphLength,
     contentInstructions: topic.contentInstructions,
     averageReadTime: topic.averageReadTime,
   };

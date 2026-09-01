@@ -26,6 +26,7 @@ export const keys = {
       settings.englishLevel ?? null,
       settings.technicalDetail ?? null,
       settings.format ?? null,
+      settings.paragraphLength ?? null,
       settings.angle ?? null,
     ] as const,
   drill: (nodeId: string, kind: string | null) => ["drill", nodeId, kind] as const,

@@ -10,14 +10,17 @@ import {
   DrillKind,
   LearningStyle,
   MAX_MECHANISM_SECTIONS,
-  MapLevels,
+  MapDepth,
+  ParagraphLength,
+  MinutesPerDay,
+  StudyDays,
   MapQuestionKind,
   NodeStatus,
   TechnicalDetail,
   TopicArchetype,
-  TimeBudget,
   TopicStatus,
   contentSettingsOf,
+  mapShapeOf,
 } from "@interestled/schemas";
 import type {
   CardContentT,
@@ -58,9 +61,14 @@ const topic: TopicT = {
   summary: "Deploy and debug a service",
   goal: "deploy and debug a service",
   archetype: TopicArchetype.Tool,
-  timeBudget: TimeBudget.Week,
+  mainHeadings: 5,
+  subHeadings: 4,
+  minutesPerDay: MinutesPerDay.Twenty,
+  days: StudyDays.Fortnight,
+  depth: MapDepth.Working,
+  mapInstructions: "",
   level: "I use Docker daily\nWant to run a small cluster",
-  levels: MapLevels.Two,
+  paragraphLength: ParagraphLength.Medium,
   englishLevel: EnglishLevel.Medium,
   technicalDetail: TechnicalDetail.Medium,
   format: ContentFormat.Prose,
@@ -109,7 +117,7 @@ const outlineChoice: AnsweredQuestionT = {
 };
 
 const codeChoice: AnsweredQuestionT = {
-  kind: MapQuestionKind.Code,
+  kind: MapQuestionKind.Known,
   question: "How much code do you want to see?",
   picked: [
     { label: "Commands you can run", sample: ["`kubectl describe pod web-7d4`"] },
@@ -143,29 +151,27 @@ function mapInput(overrides: Partial<Parameters<typeof mapPrompt>[0]> = {}): Par
   return {
     title: topic.title,
     goal: topic.goal,
-    timeBudget: topic.timeBudget,
     level: topic.level,
-    levels: MapLevels.Two,
+    shape: mapShapeOf(topic),
+    mapInstructions: "- Use 5 main headings, and 4 sub-headings under each one.",
     profile,
     content: contentSettingsOf(topic),
-    instructions: "",
     answered: [],
     ...overrides,
   };
 }
 
 describe("mapPrompt", () => {
-  it("passes where they are and where they are going, so branches can be dropped", () => {
+  it("passes what they already know, so branches can be dropped", () => {
     const prompt = mapPrompt(mapInput());
     expect(prompt).toContain("I use Docker daily");
-    expect(prompt).toContain("Do not create nodes for what they already have");
-    // The target is the half that decides where the map stops.
-    expect(prompt).toContain("stop the map at the level they asked for");
+    expect(prompt).toContain("What they already know:");
   });
 
-  it("says so plainly when the level is blank, rather than sending an empty line", () => {
-    const prompt = mapPrompt(mapInput({ title: "French", goal: "", timeBudget: "quick", level: "" }));
-    expect(prompt).toContain("did not say where they are starting from");
+  it("says so plainly when an answer is blank, rather than sending an empty line", () => {
+    const prompt = mapPrompt(mapInput({ title: "French", goal: "", level: "" }));
+    expect(prompt).toContain("did not say what they already know");
+    expect(prompt).toContain("did not say what they want it for");
   });
 
   it("carries the profile, so one answer calibrates every topic", () => {
@@ -244,25 +250,28 @@ describe("mapPrompt", () => {
     expect(own).not.toContain("one concrete worked case");
   });
 
-  it("asks for exactly the number of levels the learner chose", () => {
-    const two = mapPrompt(mapInput({ levels: MapLevels.Two }));
-    expect(two).toContain("TWO-level map");
-    expect(two).toContain('"sections"');
-    expect(two).not.toContain('"areas"');
-
-    const three = mapPrompt(mapInput({ levels: MapLevels.Three }));
-    expect(three).toContain("THREE-level map");
-    expect(three).toContain('"areas"');
+  it("asks for exactly the heading counts the learner chose", () => {
+    // The counts reach the shape block as well as the instruction lines: the
+    // lines are the learner's to rewrite, and this is what the schema will
+    // actually hold the reply to.
+    const prompt = mapPrompt(
+      mapInput({ shape: { ...mapShapeOf(topic), mainHeadings: 7, subHeadings: 3 } }),
+    );
+    expect(prompt).toContain("Level 1: 7 groups");
+    expect(prompt).toContain("Level 2: 3 nodes inside each group");
   });
 
   it("says a group has no minutes, so only the leaves carry time", () => {
     expect(mapPrompt(mapInput())).toContain("it has no minutes");
   });
 
-  it("carries rebuild instructions verbatim, and lets them win", () => {
-    const prompt = mapPrompt(mapInput({ instructions: "Far less YAML, much more networking" }));
-    expect(prompt).toContain("Far less YAML, much more networking");
-    expect(prompt).toContain("Where it conflicts with anything above, it wins");
+  it("carries the learner's instruction lines verbatim", () => {
+    const prompt = mapPrompt(
+      mapInput({ mapInstructions: "- Far less YAML\n- Much more on networking" }),
+    );
+    expect(prompt).toContain("- Far less YAML");
+    expect(prompt).toContain("- Much more on networking");
+    expect(prompt).toContain("How they want the map built:");
   });
 
   it("says nothing about rebuilding the first time round", () => {
@@ -302,14 +311,13 @@ describe("mapPrompt", () => {
     expect(prompt).not.toContain("They picked:");
   });
 
-  it("puts the picks above the instructions, so typed words beat a tapped option", () => {
+  it("states the instruction lines before the choices, so both are in front of it", () => {
     const prompt = mapPrompt(
-      mapInput({ answered: [outlineChoice], instructions: "Drop the networking entirely" }),
+      mapInput({ answered: [outlineChoice], mapInstructions: "- Drop the networking entirely" }),
     );
-    expect(prompt.indexOf("By what breaks")).toBeLessThan(
-      prompt.indexOf("Drop the networking entirely"),
+    expect(prompt.indexOf("- Drop the networking entirely")).toBeLessThan(
+      prompt.indexOf("By what breaks"),
     );
-    expect(prompt).toContain("Where it conflicts with anything above, it wins");
   });
 });
 
@@ -336,13 +344,10 @@ function questionsInput(
   return {
     title: topic.title,
     goal: topic.goal,
-    timeBudget: topic.timeBudget,
     level: topic.level,
-    levels: MapLevels.Two,
-    profile,
+      profile,
     content: contentSettingsOf(topic),
-    instructions: "",
-    current: [],
+    mapInstructions: "- Use 5 main headings, and 4 sub-headings under each one.",
     ...overrides,
   };
 }
@@ -353,10 +358,10 @@ describe("mapQuestionsPrompt", () => {
     const positions = [
       MapQuestionKind.Outline,
       MapQuestionKind.Breakdown,
+      MapQuestionKind.Known,
+      MapQuestionKind.Recap,
       MapQuestionKind.Scope,
       MapQuestionKind.Examples,
-      MapQuestionKind.Code,
-      MapQuestionKind.Numbers,
       MapQuestionKind.Opening,
     ].map((kind) => prompt.indexOf(`kind "${kind}"`));
     expect(positions.every((at) => at >= 0)).toBe(true);
@@ -369,10 +374,11 @@ describe("mapQuestionsPrompt", () => {
     );
   });
 
-  it("says how many levels the map will have, so an outline option fits it", () => {
-    expect(mapQuestionsPrompt(questionsInput({ levels: MapLevels.Three }))).toContain(
-      "will have 3 levels",
+  it("shows the instruction lines, so the options fit the map being asked for", () => {
+    const prompt = mapQuestionsPrompt(
+      questionsInput({ mapInstructions: "- Use 7 main headings, and 3 sub-headings under each one." }),
     );
+    expect(prompt).toContain("- Use 7 main headings, and 3 sub-headings under each one.");
   });
 
   it("carries the same learner and the same writing settings as the map itself", () => {
@@ -385,14 +391,20 @@ describe("mapQuestionsPrompt", () => {
     expect(prompt).toContain("the terms that carry weight");
   });
 
-  it("shows the map being replaced, and bans offering it back", () => {
-    const prompt = mapQuestionsPrompt(questionsInput({ current: [node] }));
-    expect(prompt).toContain("The reconciliation loop");
-    expect(prompt).toContain("Do not offer it back to them unchanged");
+  it("does not send the map being replaced", () => {
+    // The learner is describing the map they want, not editing the one they
+    // have. Showing the model the old one only invites it to offer that back as
+    // one of the four.
+    const prompt = mapQuestionsPrompt(questionsInput());
+    expect(prompt).not.toContain("The map they have now");
+    expect(prompt).not.toContain("Do not offer it back");
   });
 
-  it("says nothing about a current map when the topic does not exist yet", () => {
-    expect(mapQuestionsPrompt(questionsInput())).not.toContain("The map they have now");
+  it("asks two of the seven about what to skip, since that is what a known answer buys", () => {
+    const prompt = mapQuestionsPrompt(questionsInput());
+    expect(prompt).toContain('kind "known"');
+    expect(prompt).toContain('kind "recap"');
+    expect(prompt).toContain("read what they said they already know");
   });
 });
 
@@ -407,23 +419,22 @@ describe("subtreePrompt", () => {
   };
 
   it("names where the group sits, so a title like 'Taints' has its context", () => {
-    const prompt = subtreePrompt({ ...base, childLevels: 1 });
+    const prompt = subtreePrompt(base);
     expect(prompt).toContain("Scheduling › Taints and tolerations");
     expect(prompt).toContain("Rebuild only what belongs under");
   });
 
   it("names the other groups, so the replacement does not repeat them", () => {
-    expect(subtreePrompt({ ...base, childLevels: 1 })).toContain("Networking, Storage");
+    expect(subtreePrompt(base)).toContain("Networking, Storage");
   });
 
-  it("asks for nodes one level down and groups two levels down", () => {
-    expect(subtreePrompt({ ...base, childLevels: 1 })).toContain('"nodes"');
-    expect(subtreePrompt({ ...base, childLevels: 1 })).not.toContain('"sections"');
-    expect(subtreePrompt({ ...base, childLevels: 2 })).toContain('"sections"');
+  it("asks for nodes, because what hangs under a heading is always nodes", () => {
+    expect(subtreePrompt(base)).toContain('"nodes"');
+    expect(subtreePrompt(base)).not.toContain('"sections"');
   });
 
   it("leaves the rest of the map alone, and says so", () => {
-    expect(subtreePrompt({ ...base, childLevels: 1 })).toContain(
+    expect(subtreePrompt(base)).toContain(
       "Everything else in the map stays as it is",
     );
   });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Id } from "./ids";
 import {
   ContentFormatSchema,
+  ParagraphLengthSchema,
   EnglishLevelSchema,
   MAX_NODE_MINUTES,
   TechnicalDetailSchema,
@@ -67,6 +68,7 @@ export const CardSettings = z.object({
   englishLevel: EnglishLevelSchema,
   technicalDetail: TechnicalDetailSchema,
   format: ContentFormatSchema,
+  paragraphLength: ParagraphLengthSchema,
   angle: CardAngleSchema,
 });
 
@@ -96,8 +98,10 @@ export type CardSettingsT = z.infer<typeof CardSettings>;
  * 4: how hard the English is and how much terminology appears are asked
  *    separately, so the same card reads differently under either answer.
  * 5: the mechanism is headed sections rather than a run of unlabelled items.
+ * 6: paragraph length is asked, so the same card comes back in longer or
+ *    shorter paragraphs under the same depth and register.
  */
-export const CARD_PROMPT_REVISION = 5;
+export const CARD_PROMPT_REVISION = 6;
 
 /**
  * The cache key's variant half. Depth has a column of its own, so this carries
@@ -112,6 +116,7 @@ export function cardVariant(settings: CardSettingsT): string {
     settings.englishLevel,
     settings.technicalDetail,
     settings.format,
+    settings.paragraphLength,
   ].join("|");
 }
 

@@ -13,8 +13,8 @@ import type {
   ProfileT,
   ProfileUpdateInputT,
   ReviewInputT,
+  MapShapeT,
   TopicContentSettingsInputT,
-  TopicContentSettingsT,
   TopicCreateInputT,
   TopicInfoInputT,
   TopicQuestionsInputT,
@@ -29,6 +29,7 @@ import type {
   ReviewBatchT,
   SessionPlanT,
   SessionSummaryViewT,
+  TopicDefaultsT,
   TopicDetailT,
 } from "./client";
 
@@ -49,6 +50,16 @@ export function useUpdateProfile(): UseMutationResult<ProfileT, Error, ProfileUp
     mutationFn: (input: ProfileUpdateInputT) => api.updateProfile(input),
     onSuccess: (profile) => client.setQueryData(keys.profile, profile),
   });
+}
+
+/**
+ * The instruction lines a set of shape settings seeds. A mutation rather than a
+ * query because it is asked for as the chips move, and a query keyed on five
+ * numbers would cache a row per combination anybody ever touched.
+ */
+export function useSeedMapInstructions(): UseMutationResult<string, Error, MapShapeT> {
+  const api = useApi();
+  return useMutation({ mutationFn: (shape: MapShapeT) => api.seedMapInstructions(shape) });
 }
 
 export function useTopics(): UseQueryResult<TopicT[]> {
@@ -153,7 +164,7 @@ export function useUpdateTopicContentSettings(
 }
 
 /** The defaults a topic falls back to. They never change under the app. */
-export function useTopicDefaults(): UseQueryResult<TopicContentSettingsT> {
+export function useTopicDefaults(): UseQueryResult<TopicDefaultsT> {
   const api = useApi();
   return useQuery({
     queryKey: keys.topicDefaults,

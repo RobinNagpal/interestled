@@ -5,6 +5,8 @@ import {
   MapAnswers,
   LlmTask,
   MapQuestionSet,
+  MapShapeInput,
+  mapShapeOf,
   MoveDirection,
   MoveDirectionSchema,
   SUMMARY_MAX,
@@ -25,8 +27,8 @@ import type {
   GeneratedMapT,
   LearningNodeT,
   MapAnswersT,
-  MapLevels,
   MapPlanViewT,
+  MapShapeT,
   TopicT,
 } from "@interestled/schemas";
 import { ancestorsOf, isBranch } from "@interestled/domain";
@@ -35,8 +37,10 @@ import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
 import {
-  DEFAULT_CONTENT_INSTRUCTIONS,
+  effectiveMapInstructions,
   generateMap,
+  seedContentInstructions,
+  seedMapInstructions,
   generateMapQuestions,
   generateSubtree,
 } from "./llm";
@@ -46,7 +50,7 @@ import { loadProfile } from "./profile";
 import { toNode, toTopic } from "./rows";
 
 /** Persist a generated map, replacing whatever the topic had before. */
-async function saveMap(db: Db, topic: TopicT, map: GeneratedMapT, levels: MapLevels): Promise<void> {
+async function saveMap(db: Db, topic: TopicT, map: GeneratedMapT): Promise<void> {
   const { rows, edges } = prepareNodes({
     topicId: topic.id,
     archetype: map.archetype,
@@ -60,7 +64,7 @@ async function saveMap(db: Db, topic: TopicT, map: GeneratedMapT, levels: MapLev
   await db.nodePrerequisite.createMany({ data: edges, skipDuplicates: true });
   await db.topic.update({
     where: { id: topic.id },
-    data: { archetype: map.archetype, levels, status: TopicStatus.Ready },
+    data: { archetype: map.archetype, status: TopicStatus.Ready },
   });
 }
 
@@ -195,25 +199,25 @@ async function buildMap(
   db: Db,
   provider: LlmProvider,
   topic: TopicT,
-  levels: MapLevels,
-  instructions: string,
   answered: readonly AnsweredQuestionT[],
 ): Promise<string | null> {
   try {
     const map = await generateMap(provider, {
       title: topic.title,
       goal: topic.goal,
-      timeBudget: topic.timeBudget,
       level: topic.level,
-      levels,
+      shape: mapShapeOf(topic),
+      // The stored lines when the learner wrote some, the seed when they did
+      // not. Read off the topic rather than passed in, so a rebuild uses what
+      // the topic now says rather than what it said when it was created.
+      mapInstructions: effectiveMapInstructions(topic),
       content: contentSettingsOf(topic),
-      instructions,
       answered,
       // Read here rather than passed in, so a rebuild picks up a profile edited
       // since the topic was created — which is a common reason to rebuild.
       profile: await loadProfile(db, topic.userId),
     });
-    await saveMap(db, topic, map, levels);
+    await saveMap(db, topic, map);
     return null;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation failed";
@@ -226,6 +230,18 @@ async function buildMap(
 }
 
 const Instructions = z.object({ instructions: z.string().trim().max(600).default("") });
+
+/**
+ * What a create or rebuild request's instruction lines actually say: the text
+ * the learner edited, or the seed of the shape they chose when they left it
+ * alone. Same rule as the stored value, applied one step earlier — the questions
+ * are asked before there is a topic row to read it off.
+ */
+function instructionsFor(input: MapShapeT & { mapInstructions: string }): string {
+  return input.mapInstructions.trim() === ""
+    ? seedMapInstructions(mapShapeOf(input))
+    : input.mapInstructions.trim();
+}
 
 /**
  * Ask the model for the seven questions, and keep the row they came from.
@@ -382,15 +398,19 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
    * Registered before "/:slug", and "defaults" is a reserved slug, so no topic
    * can ever be parked behind this address.
    */
-  router.get("/defaults", (c) =>
+  router.get("/defaults", (c) => {
     // Taken from the input schema rather than restated, so there is one place a
     // default can be changed and no way for the screen to show a different one
     // from the one a save would actually apply.
-    c.json({
-      ...TopicContentSettingsInput.parse({}),
-      contentInstructions: DEFAULT_CONTENT_INSTRUCTIONS,
-    }),
-  );
+    const content = TopicContentSettingsInput.parse({});
+    const shape = MapShapeInput.parse({});
+    return c.json({
+      ...content,
+      ...shape,
+      contentInstructions: seedContentInstructions(content.paragraphLength),
+      mapInstructions: seedMapInstructions(shape),
+    });
+  });
 
   /**
    * The seven questions asked before a new topic's map is built.
@@ -410,46 +430,48 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
       await createPlan(db, provider(LlmTask.Map), userId, null, {
         title: input.title,
         goal: input.goal,
-        timeBudget: input.timeBudget,
         level: input.level,
-        levels: input.levels,
         content: TopicContentSettingsInput.parse({}),
-        instructions: "",
-        // Nothing to replace: this topic does not exist yet.
-        current: [],
+        mapInstructions: instructionsFor(input),
       }),
     );
   });
 
   /**
    * The same seven questions before a rebuild. They are generated again rather
-   * than reused, because the map being replaced is part of what they are asked
-   * about — four options that include the map the learner has just rejected are
-   * three options.
+   * than reused, because the shape and the instruction lines may have changed
+   * since the last build and the options are about the map being asked for.
+   *
+   * The map being replaced is deliberately not sent. The learner is describing
+   * the map they want, not editing the one they have, and showing the model the
+   * old one only invites it to offer that back as one of the four.
    */
   router.post("/:slug/questions", zValidator("json", TopicQuestionsInput), async (c) => {
     const userId = c.get("userId");
     const topic = await findTopic(db, userId, c.req.param("slug"));
     const input = c.req.valid("json");
     await assertWithinBudget(db, userId, { newTopic: false, newPlan: true });
-    const nodes = await db.learningNode.findMany({
-      where: { topicId: topic.id },
-      include: { prerequisites: { select: { prerequisiteId: true } } },
-      orderBy: { orderIndex: "asc" },
-    });
     return c.json(
       await createPlan(db, provider(LlmTask.Map), userId, topic.id, {
         title: topic.title,
         goal: topic.goal,
-        timeBudget: topic.timeBudget,
         level: topic.level,
-        levels: input.levels ?? topic.levels,
         content: contentSettingsOf(topic),
-        instructions: input.instructions,
-        current: nodes.map(toNode),
+        mapInstructions: instructionsFor(input),
       }),
     );
   });
+
+  /**
+   * The instruction lines a set of shape settings seeds, so the create and
+   * rebuild screens can show them in the box before anything exists to store
+   * them on. It is a prompt, so it lives in src/llm/prompts as Markdown and is
+   * rendered from there rather than rebuilt in the client — one of the two would
+   * go stale, and it would be this one.
+   */
+  router.post("/map-instructions", zValidator("json", MapShapeInput), (c) =>
+    c.json({ mapInstructions: seedMapInstructions(c.req.valid("json")) }),
+  );
 
   /**
    * Creating a topic generates its map inline. It is one call and the learner
@@ -473,14 +495,16 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
         goal: input.goal,
         // Overwritten by the generated map; a placeholder keeps the column typed.
         archetype: "tool",
-        timeBudget: input.timeBudget,
         level: input.level,
-        levels: input.levels,
+        ...mapShapeOf(input),
+        // Stored as the learner left it: "" means the seed applies and moving a
+        // chip later re-seeds, and text means they wrote it and it stands.
+        mapInstructions: input.mapInstructions,
         status: TopicStatus.Generating,
       },
     });
     await linkPlan(db, userId, input.planId, created.id, input.answers);
-    const failure = await buildMap(db, provider(LlmTask.Map), toTopic(created), input.levels, "", answered);
+    const failure = await buildMap(db, provider(LlmTask.Map), toTopic(created), answered);
     if (failure !== null) {
       return c.json({ error: failure, topicSlug: created.slug }, 502);
     }
@@ -489,24 +513,31 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
 
   /**
    * Build the map again — after a failure, or because the learner read it and
-   * wants it different. The instructions are their words, passed to the model
-   * verbatim; the level count is only changed when they changed it.
+   * wants it different. The shape and the instruction lines are saved before the
+   * build, so the rebuild sheet shows the same text next time and the topic says
+   * what it was actually built to.
    */
   router.post("/:slug/regenerate", zValidator("json", TopicRegenerateInput), async (c) => {
     const userId = c.get("userId");
     const topic = await findTopic(db, userId, c.req.param("slug"));
     const input = c.req.valid("json");
-    const levels = input.levels ?? topic.levels;
     await assertWithinBudget(db, userId, { newTopic: false, newPlan: false });
     const answered = await rebuildChoices(db, userId, topic.id, input.planId, input.answers);
     // Nodes from the previous map would collide with the new ones on the path
     // constraint, and the cascade takes their cards and drills with them.
     await db.learningNode.deleteMany({ where: { topicId: topic.id } });
-    await db.topic.update({
-      where: { id: topic.id },
-      data: { status: TopicStatus.Generating, error: null, levels },
-    });
-    const failure = await buildMap(db, provider(LlmTask.Map), topic, levels, input.instructions, answered);
+    const rebuilt = toTopic(
+      await db.topic.update({
+        where: { id: topic.id },
+        data: {
+          status: TopicStatus.Generating,
+          error: null,
+          ...mapShapeOf(input),
+          mapInstructions: input.mapInstructions,
+        },
+      }),
+    );
+    const failure = await buildMap(db, provider(LlmTask.Map), rebuilt, answered);
     if (failure !== null) {
       return c.json({ error: failure, topicSlug: topic.slug }, 502);
     }
@@ -540,7 +571,6 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
         summary: input.summary,
         goal: input.goal,
         level: input.level,
-        timeBudget: input.timeBudget,
       },
     });
     return c.json(toTopic(updated));
@@ -601,7 +631,6 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
     }
     await assertWithinBudget(db, userId, { newTopic: false, newPlan: false });
 
-    const childLevels = topic.levels - node.depth;
     const siblings = nodes.filter(
       (candidate) => candidate.parentId === node.parentId && candidate.id !== node.id,
     );
@@ -612,7 +641,6 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
         trail: [...ancestorsOf(node, nodes).map((row) => row.title), node.title],
         claim: node.claim,
         siblingTitles: siblings.map((row) => row.title),
-        childLevels,
         profile: await loadProfile(db, userId),
         instructions: c.req.valid("json").instructions,
       },

@@ -29,15 +29,6 @@ export function mapOutline(nodes: readonly LearningNodeT[], current: LearningNod
   return lines.join("\n");
 }
 
-/**
- * The same outline with nothing marked — the map as it stands. It is what the
- * seven questions before a rebuild are shown, so the four options they offer are
- * four maps different from the one the learner is asking to be rid of.
- */
-export function plainOutline(nodes: readonly LearningNodeT[]): string {
-  return outlineLines(nodes, null).join("\n");
-}
-
 function outlineLines(nodes: readonly LearningNodeT[], currentId: string | null): string[] {
   const lines: string[] = [];
   const walk = (entries: readonly NodeTreeT[], depth: number): void => {

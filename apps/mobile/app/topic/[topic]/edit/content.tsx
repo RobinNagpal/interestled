@@ -15,9 +15,11 @@ import {
   LoadingContent,
   SectionTitle,
   TECHNICAL_COPY,
+  PARAGRAPH_OPTIONS,
   TECHNICAL_OPTIONS,
 } from "@interestled/ui";
 import { READ_TIMES, ReadTimeSchema } from "@interestled/schemas";
+import type { ParagraphLength } from "@interestled/schemas";
 import type {
   ContentFormat,
   EnglishLevel,
@@ -99,6 +101,7 @@ function ContentForm({
   const [englishLevel, setEnglishLevel] = useState<EnglishLevel>(topic.englishLevel);
   const [technicalDetail, setTechnicalDetail] = useState<TechnicalDetail>(topic.technicalDetail);
   const [format, setFormat] = useState<ContentFormat>(topic.format);
+  const [paragraphLength, setParagraphLength] = useState<ParagraphLength>(topic.paragraphLength);
   const [averageReadTime, setAverageReadTime] = useState(topic.averageReadTime);
   const [instructions, setInstructions] = useState(topic.contentInstructions);
 
@@ -110,6 +113,7 @@ function ContentForm({
         englishLevel,
         technicalDetail,
         format,
+        paragraphLength,
         averageReadTime,
         contentInstructions: instructions,
       },
@@ -146,6 +150,19 @@ function ContentForm({
         <SectionTitle>Shape</SectionTitle>
         <ChipRow options={FORMAT_OPTIONS} selected={format} onSelect={(value) => setFormat(value)} />
         <Text className="text-sm text-ink-soft">{FORMAT_COPY[format].body}</Text>
+      </View>
+
+      <View className="gap-2">
+        <SectionTitle>How long a paragraph runs</SectionTitle>
+        <ChipRow
+          options={PARAGRAPH_OPTIONS}
+          selected={paragraphLength}
+          onSelect={(value) => setParagraphLength(value)}
+        />
+        <Text className="text-sm text-ink-soft">
+          Each section is written in paragraphs this long, with a heading over each. It is the one
+          thing about the shape of a card you feel immediately.
+        </Text>
       </View>
 
       <View className="gap-2">
