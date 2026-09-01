@@ -253,9 +253,20 @@ with four options each, the learner picks, and the picks go into `mapPrompt`.
   order — outline, breakdown, scope, examples, code, numbers, opening — and
   `MapQuestionSet` refuses anything else. Answers are keyed by kind, so a missing kind
   is a question nobody is asked and a repeated one is an answer that overwrites another.
+  An answer with nothing picked is refused, because a skipped question is the answer
+  being absent rather than present and empty.
 - **An option is a sample, not a description.** Nobody can answer "how technical should
   the examples be"; everybody can pick one of four examples. What reaches the prompt is
   the sample as well as the label, because the sample is what was actually chosen.
+- **Any number of the four, and what was left goes to the prompt too.** The options are
+  rarely exclusive — two cuts of a subject can both be wanted and blended — so an answer
+  is a set of indexes rather than one, and forcing a single pick would throw away half of
+  what the learner meant. `choicesBlock` sends the picked options *and* the passed-over
+  ones with their samples: the four were only ever meaningful against each other, and
+  without the rejected ones the model is free to build the very cut just turned down. The
+  prompt says picks are instructions and passed-over ones are what they saw and did not
+  want, because "not picked" means different things on different questions — on *scope*
+  it means keep that.
 - **Every question is skippable, and a skip is absent from the prompt.** Seven mandatory
   questions between "I want to learn this" and the map is exactly the setup cost A14
   bans, and a default nobody chose is worse than no answer.

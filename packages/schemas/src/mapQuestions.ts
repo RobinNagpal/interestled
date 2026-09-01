@@ -126,14 +126,33 @@ export const MapQuestionSet = z
   });
 
 /**
- * One answer: which of the four. By position rather than by a key the model
- * invented — the option list is fixed at four and stored beside the answer, so
- * the index is the whole of the reference and there is no key to come back
- * malformed or repeated.
+ * One answer: which of the four, and there may be more than one.
+ *
+ * Multi-select because the four options are rarely exclusive in the way a radio
+ * button claims. Two cuts of a subject can both be wanted and blended; two ways
+ * code could appear can both be welcome; two things can both be dropped. Forcing
+ * one is asking the learner to throw away half of what they meant, and the map
+ * is then built from the half that survived.
+ *
+ * By position rather than by a key the model invented — the option list is fixed
+ * at four and stored beside the answer, so the index is the whole of the
+ * reference and there is no key to come back malformed. At least one, because a
+ * question with nothing picked is a skipped question, and a skip is the answer
+ * being absent rather than present and empty.
  */
 export const MapAnswer = z.object({
   kind: MapQuestionKindSchema,
-  optionIndex: z.number().int().min(0).max(MAP_QUESTION_OPTIONS - 1),
+  optionIndexes: z
+    .array(z.number().int().min(0).max(MAP_QUESTION_OPTIONS - 1))
+    .min(1)
+    .max(MAP_QUESTION_OPTIONS)
+    .superRefine((indexes, ctx) => {
+      // A repeat would put the same sample in the prompt twice and say nothing
+      // by doing it, so it is a client bug rather than a preference.
+      if (new Set(indexes).size !== indexes.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "picked the same option twice" });
+      }
+    }),
 });
 
 /**
@@ -177,12 +196,21 @@ export type MapAnswerT = z.infer<typeof MapAnswer>;
 export type MapAnswersT = z.infer<typeof MapAnswers>;
 export type MapPlanViewT = z.infer<typeof MapPlanView>;
 
-/** A question and the option taken, which is what the map prompt is written from. */
-export interface ChosenOptionT {
+/**
+ * A question, what was picked, and what was left — which together are what the
+ * map prompt is written from.
+ *
+ * The passed-over options are carried as well as the picked ones because they
+ * are the other half of the answer: "these five headings rather than those five"
+ * says more than the five alone, and the model would otherwise be free to build
+ * the very cut the learner just turned down. They are never empty when something
+ * was picked, since a question always has four options.
+ */
+export interface AnsweredQuestionT {
   kind: MapQuestionKind;
   question: string;
-  label: string;
-  sample: readonly string[];
+  picked: readonly MapQuestionOptionT[];
+  passedOver: readonly MapQuestionOptionT[];
 }
 
 /**
@@ -190,25 +218,28 @@ export interface ChosenOptionT {
  * the questions were asked. An answer naming a kind that is not in this set is
  * dropped rather than failing: it means the questions were regenerated under
  * the learner, and building the map from six of their seven answers beats
- * refusing to build it at all.
+ * refusing to build it at all. An index past the end of the option list is
+ * dropped for the same reason, and a question left with nothing picked is not
+ * returned at all — it reads as skipped, which is what it now is.
  */
-export function chosenOptions(
+export function answeredQuestions(
   questions: readonly MapQuestionT[],
   answers: readonly MapAnswerT[],
-): ChosenOptionT[] {
-  const byKind = new Map(answers.map((answer) => [answer.kind, answer.optionIndex]));
+): AnsweredQuestionT[] {
+  const byKind = new Map(answers.map((answer) => [answer.kind, new Set(answer.optionIndexes)]));
   return questions.flatMap((question) => {
-    const index = byKind.get(question.kind);
-    const option = index === undefined ? undefined : question.options[index];
-    return option === undefined
-      ? []
-      : [
-          {
-            kind: question.kind,
-            question: question.question,
-            label: option.label,
-            sample: option.sample,
-          },
-        ];
+    const indexes = byKind.get(question.kind) ?? new Set<number>();
+    const picked = question.options.filter((_option, index) => indexes.has(index));
+    if (picked.length === 0) {
+      return [];
+    }
+    return [
+      {
+        kind: question.kind,
+        question: question.question,
+        picked,
+        passedOver: question.options.filter((_option, index) => !indexes.has(index)),
+      },
+    ];
   });
 }

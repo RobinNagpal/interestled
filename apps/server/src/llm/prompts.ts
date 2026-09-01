@@ -14,10 +14,11 @@ import {
   contentSettingsOf,
 } from "@interestled/schemas";
 import type {
+  AnsweredQuestionT,
   CardContentT,
   CardSettingsT,
-  ChosenOptionT,
   LearningNodeT,
+  MapQuestionOptionT,
   ProfileT,
   TopicContentSettingsT,
   TopicT,
@@ -171,23 +172,36 @@ function leafRules(averageReadTime: number): string {
   return render(promptFile("leaf-rules"), minutesBand(averageReadTime));
 }
 
+/** One option under a "picked" or "passed over" heading, sample and all. */
+function optionLines(option: MapQuestionOptionT): string[] {
+  return [`- ${option.label}`, ...option.sample.map((line) => `    ${line}`)];
+}
+
 /**
- * The seven answers, as prompt text. Each one is the question they were asked,
- * the option they took, and the sample that option showed them — because the
- * sample is what they actually chose. A label alone ("By what breaks") is a
+ * The seven answers, as prompt text: the question, everything they picked, and
+ * everything they left.
+ *
+ * The samples go in as well as the labels, on both sides, because the sample is
+ * what was actually being chosen between. A label alone ("By what breaks") is a
  * phrase the model has to interpret; the five headings underneath it are not.
+ * And the four options were only ever meaningful against each other, so "these
+ * five headings rather than those five" is a stronger instruction than the five
+ * on their own — without the rejected ones the model is free to build the very
+ * cut the learner just turned down.
  *
  * Skipped questions are simply absent. The block disappears entirely when
  * nothing was answered, so a map built without the questions reads exactly as it
  * did before they existed.
  */
-export function choicesBlock(chosen: readonly ChosenOptionT[]): string {
-  const choices = chosen
-    .map((choice) =>
+export function choicesBlock(answered: readonly AnsweredQuestionT[]): string {
+  const choices = answered
+    .map((entry) =>
       [
-        `${choice.question}`,
-        `They chose: ${choice.label}`,
-        ...choice.sample.map((line) => `  ${line}`),
+        entry.question,
+        "They picked:",
+        ...entry.picked.flatMap(optionLines),
+        "They passed over:",
+        ...entry.passedOver.flatMap(optionLines),
       ].join("\n"),
     )
     .join("\n\n");
@@ -205,8 +219,8 @@ export function mapPrompt(input: {
   content: TopicContentSettingsT;
   /** What to change, when the learner asked for the map again. "" the first time. */
   instructions: string;
-  /** The seven choices, resolved. Empty when every question was skipped. */
-  chosen: readonly ChosenOptionT[];
+  /** The seven answers, resolved. Empty when every question was skipped. */
+  answered: readonly AnsweredQuestionT[];
 }): string {
   const shape = render(
     promptFile(input.levels === MapLevels.Three ? "map-three-levels" : "map-two-levels"),
@@ -221,7 +235,7 @@ export function mapPrompt(input: {
     contentRules: contentRulesBlock(input.content),
     // Before the instructions, so the words they typed win over the option they
     // tapped — the instructions block says it takes everything above it.
-    choices: choicesBlock(input.chosen),
+    choices: choicesBlock(input.answered),
     instructions: instructionBlock(input.instructions),
     archetypes: promptFile("archetypes"),
     shape,

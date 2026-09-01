@@ -17,6 +17,10 @@ The map will have {{levelCount}} levels.
 
 Each question has exactly four options. An option is a short label and a sample.
 
+They may pick more than one option per question, so write four that can be
+combined as well as taken alone. Two picked together should read as one coherent
+instruction, not as a contradiction.
+
 The sample is the thing itself, not a description of it. For a question about
 headings, the sample is the headings. For a question about examples, it is the
 opening of a real example from this subject. Someone should be able to pick by
@@ -30,6 +34,8 @@ inside a single string, never split across two.
 Rules for every question:
 - The four options must be four real choices. No option that is obviously the
   right one, and none that is there to be rejected.
+- No option is the whole of another. Four that overlap that much leave nothing to
+  choose between, and picking two of them says nothing.
 - Write about this subject, with its real names and real terms in the samples.
   A sample that would fit any subject is not a sample.
 - Each question is one line, in plain words, addressed to them.

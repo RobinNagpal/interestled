@@ -945,7 +945,7 @@ describe("map plans", () => {
     const built = await post(db, provider, "/api/topics", {
       title: "Kubernetes",
       planId,
-      answers: [{ kind: MapQuestionKind.Outline, optionIndex: 2 }],
+      answers: [{ kind: MapQuestionKind.Outline, optionIndexes: [2] }],
     });
 
     expect(built.status).toBe(201);
@@ -957,9 +957,12 @@ describe("map plans", () => {
     // alone — the sample is the thing that was actually chosen.
     expect(prompts[1]).toContain("Sample 2 for outline");
     expect(prompts[1]).toContain("Option 2 for outline");
+    // And what they turned down, which is the other half of the answer.
+    expect(prompts[1]).toContain("They passed over:");
+    expect(prompts[1]).toContain("Option 0 for outline");
     // And the row now says which topic it built and what was answered.
     expect(plans[0]?.topicId).toBe(topics[0]?.id);
-    expect(plans[0]?.answers).toEqual([{ kind: MapQuestionKind.Outline, optionIndex: 2 }]);
+    expect(plans[0]?.answers).toEqual([{ kind: MapQuestionKind.Outline, optionIndexes: [2] }]);
   });
 
   it("refuses a plan belonging to someone else, before creating anything", async () => {
@@ -977,11 +980,64 @@ describe("map plans", () => {
     const response = await post(db, provider, "/api/topics", {
       title: "Kubernetes",
       planId: "p-other",
-      answers: [{ kind: MapQuestionKind.Outline, optionIndex: 0 }],
+      answers: [{ kind: MapQuestionKind.Outline, optionIndexes: [0] }],
     });
 
     expect(response.status).toBe(404);
     // No half-made topic left behind, and no model call spent on it.
+    expect(topics).toEqual([]);
+  });
+
+  it("carries every option of a multi-pick answer into the map prompt", async () => {
+    // The four options are not exclusive: two cuts of a subject can both be
+    // wanted and blended. Sending only the first would build the map from half
+    // of what the learner meant.
+    const { db, plans } = planDb([]);
+    const { provider, prompts } = recorder(QUESTIONS, MAP);
+    const app = createApp(db, { provider });
+    const asked = await app.request("/api/topics/questions", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: "Bearer good" },
+      body: JSON.stringify({ title: "Kubernetes" }),
+    });
+    const { planId } = MapPlanView.parse(await asked.json());
+
+    const answers = [{ kind: MapQuestionKind.Outline, optionIndexes: [0, 3] }];
+    const built = await post(db, provider, "/api/topics", {
+      title: "Kubernetes",
+      planId,
+      answers,
+    });
+
+    expect(built.status).toBe(201);
+    expect(prompts[1]).toContain("Sample 0 for outline");
+    expect(prompts[1]).toContain("Sample 3 for outline");
+    // The two left are the ones passed over, not the ones picked.
+    expect(prompts[1]?.indexOf("Option 0 for outline")).toBeLessThan(
+      prompts[1]?.indexOf("They passed over:") ?? 0,
+    );
+    expect(plans[0]?.answers).toEqual(answers);
+  });
+
+  it("refuses an answer that names the same option twice", async () => {
+    const { db, created: topics } = planDb([
+      {
+        id: "p1",
+        userId: "u1",
+        topicId: null,
+        questions: JSON.parse(QUESTIONS).questions,
+        answers: [],
+        createdAt: new Date(),
+      },
+    ]);
+    const { provider } = recorder(MAP);
+    const response = await post(db, provider, "/api/topics", {
+      title: "Kubernetes",
+      planId: "p1",
+      answers: [{ kind: MapQuestionKind.Outline, optionIndexes: [1, 1] }],
+    });
+
+    expect(response.status).toBe(400);
     expect(topics).toEqual([]);
   });
 
@@ -992,7 +1048,7 @@ describe("map plans", () => {
     const { provider } = recorder(MAP);
     const response = await post(db, provider, "/api/topics", {
       title: "Kubernetes",
-      answers: [{ kind: MapQuestionKind.Outline, optionIndex: 1 }],
+      answers: [{ kind: MapQuestionKind.Outline, optionIndexes: [1] }],
     });
 
     expect(response.status).toBe(409);
@@ -1020,7 +1076,7 @@ describe("map plans", () => {
     const built = await post(db, provider, "/api/topics", {
       title: "Kubernetes",
       planId: "p0",
-      answers: [{ kind: MapQuestionKind.Outline, optionIndex: 1 }],
+      answers: [{ kind: MapQuestionKind.Outline, optionIndexes: [1] }],
     });
     expect(built.status).toBe(201);
   });
@@ -1044,7 +1100,7 @@ describe("map plans", () => {
         userId: "u1",
         topicId: "t1",
         questions: JSON.parse(QUESTIONS).questions,
-        answers: [{ kind: MapQuestionKind.Code, optionIndex: 3 }],
+        answers: [{ kind: MapQuestionKind.Code, optionIndexes: [3] }],
         createdAt: new Date(),
       },
     ]);

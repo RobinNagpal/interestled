@@ -269,9 +269,12 @@ wants; it does not say what the map should look like, and nobody can write that 
 demand, and it is a decision they make in two seconds when they can see both. So the
 model writes seven questions with four options each, and each option is a *sample*: the
 actual headings, an actual example, the actual first two sentences of a node. The
-learner reads four samples and picks. Which set of top-level headings, how the biggest
-one breaks up, what to leave out, what an example looks like, how much code, how many
-numbers, how a node opens.
+learner reads four samples and picks — as many of the four as they want, because two
+cuts of a subject can both be wanted and blended, and forcing one throws away half of
+what they meant. Which set of top-level headings, how the biggest one breaks up, what to
+leave out, what an example looks like, how much code, how many numbers, how a node
+opens. What they passed over goes to the model as well as what they picked: the four
+options were only ever meaningful against each other.
 
 One question per screen, every one skippable, and a skipped question is absent from the
 prompt rather than answered with a default. A full rebuild asks them again, because the
