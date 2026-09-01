@@ -94,7 +94,7 @@ export function sessionRouter(db: Db): Hono<AuthEnv> {
     if (user === null) {
       return c.json({ error: "Unauthorized" }, 401);
     }
-    return c.json({ ...User.parse(user), defaultDepth: user.defaultDepth });
+    return c.json(User.parse(user));
   });
 
   router.post("/logout", async (c) => {

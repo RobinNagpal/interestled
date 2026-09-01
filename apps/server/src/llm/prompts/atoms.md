@@ -1,9 +1,9 @@
 Node: {{node}}
 Claim: {{claim}}
 Mechanism: {{mechanism}}
-Worked example: {{example}}
-Misconception: {{misconception}}
-
+{{#example}}Worked example: {{example}}
+{{/example}}{{#misconception}}Misconception: {{misconception}}
+{{/misconception}}
 {{contentRules}}
 Extract 3-5 retrieval items for spaced review. Mix the kinds:
 - "cloze": one sentence with the load-bearing words removed, written as "___".

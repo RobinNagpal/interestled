@@ -207,7 +207,18 @@ export interface ApiClient {
   moveNode(slug: string, nodeId: string, direction: MoveDirection): Promise<TopicDetailT>;
   deleteNode(slug: string, nodeId: string): Promise<TopicDetailT>;
 
-  getCard(nodeId: string, settings?: Partial<CardSettingsT>): Promise<CardViewT>;
+  /**
+   * One card. `rewrite` asks for it to be written again at the settings it
+   * already has rather than read from the cache — the one call that costs a
+   * model call every time it is made, so it is a separate argument rather than
+   * another setting: it is not something the card was written to, and it must
+   * not end up in a cache key as though it were.
+   */
+  getCard(
+    nodeId: string,
+    settings?: Partial<CardSettingsT>,
+    options?: { rewrite?: boolean },
+  ): Promise<CardViewT>;
   getDrill(nodeId: string, kind?: DrillKind): Promise<DrillT>;
   submitAttempt(input: AttemptInputT): Promise<AttemptResultT>;
   setNodeStatus(nodeId: string, status: NodeStatus): Promise<LearningNodeT>;
@@ -277,7 +288,7 @@ export function createApiClient(config: ClientConfig): ApiClient {
     deleteNode: (slug, nodeId) =>
       request(config, `/api/topics/${encodeURIComponent(slug)}/nodes/${nodeId}`, "DELETE", TopicDetail),
 
-    getCard: (nodeId, settings) => {
+    getCard: (nodeId, settings, options) => {
       // Only what the learner actually changed: an empty query is the plain
       // card, written to the topic's own settings.
       const query = new URLSearchParams();
@@ -287,11 +298,20 @@ export function createApiClient(config: ClientConfig): ApiClient {
       if (settings?.minutes !== undefined) {
         query.set("minutes", String(settings.minutes));
       }
-      if (settings?.style !== undefined) {
-        query.set("style", settings.style);
+      if (settings?.englishLevel !== undefined) {
+        query.set("englishLevel", settings.englishLevel);
+      }
+      if (settings?.technicalDetail !== undefined) {
+        query.set("technicalDetail", settings.technicalDetail);
+      }
+      if (settings?.format !== undefined) {
+        query.set("format", settings.format);
       }
       if (settings?.angle !== undefined) {
         query.set("angle", settings.angle);
+      }
+      if (options?.rewrite === true) {
+        query.set("rewrite", "1");
       }
       const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
       return get(`/api/nodes/${nodeId}/card${suffix}`, CardView);

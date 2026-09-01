@@ -2,8 +2,14 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 import { router } from "expo-router";
-import { useCard } from "@interestled/api";
-import { depthAfter, drillHref, nodeHref, readTimeAfter } from "@interestled/domain";
+import { useCard, useRewriteCard } from "@interestled/api";
+import {
+  defaultCardSettings,
+  depthAfter,
+  drillHref,
+  nodeHref,
+  readTimeAfter,
+} from "@interestled/domain";
 import {
   ANGLE_OPTIONS,
   Button,
@@ -11,29 +17,37 @@ import {
   DEPTH_COPY,
   ErrorState,
   InlineMarkdown,
+  ENGLISH_COPY,
+  ENGLISH_OPTIONS,
+  FORMAT_COPY,
+  FORMAT_OPTIONS,
   JargonList,
   LoadingContent,
   Markdown,
-  STYLE_COPY,
-  STYLE_OPTIONS,
   SectionTitle,
+  TECHNICAL_COPY,
+  TECHNICAL_OPTIONS,
+  settingsSummary,
 } from "@interestled/ui";
-import { CARD_MINUTES_MAX, Step } from "@interestled/schemas";
-import type { CardSettingsT, LearningNodeT } from "@interestled/schemas";
+import { CARD_MINUTES_MAX, DEFAULT_CARD_DEPTH, Step } from "@interestled/schemas";
+import type { CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
 import { ChipRow } from "./ChipRow";
+import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
 
 /**
- * One concept, one screen, always the same six slots. Opening it marks the node
- * Seen and nothing further — reading can never complete a node, or the map stops
- * being honest and everything resting on it collapses.
+ * One concept, one screen, always the same slots in the same order. Opening it
+ * marks the node Seen and nothing further — reading can never complete a node,
+ * or the map stops being honest and everything resting on it collapses.
  */
 export function NodeCard({
   topicSlug,
+  topic,
   node,
   nodes,
 }: {
   topicSlug: string;
+  topic: TopicT;
   node: LearningNodeT;
   nodes: readonly LearningNodeT[];
 }): ReactElement {
@@ -42,11 +56,20 @@ export function NodeCard({
   // must get.
   const [overrides, setOverrides] = useState<Partial<CardSettingsT>>({});
   const card = useCard(node.id, overrides);
+  const rewrite = useRewriteCard(node.id);
+  const { user } = useAuth();
 
   if (card.isPending) {
+    // The same rule the server writes to, so the wait names the card that
+    // actually arrives rather than a guess at it.
+    const asking = {
+      ...defaultCardSettings(topic, node, user?.defaultDepth ?? DEFAULT_CARD_DEPTH),
+      ...overrides,
+    };
     return (
       <LoadingContent
         label={`Writing the card for ${node.title}…`}
+        detail={settingsSummary(asking)}
         hint="The first time a node is opened its card is written for you, which takes 10–30 seconds. After that it is instant."
         lines={6}
       />
@@ -110,31 +133,43 @@ export function NodeCard({
         ))}
       </Card>
 
-      <Card className="gap-2">
-        <SectionTitle>Concretely</SectionTitle>
-        <Markdown text={content.example.setup} />
-        <Markdown
-          text={`→ ${content.example.result}`}
-          className="text-base leading-6 text-ink-soft"
-        />
-      </Card>
+      {/* Both of these are written only where the node has one. A heading over
+          the node restated in other words is worse than no heading: it promises
+          something new and delivers the paragraph just read. */}
+      {content.example === undefined ? null : (
+        <Card className="gap-2">
+          <SectionTitle>Concretely</SectionTitle>
+          <Markdown text={content.example.setup} />
+          <Markdown
+            text={`→ ${content.example.result}`}
+            className="text-base leading-6 text-ink-soft"
+          />
+        </Card>
+      )}
 
-      <Card className="gap-2">
-        <SectionTitle>What people get wrong</SectionTitle>
-        <Markdown
-          text={content.misconception.belief}
-          className="text-base leading-6 text-ink-soft"
-        />
-        <Markdown text={content.misconception.correction} />
-      </Card>
+      {content.misconception === undefined ? null : (
+        <Card className="gap-2">
+          <SectionTitle>What people get wrong</SectionTitle>
+          <Markdown
+            text={content.misconception.belief}
+            className="text-base leading-6 text-ink-soft"
+          />
+          <Markdown text={content.misconception.correction} />
+        </Card>
+      )}
 
       <JargonList terms={content.jargon} />
 
       <CardControls
         settings={asked}
-        rewriting={card.isPlaceholderData || card.isFetching}
+        rewriting={card.isPlaceholderData || card.isFetching || rewrite.isPending}
+        onRewrite={() => rewrite.mutate(overrides)}
+        rewriteError={rewrite.error === null ? undefined : messageOf(rewrite.error)}
         changed={Object.keys(overrides).length > 0}
-        onChange={(change) => setOverrides((current) => ({ ...current, ...change }))}
+        onChange={(change) => {
+          rewrite.reset();
+          setOverrides((current) => ({ ...current, ...change }));
+        }}
         onReset={() => setOverrides({})}
       />
 
@@ -207,6 +242,8 @@ function CardControls({
   changed,
   onChange,
   onReset,
+  onRewrite,
+  rewriteError,
 }: {
   settings: CardSettingsT;
   /** The card on screen is the previous one; the next is being written. */
@@ -214,6 +251,9 @@ function CardControls({
   changed: boolean;
   onChange: (change: Partial<CardSettingsT>) => void;
   onReset: () => void;
+  /** Write it again at these same settings. */
+  onRewrite: () => void;
+  rewriteError?: string;
 }): ReactElement {
   const simpler = depthAfter(settings.depth, Step.Down);
   const deeper = depthAfter(settings.depth, Step.Up);
@@ -265,13 +305,33 @@ function CardControls({
         </View>
       </ControlRow>
 
-      <ControlRow title="In whose words">
+      <ControlRow title="English">
         <ChipRow
-          options={STYLE_OPTIONS}
-          selected={settings.style}
-          onSelect={(style) => onChange({ style })}
+          options={ENGLISH_OPTIONS}
+          selected={settings.englishLevel}
+          onSelect={(englishLevel) => onChange({ englishLevel })}
         />
-        <Text className="text-sm text-ink-soft">{STYLE_COPY[settings.style].body}</Text>
+        <Text className="text-sm text-ink-soft">{ENGLISH_COPY[settings.englishLevel].body}</Text>
+      </ControlRow>
+
+      <ControlRow title="Technical detail">
+        <ChipRow
+          options={TECHNICAL_OPTIONS}
+          selected={settings.technicalDetail}
+          onSelect={(technicalDetail) => onChange({ technicalDetail })}
+        />
+        <Text className="text-sm text-ink-soft">
+          {TECHNICAL_COPY[settings.technicalDetail].body}
+        </Text>
+      </ControlRow>
+
+      <ControlRow title="Shape">
+        <ChipRow
+          options={FORMAT_OPTIONS}
+          selected={settings.format}
+          onSelect={(format) => onChange({ format })}
+        />
+        <Text className="text-sm text-ink-soft">{FORMAT_COPY[settings.format].body}</Text>
       </ControlRow>
 
       <ControlRow title="Angle">
@@ -280,6 +340,22 @@ function CardControls({
           selected={settings.angle}
           onSelect={(angle) => onChange({ angle })}
         />
+      </ControlRow>
+
+      {/* Every control above changes what the card is. This one changes nothing
+          and asks for it again — generation is not deterministic, so the same
+          settings twice is a different explanation, and the only way to ask for
+          one used to be moving a setting somewhere the reader did not want it
+          and back. What it stands at is the four rows above, so it does not
+          repeat them. */}
+      <ControlRow title="Same settings, again">
+        <Button
+          label={rewriting ? "Writing it again…" : "Write it again"}
+          tone="quiet"
+          busy={rewriting}
+          onPress={onRewrite}
+        />
+        {rewriteError === undefined ? null : <ErrorState message={rewriteError} />}
       </ControlRow>
 
       {/* The way back, which the old panel had no version of: once a card had

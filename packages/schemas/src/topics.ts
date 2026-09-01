@@ -100,45 +100,76 @@ export const MAX_NODE_MINUTES = ReadTime.Fifteen;
 export const DEFAULT_AVERAGE_READ_TIME = ReadTime.Three;
 
 /**
- * How a topic is written: how many words, whose words, and — for the last one —
- * whether it is prose at all. That is what people mean when they say a subject
- * was explained badly, and it applies to French verbs as squarely as to
- * Kubernetes, which is why the choice is the same on every topic.
+ * How hard the English is: the words and the sentences, not the ideas in them.
  *
- * It is not the depth control. Depth (1-5, on the card itself) decides how far
+ * This and TechnicalDetail below replaced a single five-value style, which had
+ * been quietly answering three questions at once — how hard the words are, how
+ * much of the field's own machinery appears, and how long the writing runs. The
+ * third already had its own control (averageReadTime), so "short and crisp" and
+ * "plain and deep" differed on an axis the settings screen was asking about
+ * twice, and neither of them could say "everyday words, all the terminology" —
+ * which is what someone learning a subject in a second language actually wants.
+ *
+ * Neither is the depth control. Depth (1-5, on the card itself) decides how far
  * down the mechanism the explanation goes and follows the learner across every
- * topic; this decides the register and the length it is written at, and stays
- * with the topic. A learner can want the full mechanism in plain words, or a
- * crisp technical note — the two questions do not answer each other.
+ * topic; these decide how it is written and stay with the topic.
  *
- * Nor is it the profile's learning styles, which shape what the explanation is
- * built out of — examples, analogies, a story. Those stay account-wide, because
- * they are true of the learner rather than of the subject.
+ * Nor are they the profile's learning styles, which shape what the explanation
+ * is built out of — examples, analogies, a story. Those stay account-wide,
+ * because they are true of the learner rather than of the subject.
  *
  * The order here is the order of the chips.
  */
-export enum ContentStyle {
-  /** The shortest thing that answers it. */
-  ShortAndCrisp = "short_and_crisp",
-  /** As short, but assuming the vocabulary. */
-  ShortAndTechnical = "short_and_technical",
-  /** All the way to the mechanism, in everyday words. */
-  PlainAndDeep = "plain_and_deep",
-  /** All the way to the mechanism, in the field's own terms. */
-  TechnicalAndDeep = "technical_and_deep",
-  /** Written to be looked up rather than read through. */
+export enum EnglishLevel {
+  /** Everyday words, short sentences, nothing assumed about vocabulary. */
+  Simple = "simple",
+  /** Ordinary adult prose. */
+  Medium = "medium",
+  /** Dense and precise, with the vocabulary taken as read. */
+  Advanced = "advanced",
+}
+
+export const EnglishLevelSchema = z.nativeEnum(EnglishLevel);
+
+/**
+ * How much of the field's own machinery appears: its terms, its notation, its
+ * real values. Independent of the English, which is the whole point of asking
+ * separately — the terminology can be the thing they came for while the prose
+ * around it stays plain.
+ */
+export enum TechnicalDetail {
+  /** The idea, in the learner's own terms. Field vocabulary only where nothing else will do. */
+  Low = "low",
+  /** The terms that carry weight, glossed where they first appear. */
+  Medium = "medium",
+  /** The field's own terms and values throughout, used precisely. */
+  High = "high",
+}
+
+export const TechnicalDetailSchema = z.nativeEnum(TechnicalDetail);
+
+/**
+ * Prose to read through, or entries to look up. It survived the split because
+ * it is neither of the two axes above: reference notes at any English level and
+ * any amount of terminology are still a different shape of writing, and the
+ * card prompt has a carve-out for them.
+ */
+export enum ContentFormat {
+  Prose = "prose",
   ReferenceNotes = "reference_notes",
 }
 
-export const ContentStyleSchema = z.nativeEnum(ContentStyle);
+export const ContentFormatSchema = z.nativeEnum(ContentFormat);
 
 /**
  * Everything that decides how this topic is written, as one object, because
- * every generation call needs all three and a call that quietly got two of them
- * would produce content the settings screen says it did not ask for.
+ * every generation call needs all of it and a call that quietly got half would
+ * produce content the settings screen says it did not ask for.
  */
 export const TopicContentSettings = z.object({
-  style: ContentStyleSchema,
+  englishLevel: EnglishLevelSchema,
+  technicalDetail: TechnicalDetailSchema,
+  format: ContentFormatSchema,
   /** "" means the default applies; see TopicContentSettingsInput. */
   contentInstructions: z.string(),
   averageReadTime: ReadTimeSchema,
@@ -221,7 +252,9 @@ export const TopicInfoInput = z.object({
  * that means anything.
  */
 export const TopicContentSettingsInput = z.object({
-  style: ContentStyleSchema.default(ContentStyle.ShortAndCrisp),
+  englishLevel: EnglishLevelSchema.default(EnglishLevel.Medium),
+  technicalDetail: TechnicalDetailSchema.default(TechnicalDetail.Medium),
+  format: ContentFormatSchema.default(ContentFormat.Prose),
   contentInstructions: z.string().trim().max(2000).default(""),
   averageReadTime: ReadTimeSchema.default(DEFAULT_AVERAGE_READ_TIME),
 });
@@ -252,7 +285,7 @@ export const Topic = z.object({
   timeBudget: TimeBudgetSchema,
   level: z.string(),
   levels: MapLevelsSchema,
-  /** How this topic is written: style, standing instructions, and length. */
+  /** How this topic is written: register, standing instructions, and length. */
   ...TopicContentSettings.shape,
   status: TopicStatusSchema,
   /** Null until generation finishes; surfaced verbatim when it fails. */
@@ -272,7 +305,9 @@ export type TopicT = z.infer<typeof Topic>;
 /** The writing settings alone, out of the topic every generation call carries. */
 export function contentSettingsOf(topic: TopicT): TopicContentSettingsT {
   return {
-    style: topic.style,
+    englishLevel: topic.englishLevel,
+    technicalDetail: topic.technicalDetail,
+    format: topic.format,
     contentInstructions: topic.contentInstructions,
     averageReadTime: topic.averageReadTime,
   };

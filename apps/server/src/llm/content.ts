@@ -64,7 +64,7 @@ export interface MapInput {
   level: string;
   levels: MapLevels;
   profile: ProfileT;
-  /** How this topic is written: style, standing instructions, and node length. */
+  /** How this topic is written: register, standing instructions, and node length. */
   content: TopicContentSettingsT;
   /** What to change, when the learner asked for the map again. "" the first time. */
   instructions: string;

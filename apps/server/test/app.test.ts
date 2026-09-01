@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   CardAngle,
-  ContentStyle,
+  ContentFormat,
+  EnglishLevel,
   DEFAULT_AVERAGE_READ_TIME,
   LearningStyle,
   LlmProviderId,
@@ -9,6 +10,7 @@ import {
   MapPlanView,
   MapQuestionKind,
   NodeStatus,
+  TechnicalDetail,
   ReadTime,
   TimeBudget,
   TopicArchetype,
@@ -49,7 +51,14 @@ function stubDb(
   const db = {
     user: {
       findUnique: vi.fn(async () => null),
-      create: vi.fn(async () => ({ id: "u1", email: "a@b.com", createdAt: new Date() })),
+      create: vi.fn(async () => ({
+        id: "u1",
+        email: "a@b.com",
+        // The column's own default, which the real row always carries: the
+        // register response says where this learner's cards will start.
+        defaultDepth: 2,
+        createdAt: new Date(),
+      })),
       // The profile lives on the user row; these two are all /api/profile touches.
       findUniqueOrThrow: vi.fn(async () => ({ ...profileRow })),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: object }) => {
@@ -156,7 +165,9 @@ function topicRow(): Record<string, unknown> {
     timeBudget: TimeBudget.Week,
     level: "",
     levels: 2,
-    style: ContentStyle.ShortAndCrisp,
+    englishLevel: EnglishLevel.Medium,
+    technicalDetail: TechnicalDetail.Medium,
+    format: ContentFormat.Prose,
     contentInstructions: "",
     averageReadTime: DEFAULT_AVERAGE_READ_TIME,
     status: TopicStatus.Ready,
@@ -250,7 +261,9 @@ describe("topic settings writes", () => {
   it("drops the cached cards when the writing settings change", async () => {
     const { db, updates, deletedCards } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.TechnicalAndDeep,
+      englishLevel: EnglishLevel.Advanced,
+      technicalDetail: TechnicalDetail.High,
+      format: ContentFormat.Prose,
       contentInstructions: "No YAML in the examples",
       averageReadTime: ReadTime.Ten,
     });
@@ -258,7 +271,9 @@ describe("topic settings writes", () => {
     expect(response.status).toBe(200);
     expect(updates).toEqual([
       {
-        style: ContentStyle.TechnicalAndDeep,
+        englishLevel: EnglishLevel.Advanced,
+        technicalDetail: TechnicalDetail.High,
+        format: ContentFormat.Prose,
         contentInstructions: "No YAML in the examples",
         averageReadTime: ReadTime.Ten,
       },
@@ -273,7 +288,9 @@ describe("topic settings writes", () => {
     // node's own estimate then caps the card back down to it.
     const { db, minuteWrites } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.ShortAndCrisp,
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
       contentInstructions: "",
       averageReadTime: ReadTime.Ten,
     });
@@ -290,7 +307,9 @@ describe("topic settings writes", () => {
   it("leaves the map's minutes alone when only the register changes", async () => {
     const { db, minuteWrites } = settingsDb();
     await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.TechnicalAndDeep,
+      englishLevel: EnglishLevel.Advanced,
+      technicalDetail: TechnicalDetail.High,
+      format: ContentFormat.Prose,
       contentInstructions: "",
       averageReadTime: DEFAULT_AVERAGE_READ_TIME,
     });
@@ -300,7 +319,9 @@ describe("topic settings writes", () => {
   it("writes nothing, and keeps the cards, when the settings come back unchanged", async () => {
     const { db, updates, deletedCards } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.ShortAndCrisp,
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
       contentInstructions: "",
       averageReadTime: DEFAULT_AVERAGE_READ_TIME,
     });
@@ -313,7 +334,9 @@ describe("topic settings writes", () => {
   it("refuses a read time that is not a rung on the ladder", async () => {
     const { db } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.ShortAndCrisp,
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
       contentInstructions: "",
       // Between two rungs rather than off the end: both have to be refused, or
       // the map is built to a length no screen ever offered.
@@ -508,6 +531,8 @@ describe("card generation", () => {
       conceptCard: {
         findUnique: vi.fn(async () => null),
         upsert: vi.fn(async () => ({})),
+        // What the rewrite budget counts: cards written in the last hour.
+        count: vi.fn(async () => 0),
       },
     };
     return { db: db as unknown as Db, statuses };
@@ -541,7 +566,14 @@ describe("card generation", () => {
       content: { claim: "A pod is the unit of scheduling." },
       node: { status: NodeStatus.Seen },
       // What the card was actually written to, so the controls can say so.
-      settings: { depth: 2, minutes: 3, style: ContentStyle.ShortAndCrisp, angle: CardAngle.Base },
+      settings: {
+        depth: 2,
+        minutes: 3,
+        englishLevel: EnglishLevel.Medium,
+        technicalDetail: TechnicalDetail.Medium,
+        format: ContentFormat.Prose,
+        angle: CardAngle.Base,
+      },
     });
     // Reading advances a node to Seen and no further.
     expect(statuses).toEqual([{ status: NodeStatus.Seen }]);
@@ -562,7 +594,9 @@ describe("card generation", () => {
     const { provider: recorder, prompts } = recording();
     const app = createApp(db, { provider: recorder });
     const response = await app.request(
-      `/api/nodes/n2/card?depth=5&minutes=10&style=${ContentStyle.ReferenceNotes}&angle=${CardAngle.WhereThisBreaks}`,
+      `/api/nodes/n2/card?depth=5&minutes=10&englishLevel=${EnglishLevel.Simple}` +
+        `&technicalDetail=${TechnicalDetail.High}&format=${ContentFormat.ReferenceNotes}` +
+        `&angle=${CardAngle.WhereThisBreaks}`,
       { headers: { Authorization: "Bearer good" } },
     );
 
@@ -571,7 +605,9 @@ describe("card generation", () => {
       settings: {
         depth: 5,
         minutes: 10,
-        style: ContentStyle.ReferenceNotes,
+        englishLevel: EnglishLevel.Simple,
+        technicalDetail: TechnicalDetail.High,
+        format: ContentFormat.ReferenceNotes,
         angle: CardAngle.WhereThisBreaks,
       },
     });
@@ -591,7 +627,9 @@ describe("card generation", () => {
       cardVariant({
         depth: 5,
         minutes: 10,
-        style: ContentStyle.ReferenceNotes,
+        englishLevel: EnglishLevel.Simple,
+        technicalDetail: TechnicalDetail.High,
+        format: ContentFormat.ReferenceNotes,
         angle: CardAngle.WhereThisBreaks,
       }),
     );
@@ -626,6 +664,78 @@ describe("card generation", () => {
     // only, or a hit costs a second read of every node in the topic.
     expect(cached.learningNode.findMany).toHaveBeenCalledTimes(1);
     expect(cached.user.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it("writes the card again on a rewrite, and replaces the row it read past", async () => {
+    // The one control that changes nothing about the card and asks for it
+    // anyway. Serving it from the cache would make it the only button here that
+    // provably does nothing, since the cached row is exactly what it is asking
+    // to go around.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as {
+      conceptCard: { findUnique: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
+    };
+    stub.conceptCard.findUnique = vi.fn(async () => ({ content: JSON.parse(CARD) }));
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request(
+      "/api/nodes/n2/card?rewrite=1",
+      { headers: { Authorization: "Bearer good" } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prompts).toHaveLength(1);
+    expect(stub.conceptCard.findUnique).not.toHaveBeenCalled();
+    // And the new card replaces the old one rather than losing to it: an upsert
+    // that no-ops on conflict would generate, charge for it, and then answer
+    // with the row it was asked to go around on the next open.
+    const written = stub.conceptCard.upsert.mock.calls[0]?.[0] as
+      | { update: { content?: unknown; createdAt?: Date } }
+      | undefined;
+    expect(written?.update.content).toMatchObject({ claim: "A pod is the unit of scheduling." });
+    expect(written?.update.createdAt).toBeInstanceOf(Date);
+  });
+
+  it("refuses a rewrite once the hour's card writing has hit its ceiling", async () => {
+    // Every other generating call either creates nodes or is answered from the
+    // cache the second time. This one costs a model call per press, so without
+    // a ceiling the deployment's bill has none.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as { conceptCard: { count: ReturnType<typeof vi.fn> } };
+    stub.conceptCard.count = vi.fn(async () => 60);
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request(
+      "/api/nodes/n2/card?rewrite=1",
+      { headers: { Authorization: "Bearer good" } },
+    );
+
+    expect(response.status).toBe(409);
+    expect(prompts).toEqual([]);
+  });
+
+  it("lets an ordinary read through at that same count, since only a rewrite is checked", async () => {
+    // Reading is bounded by how many nodes there are, so refusing it would only
+    // ever mean refusing to show the next node.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as { conceptCard: { count: ReturnType<typeof vi.fn> } };
+    stub.conceptCard.count = vi.fn(async () => 60);
+    const { provider: recorder } = recording();
+    const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
+      headers: { Authorization: "Bearer good" },
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("reads \"rewrite=false\" as not a rewrite, rather than as a rewrite", async () => {
+    // Boolean("false") is true, which is the whole reason this is a literal:
+    // a client saying it does not want one would otherwise be charged for one
+    // and lose the card its reader was looking at.
+    const { db } = cardDb(mapRows(), "n2");
+    const { provider: recorder } = recording();
+    const response = await createApp(db, { provider: recorder }).request(
+      "/api/nodes/n2/card?rewrite=false",
+      { headers: { Authorization: "Bearer good" } },
+    );
+    expect(response.status).toBe(400);
   });
 });
 

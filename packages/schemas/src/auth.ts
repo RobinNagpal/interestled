@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CardDepth } from "./cards";
 import { Id } from "./ids";
 
 export const Email = z
@@ -26,6 +27,12 @@ export const LoginInput = z.object({ email: Email, password: z.string().min(1) }
 export const User = z.object({
   id: Id,
   email: Email,
+  /**
+   * Where this learner's cards start — on the user rather than the topic,
+   * because depth follows the person across every subject. Answered back so the
+   * app can name the depth a card is being written to before it arrives.
+   */
+  defaultDepth: CardDepth,
   createdAt: z.coerce.date(),
 });
 

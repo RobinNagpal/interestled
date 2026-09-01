@@ -2,15 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   CARD_MINUTES_MAX,
   CardAngle,
-  ContentStyle,
+  ContentFormat,
+  EnglishLevel,
   DEFAULT_AVERAGE_READ_TIME,
   MAX_NODE_MINUTES,
   ReadTime,
   DrillKind,
   LearningStyle,
+  MAX_MECHANISM_ITEMS,
   MapLevels,
   MapQuestionKind,
   NodeStatus,
+  TechnicalDetail,
   TopicArchetype,
   TimeBudget,
   TopicStatus,
@@ -23,11 +26,14 @@ import type {
   ProfileT,
   TopicT,
 } from "@interestled/schemas";
+// defaultCardSettings moved to the domain package: the app names what a card is
+// being written to while it waits for it, so the rule cannot live on the server.
+import { defaultCardSettings } from "@interestled/domain";
 import {
   SYSTEM,
+  atomsPrompt,
   cardPrompt,
   choicesBlock,
-  defaultCardSettings,
   drillPrompt,
   mapPrompt,
   mapQuestionsPrompt,
@@ -55,7 +61,9 @@ const topic: TopicT = {
   timeBudget: TimeBudget.Week,
   level: "I use Docker daily\nWant to run a small cluster",
   levels: MapLevels.Two,
-  style: ContentStyle.ShortAndCrisp,
+  englishLevel: EnglishLevel.Medium,
+  technicalDetail: TechnicalDetail.Medium,
+  format: ContentFormat.Prose,
   contentInstructions: "",
   averageReadTime: DEFAULT_AVERAGE_READ_TIME,
   status: TopicStatus.Ready,
@@ -180,12 +188,42 @@ describe("mapPrompt", () => {
     expect(long).toContain(`nothing may exceed ${MAX_NODE_MINUTES}`);
   });
 
-  it("carries the topic's writing style, as what it changes rather than its name", () => {
+  it("carries how the topic is written, as what it changes rather than as a name", () => {
     const technical = mapPrompt(
-      mapInput({ content: { ...contentSettingsOf(topic), style: ContentStyle.TechnicalAndDeep } }),
+      mapInput({
+        content: { ...contentSettingsOf(topic), technicalDetail: TechnicalDetail.High },
+      }),
     );
     expect(technical).toContain("the field's own terms");
-    expect(technical).not.toContain("technical_and_deep");
+  });
+
+  it("asks the two axes separately, so plain words can carry the real terms", () => {
+    // What the single style chip could never say: every value that offered the
+    // terminology also demanded the dense prose around it.
+    const prompt = mapPrompt(
+      mapInput({
+        content: {
+          ...contentSettingsOf(topic),
+          englishLevel: EnglishLevel.Simple,
+          technicalDetail: TechnicalDetail.High,
+        },
+      }),
+    );
+    expect(prompt).toContain("everyday words and short sentences");
+    expect(prompt).toContain("the field's own terms, notation and real values throughout");
+  });
+
+  it("says nothing about the shape when the topic is ordinary prose", () => {
+    // A line reading "written as prose" is one more instruction for the model to
+    // answer, and prose is what every other rule already describes.
+    const prose = mapPrompt(mapInput());
+    expect(prose).not.toContain("look up rather than read through");
+    const notes = mapPrompt(
+      mapInput({ content: { ...contentSettingsOf(topic), format: ContentFormat.ReferenceNotes } }),
+    );
+    expect(notes).toContain("look up rather than read through");
+    // What it changes about the writing, never the enum value that named it.
+    expect(notes).not.toContain(ContentFormat.ReferenceNotes);
   });
 
   it("uses the default content instructions until the learner writes their own", () => {
@@ -310,9 +348,13 @@ describe("mapQuestionsPrompt", () => {
   });
 
   it("carries the same learner and the same writing settings as the map itself", () => {
-    const prompt = mapQuestionsPrompt(questionsInput());
+    // Both axes, because the questions are answered against the writing the
+    // learner will actually get: an option sampled in prose they would never be
+    // shown is an option chosen on a false premise.
+    const prompt = unwrapped(mapQuestionsPrompt(questionsInput()));
     expect(prompt).toContain("Backend engineer, mostly Python");
-    expect(prompt).toContain("as few words as it takes");
+    expect(prompt).toContain("ordinary adult prose");
+    expect(prompt).toContain("the terms that carry weight");
   });
 
   it("shows the map being replaced, and bans offering it back", () => {
@@ -408,6 +450,18 @@ const threeLevel: LearningNodeT[] = [
   mapNode("networking", "Networking", null, 1),
 ];
 
+/**
+ * A prompt is prose wrapped to eighty columns, so a rule a test names can
+ * straddle a line break. Asserting on where the line happened to break is what
+ * makes a reflowed paragraph read as a deleted instruction — these tests are
+ * about the rules being present, so they compare the text with its wrapping
+ * taken out. The outline is the exception and is checked line by line, because
+ * there the indentation is the content.
+ */
+function unwrapped(text: string): string {
+  return text.replace(/\s+/g, " ");
+}
+
 /** Every cardPrompt argument, so a test only has to name what it is about. */
 function cardInput(
   overrides: Partial<Parameters<typeof cardPrompt>[0]> = {},
@@ -456,7 +510,7 @@ describe("cardPrompt", () => {
     const brief = { ...topic, averageReadTime: ReadTime.One };
     const prompt = cardPrompt(cardInput({ topic: brief, settings: defaultCardSettings(brief, node, 3) }));
     expect(prompt).toContain("about 1 minute");
-    expect(prompt).toContain("200\nwords");
+    expect(unwrapped(prompt)).toContain("200 words in all");
   });
 
   it("asks for the whole of a ten-minute setting, not four minutes of it", () => {
@@ -473,13 +527,15 @@ describe("cardPrompt", () => {
       }),
     );
     expect(prompt).toContain("about 10 minutes");
-    expect(prompt).toContain("2000\nwords");
+    expect(unwrapped(prompt)).toContain("2000 words in all");
+    expect(unwrapped(prompt)).toContain("1600 are the mechanism");
     // Length comes from more items, not from longer ones — a wall of text is
     // still a wall of text at ten minutes (A1).
-    expect(prompt).toContain("7-12 items");
+    expect(prompt).toContain("27-44 items");
+    expect(unwrapped(prompt)).toContain("about 45 words, never a paragraph");
   });
 
-  it("stops at what the six slots can hold, however long the node claims", () => {
+  it("stops at what one card can hold, however long the node claims", () => {
     const long = { ...topic, averageReadTime: ReadTime.Fifteen };
     const bigNode = { ...node, minutes: 15 };
     const prompt = cardPrompt(
@@ -501,11 +557,18 @@ describe("cardPrompt", () => {
   });
 
   it("writes one card in a register the topic is not written in", () => {
-    // The "In whose words" control: the card's own style reaches the prompt,
-    // and the topic's does not.
-    const prompt = cardPrompt(withSettings({ style: ContentStyle.ReferenceNotes }));
-    expect(prompt).toContain("something to look up rather than read through");
-    expect(prompt).not.toContain("One example, no second pass");
+    // The controls under a card: this card's own answers reach the prompt, and
+    // the topic's do not.
+    const notes = cardPrompt(withSettings({ format: ContentFormat.ReferenceNotes }));
+    expect(notes).toContain("something to look up rather than read through");
+
+    const plain = cardPrompt(withSettings({ englishLevel: EnglishLevel.Simple }));
+    expect(plain).toContain("everyday words and short sentences");
+    expect(plain).not.toContain("ordinary adult prose");
+
+    const detailed = cardPrompt(withSettings({ technicalDetail: TechnicalDetail.High }));
+    expect(detailed).toContain("the field's own terms, notation and real values throughout");
+    expect(detailed).not.toContain("Reach for the field's vocabulary only where nothing else");
   });
 
   it("says nothing about the learner's instructions to the grader", () => {
@@ -530,10 +593,10 @@ describe("cardPrompt", () => {
     // every card restating what the whole topic is about.
     const prompt = cardPrompt(cardInput({ node: twoLevel[1]!, nodes: twoLevel }));
     expect(prompt).toContain('The node after it, "Restarts and probes", covers:');
-    expect(prompt).toContain("Nothing that is true of the whole topic belongs on one node");
+    expect(unwrapped(prompt)).toContain("Nothing that is true of the whole topic belongs on one node");
     expect(prompt).toContain("it belongs on neither");
     // And the misconception slot, which is where it lands most often.
-    expect(prompt).toContain("what people actually get wrong HERE");
+    expect(unwrapped(prompt)).toContain("what people actually get wrong HERE");
   });
 
   it("asks for one continuous explanation rather than six separate notes", () => {
@@ -541,22 +604,70 @@ describe("cardPrompt", () => {
     // with its own heading ("Central bank monetization: ..."), an example that
     // starts over in its own terms, and a misconception bolted on the end.
     const prompt = cardPrompt(cardInput({}));
-    expect(prompt).toContain("one continuous explanation");
-    expect(prompt).toContain("starts from what the one before it established");
-    expect(prompt).toContain("shuffled without a reader noticing");
+    expect(unwrapped(prompt)).toContain("one continuous explanation");
+    expect(unwrapped(prompt)).toContain("starts from what the one before it established");
+    expect(unwrapped(prompt)).toContain("shuffled without a reader noticing");
     expect(prompt).toContain("Never label an item");
-    expect(prompt).toContain("No\n  term followed by a colon");
+    expect(unwrapped(prompt)).toContain("No term followed by a colon");
     // Each of the three sections is joined to the one above it, not just the
     // items inside one of them.
-    expect(prompt).toContain("that same mechanism happening");
-    expect(prompt).toContain("names the step above that rules it out");
+    expect(unwrapped(prompt)).toContain("that same mechanism happening");
+    expect(unwrapped(prompt)).toContain("names the step above that rules it out");
+  });
+
+  it("says when a slot is written and when it is left out, rather than demanding six", () => {
+    // The Weimar case: a node that is itself one historical episode has no
+    // second case to instantiate it with, so the example slot came back as the
+    // node restated under a heading promising something new. A slot the node
+    // cannot fill honestly gets filled dishonestly.
+    const prompt = unwrapped(cardPrompt(cardInput()));
+    expect(prompt).toContain("Leave it out when the node already is one case");
+    expect(prompt).toContain("Leave it out when the node is descriptive");
+    expect(prompt).toContain("Leave `example` or `misconception` out of the JSON entirely");
+    // And the two that are never optional, because they are the card.
+    expect(prompt).toContain("**claim** — required");
+    expect(prompt).toContain("**mechanism** — required");
+    expect(prompt).not.toContain("Six slots, all required");
+  });
+
+  it("spends the read time on the mechanism rather than spreading it evenly", () => {
+    // Four fifths of the words, and an item count computed from that share: a
+    // fixed count and a fixed item length already decide the card's length, so
+    // naming a read time as well made the read time the part that gave way.
+    const long = { ...topic, averageReadTime: ReadTime.Five };
+    const bigNode = { ...node, minutes: 5 };
+    const prompt = unwrapped(
+      cardPrompt(
+        cardInput({
+          topic: long,
+          node: bigNode,
+          nodes: [bigNode],
+          settings: defaultCardSettings(long, bigNode, 3),
+        }),
+      ),
+    );
+    expect(prompt).toContain("1000 words in all");
+    expect(prompt).toContain("800 are the mechanism");
+    expect(prompt).toContain("13-22 items");
+  });
+
+  it("never asks for more items than the schema will accept", () => {
+    // A count the prompt asks for and the schema then refuses is a card that
+    // fails validation for doing as it was told.
+    for (const minutes of [1, 2, 3, 5, 7, 10]) {
+      const prompt = cardPrompt(withSettings({ minutes }));
+      const range = /(\d+)-(\d+) items/.exec(prompt);
+      expect(range).not.toBeNull();
+      expect(Number(range![2])).toBeLessThanOrEqual(MAX_MECHANISM_ITEMS);
+      expect(Number(range![1])).toBeGreaterThanOrEqual(1);
+    }
   });
 
   it("lets reference notes stay flat, because that is what was asked for", () => {
     // The one register that wants no linking sentences at all. Without the
     // carve-out the card asks for a chain and the style asks for entries, and
     // the model picks one.
-    const prompt = cardPrompt(withSettings({ style: ContentStyle.ReferenceNotes }));
+    const prompt = cardPrompt(withSettings({ format: ContentFormat.ReferenceNotes }));
     expect(prompt).toContain("No linking sentences between them");
     expect(prompt).toContain("it overrides this paragraph");
   });
@@ -605,10 +716,39 @@ describe("drillPrompt", () => {
     expect(prompt).toContain("never refer to");
   });
 
+  it("drops the misconception line rather than labelling an empty one", () => {
+    // A label with nothing after it is worse than no label: the model answers
+    // it, and the drill is then written against a misconception nobody wrote.
+    const bare: CardContentT = { ...card, example: undefined, misconception: undefined };
+    const prompt = drillPrompt({ node, kind: DrillKind.Apply, card: bare, content: contentSettingsOf(topic) });
+    expect(prompt).not.toContain("Common misconception:");
+    expect(prompt).toContain("Mechanism:");
+    // And it is still there when the card has one.
+    expect(drillPrompt({ node, kind: DrillKind.Apply, card, content: contentSettingsOf(topic) })).toContain(
+      "Common misconception: kubectl creates the pod",
+    );
+  });
+
   it("asks a predict drill for a commitment before the reveal", () => {
     expect(
       drillPrompt({ node, kind: DrillKind.Predict, card, content: contentSettingsOf(topic) }),
     ).toContain("BEFORE any answer is shown");
+  });
+});
+
+describe("atomsPrompt", () => {
+  it("extracts review items from what the card actually said", () => {
+    const prompt = atomsPrompt({ node, card, content: contentSettingsOf(topic) });
+    expect(prompt).toContain("Worked example:");
+    expect(prompt).toContain("Misconception:");
+  });
+
+  it("names neither slot when the card was written without them", () => {
+    const bare: CardContentT = { ...card, example: undefined, misconception: undefined };
+    const prompt = atomsPrompt({ node, card: bare, content: contentSettingsOf(topic) });
+    expect(prompt).not.toContain("Worked example:");
+    expect(prompt).not.toContain("Misconception:");
+    expect(prompt).toContain("Mechanism: The API server holds desired state.");
   });
 });
 

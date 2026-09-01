@@ -318,9 +318,22 @@ says plainly that it replaces everything.
 **Three things are editable, not one**, each at its own address under `…/edit`:
 `…/edit/map` is the map itself; `…/edit/goals` is the goal, the starting point, the time
 budget and the one line the topics list shows; and `…/edit/content` is how the topic is
-written — a style (short and crisp, plain and in depth, technical and in depth), how
-long one node should take, and standing instructions carried by every card, drill and
-review item in that topic. The create screen's answers were previously fixed for the
+written — how hard the English is, how much of the field's own terminology appears,
+whether it is prose to read through or entries to look up, how long one node should
+take, and standing instructions carried by every card, drill and review item in that
+topic.
+
+The first two of those were one chip until they were pulled apart, and the single chip
+was quietly answering three questions: how hard the words are, how much terminology
+appears, and how long the writing runs. The third already had a control of its own, so
+"short and crisp" and "plain and in depth" differed on an axis the same screen was
+asking about twice — and no value on it could say *everyday words, all the terminology*,
+which is what someone learning a subject in a second language is asking for. Every
+option that offered the terms demanded the dense prose around them. Asking the two
+separately is nine combinations instead of five, and each one is a sentence someone
+would actually say about how they want to be written to.
+
+The create screen's answers were previously fixed for the
 life of the topic, which is backwards: reading the map is exactly what tells a learner
 the goal they gave was not the one they meant, and every generation after that was still
 reading the old one. Saving regenerates nothing — the answers change what the *next*
@@ -349,15 +362,26 @@ on the map ever locks — a missing prerequisite is a note you can walk past, no
 
 ### Concept card
 
-One concept, one screen, and always the same six slots: a one-line claim, one visual,
-three to five sentences of mechanism, one worked example with real numbers, the thing
-people usually get wrong, and the depth buttons. Keeping the shape identical everywhere
-means the eye stops hunting for where the point is and starts reading the point.
+One concept, one screen, and always the same slots in the same order: a one-line claim,
+the mechanism in short sentences, one worked example with real numbers, the thing people
+usually get wrong, and the depth buttons. Keeping the shape identical everywhere means
+the eye stops hunting for where the point is and starts reading the point.
 
 It also forces the generator to produce the two parts that are normally missing — the
 *mechanism*, not just the definition, and the *misconception*, which is where most of
 the real learning happens. The card opens on the claim, so the answer arrives before any
 context does.
+
+The example and the misconception are written where they apply rather than always. A
+node that is itself one case — a historical episode, one text, one event — has no second
+case to instantiate itself with, so the example slot came back as the node restated
+under a heading promising something new; a purely descriptive node has no wrong belief
+to correct, so the misconception came back carrying the topic's headline mistake for the
+fourth card running. Neither is a shape the schema could have caught, because both are
+valid cards made of padding, and padding is the thing the fixed shape was meant to
+prevent. So the two slots stay in the prompt as slots to be earned, with the test for
+earning them stated — and a card with no example is drawn with no example section, not
+with an empty one.
 
 Each card is written into the map rather than beside it: the generator is given every
 heading of the topic, in reading order, with the node it is writing marked, plus what
@@ -369,7 +393,7 @@ this way" and "what people get wrong" both pull towards whatever the topic as a 
 about. Nothing true of the whole topic may sit on one node of it: if a sentence would
 serve a neighbouring node equally well, it belongs on neither.
 
-The six slots are also one explanation rather than six notes about the same subject.
+The slots are also one explanation rather than separate notes about the same subject.
 The mechanism items run in order, each starting from what the one above it
 established; the example is that mechanism happening on one case, in the same words
 for the same things; the misconception is a belief a reader could still hold having
@@ -383,11 +407,17 @@ disconnected fragments the guideline exists to prevent. Cards are cached forever
 changing any of this reaches nobody until the prompt revision in the cache key moves.
 
 How long a card runs is the learner's setting, not a constant. Ten minutes a node means
-roughly two thousand words, which arrives as more mechanism items rather than longer
-ones — a paragraph nobody reads is not made readable by being one of five instead of one
-of twelve. Changing the setting moves the map's own minute estimates with it, scaled so
-a node the model judged twice its neighbours stays twice its neighbours: a card written
-to ten minutes under a map still promising three is the map lying about time.
+roughly two thousand words, of which four fifths are the mechanism — it is the slot that
+explains, so it is the slot that gets the time. That share divided by what one item is
+written to (two short sentences, about forty-five words) is the number of items asked
+for, because a fixed count and a fixed item length between them already decide how long
+a card is: naming a read time as well was asking for three things that cannot all be
+true, and the read time was the one that gave way. Length therefore still arrives as
+more items rather than longer ones — a paragraph nobody reads is not made readable by being one of five instead
+of one of forty. Changing the setting moves the map's own minute estimates with it,
+scaled so a node the model judged twice its neighbours stays twice its neighbours: a
+card written to ten minutes under a map still promising three is the map lying about
+time.
 
 What comes back is Markdown, and it is drawn as Markdown — `kubectl get pods` set as
 code, a list of parallel items set as a list. The alternative is the marks themselves on
@@ -404,22 +434,39 @@ the screen, which is the app showing its working.
 
 ### The controls under a card
 
-Four things decide how a card comes out, and all four sit under it: how deep it goes,
-how long it takes to read, whose words it is in, and which angle it is written from.
-Each one is a setting the generator actually reads, and the panel states where the card
-in front of you stands on each — *Depth 3 of 5 · the mechanism*, *about 5 min*. A
-control that cannot say what it changed is one the reader concludes is broken, which is
-what a row of five identical-looking buttons became: two of them did nothing at the
-ends of the scale, and a press that refetches an identical card is indistinguishable
-from a press that does nothing at all. A step that has nowhere left to go is now drawn
-as spent rather than offered.
+Everything that decides how a card comes out sits under it: how deep it goes, how long
+it takes to read, how hard the English is, how much terminology it carries, whether it
+is prose or notes, and which angle it is written from. Each one is a setting the
+generator actually reads, and the panel states where the card in front of you stands on
+each — *Depth 3 of 5 · the mechanism*, *about 5 min*. A control that cannot say what it
+changed is one the reader concludes is broken, which is what a row of five
+identical-looking buttons became: two of them did nothing at the ends of the scale, and
+a press that refetches an identical card is indistinguishable from a press that does
+nothing at all. A step that has nowhere left to go is now drawn as spent rather than
+offered.
 
 *Simpler* and *deeper* move one rung of the mechanism. *Shorter* and *longer* move one
 rung of the read-time ladder for this card alone — the topic's setting is the default,
-not a ceiling. The register chips are the same five the topic is written in. *More
+not a ceiling. The register chips are the same ones the topic is written in. *More
 concrete*, *why it matters* and *where this breaks* ask the same depth a different way,
 and *plain* is the way back to the card as written, which the old panel had no version
 of.
+
+One more control changes nothing at all: *write it again*, at the settings the card
+already has. Generation is not deterministic, so the same request twice is a different
+explanation, and the only way to ask for one used to be moving a setting somewhere you
+did not want it and back. It is the one press here that always costs a model call, so
+the cards written in an hour are capped per learner — every other generating call either
+creates nodes or is answered from the cache the second time round, and this one has no
+ceiling of its own.
+
+The wait now says what is being written — *depth 3 of 5 — the mechanism · about 3 min ·
+medium English · some detail*. Ten to thirty seconds against a label saying only that
+something is happening is a wait nobody can tell from a hang, and it is the one moment
+the settings screen's answers are visible anywhere in the product. The rule turning a
+topic and a node into those settings is shared between the server and the app rather
+than written twice, because a wait describing a card other than the one that arrives is
+worse than a wait describing nothing.
 
 Depth is sticky: three presses of *deeper* and later cards start deeper, so the learner
 sets their level by using the product rather than by declaring it. Cards are cached per

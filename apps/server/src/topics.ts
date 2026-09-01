@@ -91,6 +91,34 @@ const MAX_GENERATED_NODES_PER_HOUR = 400;
 const MAX_MAP_PLANS_PER_HOUR = 30;
 
 /**
+ * Cards written in an hour, of which a rewrite is the only kind a learner can
+ * ask for without limit — opening a node writes its card once and is answered
+ * from the cache after that. High enough that an hour of ordinary reading never
+ * approaches it, since what it is protecting against is a button pressed in a
+ * loop rather than a long session.
+ */
+const MAX_CARDS_WRITTEN_PER_HOUR = 60;
+
+/**
+ * The hour's card writing, against that ceiling — every card, however it came
+ * to be written, because the model spend is the same either way and a rewrite
+ * measured against its own share of it would ignore the reading that used the
+ * rest. Only rewrites are checked: reading is bounded by how many nodes there
+ * are, so refusing it would only ever mean refusing to show the next node.
+ */
+export async function assertRewriteBudget(db: Db, userId: string): Promise<void> {
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const recent = await db.conceptCard.count({
+    where: { node: { topic: { userId } }, createdAt: { gte: hourAgo } },
+  });
+  if (recent >= MAX_CARDS_WRITTEN_PER_HOUR) {
+    throw new ConflictError(
+      "That is a lot of card writing in one hour — the limit resets shortly.",
+    );
+  }
+}
+
+/**
  * Which of the three model calls this is about, so each counter guards the call
  * that actually spends the tokens.
  *
@@ -527,7 +555,9 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     const topic = await findTopic(db, userId, c.req.param("slug"));
     const input = c.req.valid("json");
     const unchanged =
-      input.style === topic.style &&
+      input.englishLevel === topic.englishLevel &&
+      input.technicalDetail === topic.technicalDetail &&
+      input.format === topic.format &&
       input.contentInstructions === topic.contentInstructions &&
       input.averageReadTime === topic.averageReadTime;
     if (unchanged) {

@@ -1,12 +1,16 @@
 import {
-  CARD_MINUTES_MAX,
   CardAngle,
-  CardDepth,
-  ContentStyle,
+  ContentFormat,
   DrillKind,
+  EnglishLevel,
   LearningStyle,
+  MAX_MECHANISM_ITEMS,
   MAX_NODE_MINUTES,
+  MECHANISM_ITEM_WORDS,
+  MECHANISM_SHARE,
   MapLevels,
+  TechnicalDetail,
+  WORDS_PER_MINUTE,
   contentSettingsOf,
 } from "@interestled/schemas";
 import type {
@@ -18,6 +22,7 @@ import type {
   TopicContentSettingsT,
   TopicT,
 } from "@interestled/schemas";
+import { cardMinutes } from "@interestled/domain";
 import { mapOutline, neighbourClaims, plainOutline } from "./outline";
 import { promptFile } from "./promptFiles";
 import { render } from "./template";
@@ -76,25 +81,40 @@ function instructionBlock(instructions: string): string {
 }
 
 /**
- * What each content style actually changes about the writing. Same reason the
- * learning styles have a guide: "write it in the short_and_crisp style" is an
- * instruction that changes nothing at all.
+ * What each answer actually changes about the writing. Same reason the learning
+ * styles have a guide: "write it in the short_and_crisp style" was an
+ * instruction that changed nothing at all.
  *
- * None of these names a depth. Depth decides how far down the mechanism the
- * explanation goes; these decide the words it is written in and how many of
- * them, which is a different question and asked in a different place.
+ * None of these names a depth or a length. Depth decides how far down the
+ * mechanism the explanation goes and averageReadTime decides how long it runs;
+ * these decide the words it is written in.
  */
-const CONTENT_STYLE_GUIDE: Record<ContentStyle, string> = {
-  [ContentStyle.ShortAndCrisp]:
-    "as few words as it takes. One example, no second pass over the same idea, nothing restated.",
-  [ContentStyle.ShortAndTechnical]:
-    "as few words as it takes, in the field's own terms and without stopping to gloss them. They have the vocabulary and want the answer, not the introduction.",
-  [ContentStyle.PlainAndDeep]:
-    "all the way to the mechanism, in everyday words. Every technical term either replaced with a plain one or glossed the first time it appears.",
-  [ContentStyle.TechnicalAndDeep]:
-    "all the way to the mechanism, in the field's own terms, used precisely. They want the real thing rather than a simplification.",
-  [ContentStyle.ReferenceNotes]:
-    "as something to look up rather than read through: the rule, the exact conditions it holds under, and the real values, each stated flat on its own. No linking sentences between them.",
+const ENGLISH_GUIDE: Record<EnglishLevel, string> = {
+  [EnglishLevel.Simple]:
+    "everyday words and short sentences, assuming nothing about their vocabulary. Where a plain word will do, it is the one to use.",
+  [EnglishLevel.Medium]: "ordinary adult prose — neither simplified nor dense.",
+  [EnglishLevel.Advanced]:
+    "dense and precise, with the language taken as read. No sentence spent making a point easier to read than it is to think about.",
+};
+
+/**
+ * Independent of the English above, and content-rules.md says so outright: two
+ * rules that pull opposite ways are two rules a model resolves by picking one.
+ */
+const TECHNICAL_GUIDE: Record<TechnicalDetail, string> = {
+  [TechnicalDetail.Low]:
+    "the idea in the learner's own terms. Reach for the field's vocabulary only where nothing else will do, and gloss it on the spot.",
+  [TechnicalDetail.Medium]:
+    "the terms that carry weight, each glossed where it first appears. The real name for a thing, never a paraphrase standing in for it.",
+  [TechnicalDetail.High]:
+    "the field's own terms, notation and real values throughout, used precisely. They want the real thing rather than a simplification.",
+};
+
+/** Empty for prose: a line reading "written as prose" is one more thing to answer. */
+const FORMAT_GUIDE: Record<ContentFormat, string> = {
+  [ContentFormat.Prose]: "",
+  [ContentFormat.ReferenceNotes]:
+    "something to look up rather than read through — the rule, the exact conditions it holds under, and the real values, each stated flat on its own. No linking sentences between them.",
 };
 
 /** What a topic is written to before the learner has written anything of their own. */
@@ -117,7 +137,9 @@ function effectiveContentInstructions(stored: string): string {
  */
 function contentRulesBlock(content: TopicContentSettingsT): string {
   return render(promptFile("content-rules"), {
-    styleRule: CONTENT_STYLE_GUIDE[content.style],
+    englishRule: ENGLISH_GUIDE[content.englishLevel],
+    technicalRule: TECHNICAL_GUIDE[content.technicalDetail],
+    formatRule: FORMAT_GUIDE[content.format],
     contentInstructions: effectiveContentInstructions(content.contentInstructions),
   });
 }
@@ -179,7 +201,7 @@ export function mapPrompt(input: {
   level: string;
   levels: MapLevels;
   profile: ProfileT;
-  /** How this topic is written: style, standing instructions, and node length. */
+  /** How this topic is written: register, standing instructions, and node length. */
   content: TopicContentSettingsT;
   /** What to change, when the learner asked for the map again. "" the first time. */
   instructions: string;
@@ -300,47 +322,32 @@ const ANGLE_GUIDE: Record<CardAngle, string> = {
     "Focus on the edges: when this model is wrong, and what people hit in practice.",
 };
 
-/** Ordinary adult prose. Only used to turn the minutes into a length the model can aim at. */
-const WORDS_PER_MINUTE = 200;
+/** How many of a card's words are the mechanism, at this length. */
+function mechanismWords(minutes: number): number {
+  return Math.round(minutes * WORDS_PER_MINUTE * MECHANISM_SHARE);
+}
 
 /**
- * How many mechanism items a card of this length asks for. Length comes from the
- * number of them rather than from longer ones: a paragraph nobody reads is not
- * made readable by being one of five instead of one of ten (A1), and the slot
- * that carries the actual explanation is the one worth growing.
+ * How many mechanism items a card of this length asks for.
+ *
+ * It is the mechanism's own word budget divided by what one item is written to,
+ * because that is the only arithmetic under which the read time is honoured at
+ * all: a fixed count and a fixed item length between them already decide how
+ * long the card is, so naming a read time as well is asking for three things
+ * that cannot all be true — and the one that gave way was the read time. Length
+ * still arrives as more items rather than longer ones: a paragraph nobody reads
+ * is not made readable by being one of five instead of one of forty (A1).
+ *
+ * The range runs a quarter either side of the target, so the model can stop
+ * where the idea stops, and its top is held under MAX_MECHANISM_ITEMS — a count
+ * the prompt asks for and the schema then refuses is a card that fails
+ * validation for doing as it was told.
  */
 function mechanismItems(minutes: number): string {
-  if (minutes <= 3) {
-    return "1-5";
-  }
-  if (minutes <= 5) {
-    return "4-7";
-  }
-  return minutes <= 7 ? "5-9" : "7-12";
-}
-
-/**
- * The settings a card is written to when the learner has not overridden any of
- * them: the topic's own style and read time, and the node's own estimate where
- * that is shorter — a longer card than the map admits to is the map lying about
- * time, which is the one thing it is not allowed to do.
- */
-export function defaultCardSettings(
-  topic: TopicT,
-  node: LearningNodeT,
-  depth: number,
-): CardSettingsT {
-  return {
-    depth: CardDepth.parse(depth),
-    minutes: cardMinutes(Math.min(node.minutes || topic.averageReadTime, topic.averageReadTime)),
-    style: topic.style,
-    angle: CardAngle.Base,
-  };
-}
-
-/** Never zero (a branch), never past what the six slots can hold. */
-export function cardMinutes(minutes: number): number {
-  return Math.max(1, Math.min(minutes, CARD_MINUTES_MAX));
+  const target = mechanismWords(minutes) / MECHANISM_ITEM_WORDS;
+  const low = Math.max(1, Math.round(target * 0.75));
+  const high = Math.min(MAX_MECHANISM_ITEMS, Math.max(low + 2, Math.round(target * 1.25)));
+  return `${low}-${high}`;
 }
 
 export function cardPrompt(input: {
@@ -366,14 +373,18 @@ export function cardPrompt(input: {
     depthGuide: DEPTH_GUIDE[input.settings.depth] ?? DEPTH_GUIDE[3]!,
     angleGuide: ANGLE_GUIDE[input.settings.angle],
     learner: learnerBlock(input.profile),
-    // The card's own style and length, not the topic's: a control that did not
+    // The card's own register and length, not the topic's: a control that did not
     // reach the prompt is a control that does nothing.
     contentRules: contentRulesBlock({
-      style: input.settings.style,
+      englishLevel: input.settings.englishLevel,
+      technicalDetail: input.settings.technicalDetail,
+      format: input.settings.format,
       contentInstructions: input.topic.contentInstructions,
       averageReadTime: minutes,
     }),
     mechanismItems: mechanismItems(minutes),
+    itemWords: String(MECHANISM_ITEM_WORDS),
+    mechanismWords: String(mechanismWords(minutes)),
     readTime: minutesText(minutes),
     readWords: String(minutes * WORDS_PER_MINUTE),
   });
@@ -402,7 +413,11 @@ export function drillPrompt(input: {
     node: input.node.title,
     claim: input.card.claim,
     mechanism: input.card.mechanism.join(" "),
-    misconception: input.card.misconception.belief,
+    // A card written on a node with no wrong belief to correct has no
+    // misconception, and the empty string is what closes the block around it —
+    // the label with nothing after it is worse than no label, because the model
+    // answers it.
+    misconception: input.card.misconception?.belief ?? "",
     kind: input.kind,
     kindGuide: DRILL_GUIDE[input.kind],
   });
@@ -425,12 +440,19 @@ export function atomsPrompt(input: {
   card: CardContentT;
   content: TopicContentSettingsT;
 }): string {
+  const { example, misconception } = input.card;
   return render(promptFile("atoms"), {
     contentRules: contentRulesBlock(input.content),
     node: input.node.title,
     claim: input.card.claim,
     mechanism: input.card.mechanism.join(" "),
-    example: `${input.card.example.setup} → ${input.card.example.result}`,
-    misconception: `${input.card.misconception.belief} (in fact: ${input.card.misconception.correction})`,
+    // Both slots are written only where the node has one, so both lines are
+    // dropped rather than sent empty: review items are extracted from what the
+    // card actually said, and a labelled blank invites the model to fill it.
+    example: example === undefined ? "" : `${example.setup} → ${example.result}`,
+    misconception:
+      misconception === undefined
+        ? ""
+        : `${misconception.belief} (in fact: ${misconception.correction})`,
   });
 }
