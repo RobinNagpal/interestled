@@ -182,6 +182,23 @@ bill has no ceiling. Note what it counts: rebuilding a map or one group creates 
 topic, so a topic count alone would leave every rebuild outside the budget entirely —
 nodes generated in the last hour is the limit that actually binds.
 
+**What the model writes is Markdown, and it is rendered as Markdown.** Every string
+value the model returns — claims, mechanism items, drill prompts, review answers,
+verdict notes — reaches the screen through `Markdown` / `InlineMarkdown` in
+`packages/ui`, which parse the subset the system prompt asks for: inline emphasis, code
+spans, links, and bullet, numbered and fenced blocks. A plain `<Text>` shows the
+asterisks and backticks instead, and a list arrives as one long line. Titles are the
+exception and are plain text, because they are also button labels and screen titles,
+where no component can go.
+
+**A card is written into the map, not beside it.** `cardPrompt` is given every node of
+the topic as an outline — every heading, in reading order, with the one being written
+marked (`mapOutline` in `src/llm/outline.ts`). Everything above the mark is covered and
+must not be explained again; everything below it must not be spent early. The outline
+comes off the tree rather than off the level count, so two- and three-level maps need no
+separate path. It is read on a cache miss only: a hit must not become a second query on
+every card view.
+
 **Never cache a grading call.** A cached verdict is a verdict on somebody else's
 answer. Cards, drills and review items are cached deliberately; `gradeAttempt` is the
 one call that must be live, and it runs at `temperature: 0` so the same answer does

@@ -2,6 +2,7 @@ import { Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { VerdictLabel } from "@interestled/schemas";
 import type { VerdictItemT } from "@interestled/schemas";
+import { Markdown } from "./Markdown";
 
 /**
  * The got/vague/missing/wrong diff. No score and no percentage: a number invites
@@ -24,9 +25,9 @@ export function VerdictView({ items }: { items: readonly VerdictItemT[] }): Reac
           <View key={index} className="flex-row gap-3">
             <Text className={`text-base font-semibold ${mark.tone}`}>{mark.glyph}</Text>
             <View className="flex-1 gap-1">
-              <Text className="text-base text-ink">{item.point}</Text>
+              <Markdown text={item.point} className="text-base text-ink" />
               {item.note === "" ? null : (
-                <Text className="text-sm text-ink-soft">{item.note}</Text>
+                <Markdown text={item.note} className="text-sm text-ink-soft" />
               )}
             </View>
           </View>

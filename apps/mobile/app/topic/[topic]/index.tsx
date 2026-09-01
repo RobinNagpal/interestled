@@ -17,6 +17,7 @@ import {
   ErrorState,
   GroupCard,
   HeaderButton,
+  InlineMarkdown,
   MapRow,
   Minutes,
   NodeStatusDot,
@@ -149,7 +150,7 @@ export default function TopicScreen(): ReactElement {
         band={
           <>
             <Text className="text-base font-semibold text-ink">{entry.node.title}</Text>
-            <Text className="text-sm text-ink-soft">{entry.node.claim}</Text>
+            <InlineMarkdown text={entry.node.claim} className="text-sm text-ink-soft" />
             {/* Rolled up, so a collapsed group is still honest about what it costs. */}
             <Minutes value={rollupMinutes(entry.node, nodes)} />
           </>
@@ -197,9 +198,7 @@ export default function TopicScreen(): ReactElement {
         <View className="gap-2">
           <SectionTitle>What you can do now</SectionTitle>
           {progress.capabilities.map((capability, index) => (
-            <Text key={index} className="text-base text-ink">
-              · {capability}
-            </Text>
+            <InlineMarkdown key={index} text={`· ${capability}`} className="text-base text-ink" />
           ))}
         </View>
       ) : null}
@@ -271,9 +270,7 @@ function NodeRow({
           onPress={() => router.push(nodeHref(topicSlug, node.path))}
         >
           <Text className="text-base font-medium text-ink">{node.title}</Text>
-          <Text className="text-sm text-ink-soft" numberOfLines={2}>
-            {node.claim}
-          </Text>
+          <InlineMarkdown text={node.claim} className="text-sm text-ink-soft" numberOfLines={2} />
           <View className="flex-row items-center gap-2">
             <Minutes value={node.minutes} />
             <Text className="text-xs text-ink-faint">· {statusLabel(node.status)}</Text>

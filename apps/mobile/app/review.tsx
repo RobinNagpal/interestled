@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useGradeReview, useReview } from "@interestled/api";
-import { Button, EmptyState, ErrorState, LoadingContent, SectionTitle } from "@interestled/ui";
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  LoadingContent,
+  Markdown,
+  SectionTitle,
+} from "@interestled/ui";
 import { ReviewGrade } from "@interestled/schemas";
 import type { AtomT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
@@ -70,12 +77,12 @@ export default function ReviewScreen(): ReactElement {
   return (
     <ScrollView contentContainerClassName="gap-6 p-4">
       <SectionTitle>{`${index + 1} of ${atoms.length}`}</SectionTitle>
-      <Text className="text-xl leading-7 text-ink">{atom.prompt}</Text>
+      <Markdown text={atom.prompt} className="text-xl leading-7 text-ink" />
 
       {revealed ? (
         <View className="gap-4">
           <View className="rounded-card bg-surface p-4">
-            <Text className="text-base text-ink">{atom.answer}</Text>
+            <Markdown text={atom.answer} />
           </View>
           <Button label="I had it" onPress={() => answer(ReviewGrade.Recalled)} />
           {/* A miss reopens its node on the map, so forgetting becomes visible

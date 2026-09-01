@@ -2,6 +2,18 @@ Topic: {{topic}}
 Node: {{node}}
 Its claim: {{claim}}
 
+The whole map, in the order it is read, with this node marked:
+{{outline}}
+
+Write this node as one part of that sequence, continuous with the rest:
+- Everything above the marked node has been covered already. Build on it, and
+  name it where that helps ("the loop from Reconciliation"), but never explain it
+  again.
+- Everything below it is still to come. Do not pre-empt it; at most name what
+  comes next, in one clause.
+- Stay inside this node's own claim. Two nodes covering the same ground is the
+  map lying about how much is left.
+
 {{depthGuide}}
 {{variantGuide}}
 

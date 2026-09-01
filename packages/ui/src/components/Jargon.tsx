@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import type { ReactElement } from "react";
+import { InlineMarkdown } from "./Markdown";
 
 /**
  * Tap a term, get its meaning in place. This is what lets a card be written
@@ -28,7 +29,7 @@ export function JargonList({
             <Text className="text-xs text-ink-soft">{entry.term}</Text>
           </Pressable>
           {open === entry.term ? (
-            <Text className="mt-1 max-w-64 text-xs text-ink-soft">{entry.gloss}</Text>
+            <InlineMarkdown text={entry.gloss} className="mt-1 max-w-64 text-xs text-ink-soft" />
           ) : null}
         </View>
       ))}
