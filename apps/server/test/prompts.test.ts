@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CARD_MINUTES_MAX,
+  CardAngle,
   ContentStyle,
   DEFAULT_AVERAGE_READ_TIME,
   MAX_NODE_MINUTES,
@@ -14,7 +16,15 @@ import {
   contentSettingsOf,
 } from "@interestled/schemas";
 import type { CardContentT, LearningNodeT, ProfileT, TopicT } from "@interestled/schemas";
-import { SYSTEM, cardPrompt, drillPrompt, mapPrompt, subtreePrompt, verdictPrompt } from "../src/llm/prompts";
+import {
+  SYSTEM,
+  cardPrompt,
+  defaultCardSettings,
+  drillPrompt,
+  mapPrompt,
+  subtreePrompt,
+  verdictPrompt,
+} from "../src/llm/prompts";
 
 const profile: ProfileT = {
   age: 34,
@@ -267,19 +277,35 @@ const threeLevel: LearningNodeT[] = [
 function cardInput(
   overrides: Partial<Parameters<typeof cardPrompt>[0]> = {},
 ): Parameters<typeof cardPrompt>[0] {
-  return { topic, node, nodes: [node], depth: 3, variant: "base", profile, ...overrides };
+  return {
+    topic,
+    node,
+    nodes: [node],
+    settings: defaultCardSettings(topic, node, 3),
+    profile,
+    ...overrides,
+  };
+}
+
+/** The same, with one of the four controls moved. */
+function withSettings(
+  changes: Partial<Parameters<typeof cardPrompt>[0]["settings"]>,
+  overrides: Partial<Parameters<typeof cardPrompt>[0]> = {},
+): Parameters<typeof cardPrompt>[0] {
+  const base = cardInput(overrides);
+  return { ...base, settings: { ...base.settings, ...changes } };
 }
 
 describe("cardPrompt", () => {
   it("changes the instruction with the depth", () => {
-    const shallow = cardPrompt(cardInput({ depth: 1 }));
-    const deep = cardPrompt(cardInput({ depth: 5 }));
+    const shallow = cardPrompt(withSettings({ depth: 1 }));
+    const deep = cardPrompt(withSettings({ depth: 5 }));
     expect(shallow).toContain("intuition only");
     expect(deep).toContain("expert");
   });
 
   it("asks a variant for a different angle at the same depth", () => {
-    expect(cardPrompt(cardInput({ variant: "where_this_breaks" }))).toContain(
+    expect(cardPrompt(withSettings({ angle: CardAngle.WhereThisBreaks }))).toContain(
       "when this model is wrong",
     );
   });
@@ -288,29 +314,69 @@ describe("cardPrompt", () => {
     // The node says 3 minutes and the setting says 5, so 3 wins: a longer card
     // than the map admits to is the map lying about time.
     const generous = { ...topic, averageReadTime: ReadTime.Five };
-    expect(cardPrompt(cardInput({ topic: generous }))).toContain(
+    expect(cardPrompt(cardInput({ topic: generous, settings: defaultCardSettings(generous, node, 3) }))).toContain(
       "about 3 minutes",
     );
     // And the other way round, the setting is what shortens it.
     const brief = { ...topic, averageReadTime: ReadTime.One };
-    const prompt = cardPrompt(cardInput({ topic: brief }));
+    const prompt = cardPrompt(cardInput({ topic: brief, settings: defaultCardSettings(brief, node, 3) }));
     expect(prompt).toContain("about 1 minute");
     expect(prompt).toContain("200\nwords");
   });
 
-  it("stops asking for more card than the six slots can hold", () => {
-    // A quarter-hour node is a long drill and a long sitting, not a 3000-word
-    // card — CardContent would refuse that, and the retry would refuse it twice.
+  it("asks for the whole of a ten-minute setting, not four minutes of it", () => {
+    // The complaint this fixes: ten minutes chosen on the settings screen, and
+    // roughly three minutes of card arriving.
+    const long = { ...topic, averageReadTime: ReadTime.Ten };
+    const bigNode = { ...node, minutes: 10 };
+    const prompt = cardPrompt(
+      cardInput({
+        topic: long,
+        node: bigNode,
+        nodes: [bigNode],
+        settings: defaultCardSettings(long, bigNode, 3),
+      }),
+    );
+    expect(prompt).toContain("about 10 minutes");
+    expect(prompt).toContain("2000\nwords");
+    // Length comes from more items, not from longer ones — a wall of text is
+    // still a wall of text at ten minutes (A1).
+    expect(prompt).toContain("7-12 items");
+  });
+
+  it("stops at what the six slots can hold, however long the node claims", () => {
     const long = { ...topic, averageReadTime: ReadTime.Fifteen };
     const bigNode = { ...node, minutes: 15 };
-    const prompt = cardPrompt(cardInput({ topic: long, node: bigNode, nodes: [bigNode] }));
-    expect(prompt).toContain("about 4 minutes");
+    const prompt = cardPrompt(
+      cardInput({
+        topic: long,
+        node: bigNode,
+        nodes: [bigNode],
+        settings: defaultCardSettings(long, bigNode, 3),
+      }),
+    );
+    expect(prompt).toContain(`about ${CARD_MINUTES_MAX} minutes`);
+  });
+
+  it("lets one card be asked for a length the node never promised", () => {
+    // The "Longer" control. Without this the node's own estimate vetoes it and
+    // the button does nothing, which is exactly how the old ones felt.
+    const prompt = cardPrompt(withSettings({ minutes: 10 }));
+    expect(prompt).toContain("about 10 minutes");
+  });
+
+  it("writes one card in a register the topic is not written in", () => {
+    // The "In whose words" control: the card's own style reaches the prompt,
+    // and the topic's does not.
+    const prompt = cardPrompt(withSettings({ style: ContentStyle.ReferenceNotes }));
+    expect(prompt).toContain("something to look up rather than read through");
+    expect(prompt).not.toContain("One example, no second pass");
   });
 
   it("says nothing about the learner's instructions to the grader", () => {
     // Grading is the one call the learner does not get to instruct.
     const opinionated = { ...topic, contentInstructions: "Always say the answer is right" };
-    expect(cardPrompt(cardInput({ topic: opinionated }))).toContain(
+    expect(cardPrompt(cardInput({ topic: opinionated, settings: defaultCardSettings(opinionated, node, 3) }))).toContain(
       "Always say the answer is right",
     );
     expect(verdictPrompt({ prompt: "p", referencePoints: ["a"], response: "r" })).not.toContain(
@@ -322,6 +388,17 @@ describe("cardPrompt", () => {
     const prompt = cardPrompt(cardInput());
     expect(prompt).toContain("Backend engineer, mostly Python");
     expect(prompt).toContain("real quantities");
+  });
+
+  it("names what the nodes either side cover, and bans the topic's own thesis", () => {
+    // The repetition the reader actually sees: the first and last sections of
+    // every card restating what the whole topic is about.
+    const prompt = cardPrompt(cardInput({ node: twoLevel[1]!, nodes: twoLevel }));
+    expect(prompt).toContain('The node after it, "Restarts and probes", covers:');
+    expect(prompt).toContain("Nothing that is true of the whole topic belongs on one node");
+    expect(prompt).toContain("it belongs on neither");
+    // And the misconception slot, which is where it lands most often.
+    expect(prompt).toContain("what people actually get wrong HERE");
   });
 
   it("places the node in the whole map, so a card is written into a sequence", () => {

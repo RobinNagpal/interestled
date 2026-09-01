@@ -3,8 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UseMutationResult, UseQueryResult } from "@tanstack/react-query";
 import type {
   AttemptInputT,
-  CardDepthT,
-  DepthAction,
+  CardSettingsT,
   DrillKind,
   DrillT,
   LearningNodeT,
@@ -180,15 +179,26 @@ export function useDeleteNode(slug: string): UseMutationResult<TopicDetailT, Err
   return useMapEdit(slug, (nodeId: string) => api.deleteNode(slug, nodeId));
 }
 
+/**
+ * One card, at whatever settings the controls under it are on.
+ *
+ * The card already on screen is kept while the next one is written — a rewrite
+ * takes ten to thirty seconds, and blanking the screen to a skeleton for that
+ * long is what makes the controls feel broken rather than slow. It is kept only
+ * for the same node: the reader arriving at a new node must never be shown the
+ * last one's card while this one loads.
+ */
 export function useCard(
   nodeId: string,
-  options: { depth?: CardDepthT; action?: DepthAction } = {},
+  settings: Partial<CardSettingsT> = {},
 ): UseQueryResult<CardViewT> {
   const api = useApi();
   return useQuery({
-    queryKey: keys.card(nodeId, options.depth ?? null, options.action ?? null),
-    queryFn: () => api.getCard(nodeId, options),
+    queryKey: keys.card(nodeId, settings),
+    queryFn: () => api.getCard(nodeId, settings),
     enabled: nodeId !== "",
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === nodeId ? previous : undefined,
   });
 }
 

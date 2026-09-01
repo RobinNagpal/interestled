@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Id, newId } from "../src/ids";
 import { Email, Password } from "../src/auth";
-import { CardContent } from "../src/cards";
+import { CardAngle, CardContent, cardVariant } from "../src/cards";
 import {
   GeneratedThreeLevelMap,
   GeneratedTwoLevelMap,
@@ -9,7 +9,7 @@ import {
   flattenThreeLevelMap,
   flattenTwoLevelMap,
 } from "../src/nodes";
-import { TopicArchetype } from "../src/topics";
+import { ContentStyle, TopicArchetype } from "../src/topics";
 
 describe("newId", () => {
   it("produces ids the schema accepts", () => {
@@ -70,9 +70,30 @@ describe("CardContent", () => {
     expect(CardContent.safeParse(valid).success).toBe(true);
   });
 
-  it("caps the mechanism, so a card cannot become a wall of text", () => {
-    const long = { ...valid, mechanism: Array.from({ length: 6 }, () => "line") };
-    expect(CardContent.safeParse(long).success).toBe(false);
+  it("caps an item rather than the count, so length never becomes a wall of text", () => {
+    // A ten-minute card is more items, never longer ones — a paragraph nobody
+    // reads is not made readable by being one of five instead of one of twelve.
+    const many = { ...valid, mechanism: Array.from({ length: 12 }, () => "line") };
+    expect(CardContent.safeParse(many).success).toBe(true);
+    const tooMany = { ...valid, mechanism: Array.from({ length: 13 }, () => "line") };
+    expect(CardContent.safeParse(tooMany).success).toBe(false);
+    const tooLong = { ...valid, mechanism: ["x".repeat(601)] };
+    expect(CardContent.safeParse(tooLong).success).toBe(false);
+  });
+
+  it("keys a cached card by everything that changes how it is written", () => {
+    // Two cards asked for differently must never share a row, and two asked for
+    // the same way must never be written twice.
+    const base = {
+      depth: 3,
+      minutes: 5,
+      style: ContentStyle.ShortAndCrisp,
+      angle: CardAngle.Base,
+    };
+    expect(cardVariant(base)).toBe(cardVariant({ ...base }));
+    expect(cardVariant({ ...base, minutes: 10 })).not.toBe(cardVariant(base));
+    expect(cardVariant({ ...base, style: ContentStyle.ReferenceNotes })).not.toBe(cardVariant(base));
+    expect(cardVariant({ ...base, angle: CardAngle.WhyItMatters })).not.toBe(cardVariant(base));
   });
 
   it("requires the misconception — the slot exists to force it to be written", () => {

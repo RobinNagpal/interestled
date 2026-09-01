@@ -345,10 +345,21 @@ the real learning happens. The card opens on the claim, so the answer arrives be
 context does.
 
 Each card is written into the map rather than beside it: the generator is given every
-heading of the topic, in reading order, with the node it is writing marked. What sits
-above that mark has been covered and is not explained again; what sits below it is not
-spent early. Without that, every card opens by re-teaching the three before it, which is
-the preamble problem arriving one node at a time.
+heading of the topic, in reading order, with the node it is writing marked, plus what
+the nodes either side of it actually claim. What sits above that mark has been covered
+and is not explained again; what sits below it is not spent early. Without that, every
+card opens by re-teaching the three before it, which is the preamble problem arriving
+one node at a time — and the first and last slots drift hardest, because "why it behaves
+this way" and "what people get wrong" both pull towards whatever the topic as a whole is
+about. Nothing true of the whole topic may sit on one node of it: if a sentence would
+serve a neighbouring node equally well, it belongs on neither.
+
+How long a card runs is the learner's setting, not a constant. Ten minutes a node means
+roughly two thousand words, which arrives as more mechanism items rather than longer
+ones — a paragraph nobody reads is not made readable by being one of five instead of one
+of twelve. Changing the setting moves the map's own minute estimates with it, scaled so
+a node the model judged twice its neighbours stays twice its neighbours: a card written
+to ten minutes under a map still promising three is the map lying about time.
 
 What comes back is Markdown, and it is drawn as Markdown — `kubectl get pods` set as
 code, a list of parallel items set as a list. The alternative is the marks themselves on
@@ -363,18 +374,31 @@ the screen, which is the app showing its working.
 - *Covers:* W13 (one thing at a time), A1 (long unbroken text), A5 (no preamble), A13
   (one visual, nothing decorative).
 
-### Depth buttons
+### The controls under a card
 
-Five buttons sit under every card. *Simpler* regenerates the explanation around an
-analogy from a domain the learner already works in. *Deeper* adds the layer underneath
-— the maths, the protocol, the mechanism. *More concrete* swaps the abstraction for a
-specific instance with real numbers, *why it matters* gives the consequence, and
-*where this breaks* gives the edge cases.
+Four things decide how a card comes out, and all four sit under it: how deep it goes,
+how long it takes to read, whose words it is in, and which angle it is written from.
+Each one is a setting the generator actually reads, and the panel states where the card
+in front of you stands on each — *Depth 3 of 5 · the mechanism*, *about 5 min*. A
+control that cannot say what it changed is one the reader concludes is broken, which is
+what a row of five identical-looking buttons became: two of them did nothing at the
+ends of the scale, and a press that refetches an identical card is indistinguishable
+from a press that does nothing at all. A step that has nowhere left to go is now drawn
+as spent rather than offered.
 
-Depth is sticky: three presses of *deeper* and later cards start deeper, so the
-learner sets their level by using the product rather than by declaring it. And because
-the variants are pre-generated the button responds instantly — a depth control that
-costs a wait is a depth control nobody presses.
+*Simpler* and *deeper* move one rung of the mechanism. *Shorter* and *longer* move one
+rung of the read-time ladder for this card alone — the topic's setting is the default,
+not a ceiling. The register chips are the same five the topic is written in. *More
+concrete*, *why it matters* and *where this breaks* ask the same depth a different way,
+and *plain* is the way back to the card as written, which the old panel had no version
+of.
+
+Depth is sticky: three presses of *deeper* and later cards start deeper, so the learner
+sets their level by using the product rather than by declaring it. Cards are cached per
+setting, so returning to one is instant — and while a new one is being written the old
+one stays on screen with *rewriting…* beside the controls, because blanking the screen
+to a skeleton for twenty seconds is the other way a working control reads as a broken
+one.
 
 - *The ideal:* pitch slightly above comfort and make the depth available on demand.
   Writing for the least-prepared reader holds everyone at the slowest pace in the room

@@ -10,3 +10,4 @@ export * from "./components/VerdictView";
 export * from "./components/Jargon";
 export * from "./markdown/parse";
 export * from "./components/Markdown";
+export * from "./copy";

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CardAngle,
   ContentStyle,
   DEFAULT_AVERAGE_READ_TIME,
   LearningStyle,
@@ -9,6 +10,7 @@ import {
   TimeBudget,
   TopicArchetype,
   TopicStatus,
+  cardVariant,
 } from "@interestled/schemas";
 import { createApp } from "../src/app";
 import type { Db } from "../src/db";
@@ -173,10 +175,12 @@ describe("topic settings writes", () => {
     updates: object[];
     deletedCards: object[];
     deletedNodes: object[];
+    minuteWrites: { id: string; minutes: number }[];
   } {
     const updates: object[] = [];
     const deletedCards: object[] = [];
     const deletedNodes: object[] = [];
+    const minuteWrites: { id: string; minutes: number }[] = [];
     const db = {
       authSession: {
         findUnique: vi.fn(async () => ({
@@ -196,9 +200,23 @@ describe("topic settings writes", () => {
         }),
       },
       conceptCard: { deleteMany: vi.fn(async (args: object) => { deletedCards.push(args); return { count: 1 }; }) },
-      learningNode: { deleteMany: vi.fn(async (args: object) => { deletedNodes.push(args); return { count: 0 }; }) },
+      learningNode: {
+        deleteMany: vi.fn(async (args: object) => { deletedNodes.push(args); return { count: 0 }; }),
+        // A group and two leaves of different lengths, so a rescale can be seen
+        // to keep their proportions rather than flattening them.
+        findMany: vi.fn(async () => [
+          { id: "g1", parentId: null, minutes: 0 },
+          { id: "n1", parentId: "g1", minutes: 3 },
+          { id: "n2", parentId: "g1", minutes: 5 },
+        ]),
+        update: vi.fn(({ where, data }: { where: { id: string }; data: { minutes: number } }) => {
+          minuteWrites.push({ id: where.id, minutes: data.minutes });
+          return { id: where.id };
+        }),
+      },
+      $transaction: vi.fn(async (operations: unknown[]) => operations),
     };
-    return { db: db as unknown as Db, updates, deletedCards, deletedNodes };
+    return { db: db as unknown as Db, updates, deletedCards, deletedNodes, minuteWrites };
   }
 
   const send = async (db: Db, path: string, body: object): Promise<Response> =>
@@ -244,6 +262,36 @@ describe("topic settings writes", () => {
     ]);
     // Every card in the topic, so the next open is written to the new settings.
     expect(deletedCards).toEqual([{ where: { node: { topicId: "t1" } } }]);
+  });
+
+  it("moves the map's own minutes when the read time changes", async () => {
+    // Half-applying the setting is what made "10 minutes" come back as three:
+    // the next card is written to ten while every row still says three, and the
+    // node's own estimate then caps the card back down to it.
+    const { db, minuteWrites } = settingsDb();
+    const response = await send(db, "/api/topics/kubernetes/content-settings", {
+      style: ContentStyle.ShortAndCrisp,
+      contentInstructions: "",
+      averageReadTime: ReadTime.Ten,
+    });
+
+    expect(response.status).toBe(200);
+    // Scaled from a three-minute average, and capped at the longest sitting the
+    // ladder offers. The group keeps its 0: a heading is not something read.
+    expect(minuteWrites).toEqual([
+      { id: "n1", minutes: 10 },
+      { id: "n2", minutes: 15 },
+    ]);
+  });
+
+  it("leaves the map's minutes alone when only the register changes", async () => {
+    const { db, minuteWrites } = settingsDb();
+    await send(db, "/api/topics/kubernetes/content-settings", {
+      style: ContentStyle.TechnicalAndDeep,
+      contentInstructions: "",
+      averageReadTime: DEFAULT_AVERAGE_READ_TIME,
+    });
+    expect(minuteWrites).toEqual([]);
   });
 
   it("writes nothing, and keeps the cards, when the settings come back unchanged", async () => {
@@ -437,6 +485,8 @@ describe("card generation", () => {
       },
       user: {
         findUniqueOrThrow: vi.fn(async () => ({ age: null, background: "", learningStyles: [] })),
+        // Depth is sticky, so asking for a deeper card writes the new default.
+        update: vi.fn(async () => ({ id: "u1", defaultDepth: 3 })),
       },
       learningNode: {
         findFirst: vi.fn(async () => ({
@@ -487,6 +537,8 @@ describe("card generation", () => {
     expect(await response.json()).toMatchObject({
       content: { claim: "A pod is the unit of scheduling." },
       node: { status: NodeStatus.Seen },
+      // What the card was actually written to, so the controls can say so.
+      settings: { depth: 2, minutes: 3, style: ContentStyle.ShortAndCrisp, angle: CardAngle.Base },
     });
     // Reading advances a node to Seen and no further.
     expect(statuses).toEqual([{ status: NodeStatus.Seen }]);
@@ -497,6 +549,59 @@ describe("card generation", () => {
     expect(prompt).toContain("  - Restarts and probes  ← WRITE THIS ONE");
     expect(prompt).toContain("  - Probes in anger");
     expect(prompt).toContain("has been covered already");
+  });
+
+  it("carries each control through to the model, and caches them apart", async () => {
+    // The four controls under a card are settings the generator reads. A press
+    // that does not change the prompt is a button that looks broken, which is
+    // what the depth buttons did.
+    const { db } = cardDb(mapRows(), "n2");
+    const { provider: recorder, prompts } = recording();
+    const app = createApp(db, { provider: recorder });
+    const response = await app.request(
+      `/api/nodes/n2/card?depth=5&minutes=10&style=${ContentStyle.ReferenceNotes}&angle=${CardAngle.WhereThisBreaks}`,
+      { headers: { Authorization: "Bearer good" } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      settings: {
+        depth: 5,
+        minutes: 10,
+        style: ContentStyle.ReferenceNotes,
+        angle: CardAngle.WhereThisBreaks,
+      },
+    });
+    const prompt = prompts[0] ?? "";
+    expect(prompt).toContain("Depth 5");
+    expect(prompt).toContain("about 10 minutes");
+    expect(prompt).toContain("something to look up rather than read through");
+    expect(prompt).toContain("when this model is wrong");
+
+    // And the row it wrote is keyed by those settings, not by the depth alone.
+    const written = (db as unknown as { conceptCard: { upsert: ReturnType<typeof vi.fn> } })
+      .conceptCard.upsert.mock.calls[0]?.[0] as
+      | { create: { depth: number; variant: string } }
+      | undefined;
+    expect(written?.create.depth).toBe(5);
+    expect(written?.create.variant).toBe(
+      cardVariant({
+        depth: 5,
+        minutes: 10,
+        style: ContentStyle.ReferenceNotes,
+        angle: CardAngle.WhereThisBreaks,
+      }),
+    );
+  });
+
+  it("refuses a length no card may be written to", async () => {
+    const { db } = cardDb(mapRows(), "n2");
+    const { provider: recorder } = recording();
+    const response = await createApp(db, { provider: recorder }).request(
+      "/api/nodes/n2/card?minutes=45",
+      { headers: { Authorization: "Bearer good" } },
+    );
+    expect(response.status).toBe(400);
   });
 
   it("does not read the map when the card is already cached", async () => {
