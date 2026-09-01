@@ -1,15 +1,19 @@
 // CloudFront viewer-request function, attached to every behavior.
 //
-// Two jobs, in order:
+// Three jobs, in order:
 //  1. www.${domain_name} is a redirect-only alias — send it to the apex over
 //     https with a permanent 301, preserving path and query string.
-//  2. On the web (S3) behavior, anything without a file extension is a
+//  2. /android-install is a real static page under public/, not a client-side
+//     route, so it is answered from its own index.html before the SPA rewrite
+//     below can claim it.
+//  3. On the web (S3) behavior, anything without a file extension is a
 //     client-side route, so serve the SPA shell. Real assets (/_expo/...,
-//     /favicon.ico, ...) all contain a dot. The /api/* behavior shares this
-//     function for the redirect, so it is explicitly excluded from the
-//     rewrite — /api/login has no dot either.
+//     /favicon.ico, the APK under /downloads/, ...) all contain a dot. The
+//     /api/* behavior shares this function for the redirect, so it is
+//     explicitly excluded from the rewrite — /api/login has no dot either.
 var APEX = "${domain_name}";
 var WWW = "www.${domain_name}";
+var ANDROID_INSTALL = "/android-install/index.html";
 
 function queryString(querystring) {
   var parts = [];
@@ -42,6 +46,11 @@ function handler(event) {
         },
       },
     };
+  }
+
+  if (request.uri === "/android-install" || request.uri === "/android-install/") {
+    request.uri = ANDROID_INSTALL;
+    return request;
   }
 
   if (!request.uri.includes(".") && !request.uri.startsWith("/api/")) {

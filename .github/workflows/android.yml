@@ -1,0 +1,184 @@
+# Builds the Android APK and publishes it under https://interestled.com/downloads/,
+# which is what the install page at /android-install links to.
+#
+# Separate from deploy.yml on purpose. A Gradle build takes fifteen minutes to
+# the web deploy's three, and a broken native build must not hold up the API —
+# so this runs beside the deploy rather than inside it, and writes to a prefix
+# the deploy's `--delete` sync leaves alone.
+#
+# No EAS, no Expo account, no second vendor: `expo prebuild` generates the
+# native project and Gradle builds it on the runner, which already has the
+# Android SDK and the JDK. The APK is signed with the keystore the Expo
+# template ships — see "Signing" in deployment/README.md for what that costs.
+#
+# Needs (already created for deploy.yml, nothing new):
+#   secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+#   vars:    S3_BUCKET, CLOUDFRONT_DISTRIBUTION_ID, SITE_URL
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  S3_BUCKET: ${{ vars.S3_BUCKET }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+  # The native project is generated, never committed, so it is rebuilt here
+  # every run and nothing in the repository can drift from it.
+  ANDROID_DIR: apps/mobile/android
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # React Native 0.81 builds on 17; the runner's default is newer.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Name this build
+        id: name
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./apps/mobile/app.json').expo.version")
+          # The run number, not the commit: an Android versionCode must be an
+          # integer that only ever increases, or the next build refuses to
+          # install over this one.
+          code=${{ github.run_number }}
+          {
+            echo "version=$version"
+            echo "code=$code"
+            echo "sha=${GITHUB_SHA::7}"
+            echo "archive=interestled-$version-$code-${GITHUB_SHA::7}.apk"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate the native project
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --platform android --no-install
+
+      - name: Stamp the version code
+        run: |
+          set -euo pipefail
+          # prebuild writes `versionCode 1` because app.json names no version
+          # code. Rewriting the generated file keeps the whole scheme inside
+          # this workflow, where the run number that feeds it lives.
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ steps.name.outputs.code }}/" \
+            "$ANDROID_DIR/app/build.gradle"
+          grep -q "versionCode ${{ steps.name.outputs.code }}" "$ANDROID_DIR/app/build.gradle"
+
+      # Gradle runs Metro to bundle the JS, which is where EXPO_PUBLIC_* values
+      # are inlined — so this is the step that needs the API URL, not prebuild.
+      # A native app has no origin to be same-origin with, so unlike the web
+      # export this cannot be left empty: an APK built without it installs and
+      # then fails on every request.
+      - name: Build the APK
+        working-directory: apps/mobile/android
+        env:
+          EXPO_PUBLIC_API_URL: ${{ vars.SITE_URL }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Publish to S3
+        env:
+          VERSION: ${{ steps.name.outputs.version }}
+          CODE: ${{ steps.name.outputs.code }}
+          SHA: ${{ steps.name.outputs.sha }}
+          ARCHIVE: ${{ steps.name.outputs.archive }}
+        run: |
+          set -euo pipefail
+          apk="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
+          test -f "$apk"
+
+          # Chrome on Android only offers to install what is served with this
+          # type; anything else lands in Downloads as an inert file.
+          type=application/vnd.android.package-archive
+
+          # Immutable, because the name contains the build it is. Kept so a
+          # tester on a bad build can be pointed at the one before it.
+          aws s3 cp "$apk" "s3://$S3_BUCKET/downloads/builds/$ARCHIVE" \
+            --content-type "$type" \
+            --cache-control "public,max-age=31536000,immutable"
+
+          # The stable link the install page uses. `no-cache` so a tester who
+          # visited last week gets this build and not the one in their cache;
+          # the filename still names the version, so the file in Downloads is
+          # identifiable after the fact.
+          aws s3 cp "$apk" "s3://$S3_BUCKET/downloads/interestled.apk" \
+            --content-type "$type" \
+            --cache-control "no-cache" \
+            --content-disposition "attachment; filename=\"$ARCHIVE\""
+
+          node -e '
+            const fs = require("node:fs");
+            fs.writeFileSync("build.json", JSON.stringify({
+              version: process.env.VERSION,
+              versionCode: Number(process.env.CODE),
+              commit: process.env.SHA,
+              builtAt: new Date().toISOString(),
+              sizeBytes: fs.statSync(process.argv[1]).size,
+              apk: "/downloads/interestled.apk",
+              archive: "/downloads/builds/" + process.env.ARCHIVE,
+            }, null, 2) + "\n");
+          ' "$apk"
+
+          aws s3 cp build.json "s3://$S3_BUCKET/downloads/build.json" \
+            --content-type application/json \
+            --cache-control "no-cache"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/downloads/*"
+
+      - name: Say where it went
+        run: |
+          {
+            echo "### Android build ${{ steps.name.outputs.version }} (${{ steps.name.outputs.code }})"
+            echo
+            echo "- Install page: ${{ vars.SITE_URL }}/android-install"
+            echo "- Direct APK: ${{ vars.SITE_URL }}/downloads/interestled.apk"
+            echo "- This build: ${{ vars.SITE_URL }}/downloads/builds/${{ steps.name.outputs.archive }}"
+          } >> "$GITHUB_STEP_SUMMARY"

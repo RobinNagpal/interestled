@@ -1,7 +1,7 @@
 # Interest Led — local shortcuts. Deployment happens in GitHub Actions
 # (.github/workflows/deploy.yml); nothing here touches AWS.
 
-.PHONY: help install dev api web check migrate server clean
+.PHONY: help install dev api web check migrate server apk clean
 
 help:
 	@echo "  make install   install workspace dependencies"
@@ -10,6 +10,7 @@ help:
 	@echo "  make check     typecheck + test + lint, the same gate CI runs"
 	@echo "  make migrate   apply pending migrations to \$$DATABASE_URL"
 	@echo "  make server    build deployment/dist/server locally"
+	@echo "  make apk       build the Android APK locally (needs a JDK + Android SDK)"
 	@echo "  make clean     remove build output"
 
 install:
@@ -34,5 +35,17 @@ migrate:
 server:
 	bash deployment/scripts/build-server.sh
 
+# The same two commands .github/workflows/android.yml runs, minus the S3
+# upload. EXPO_PUBLIC_API_URL belongs on the Gradle line, which is where Metro
+# bundles the JS and inlines it, and it is not optional: a native app has no
+# origin to be same-origin with, so an APK built without it cannot reach the
+# API at all.
+apk:
+	cd apps/mobile && pnpm exec expo prebuild --platform android --no-install
+	cd apps/mobile/android && \
+		EXPO_PUBLIC_API_URL=$${EXPO_PUBLIC_API_URL:-https://interestled.com} \
+		./gradlew :app:assembleRelease --no-daemon
+	@echo "APK: apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
+
 clean:
-	rm -rf deployment/dist apps/mobile/dist .turbo
+	rm -rf deployment/dist apps/mobile/dist apps/mobile/android .turbo
