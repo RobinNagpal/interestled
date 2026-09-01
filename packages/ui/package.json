@@ -11,7 +11,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@interestled/schemas": "workspace:*"
+    "@interestled/schemas": "workspace:*",
+    "@rn-primitives/label": "^1.5.2",
+    "@rn-primitives/separator": "^1.5.2",
+    "@rn-primitives/slot": "^1.5.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.6.0"
   },
   "peerDependencies": {
     "nativewind": "*",

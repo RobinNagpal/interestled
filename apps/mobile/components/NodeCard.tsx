@@ -7,15 +7,16 @@ import { depthAfter, drillHref, nodeHref, readTimeAfter } from "@interestled/dom
 import {
   ANGLE_OPTIONS,
   Button,
+  Card,
   DEPTH_COPY,
   ErrorState,
   InlineMarkdown,
   JargonList,
   LoadingContent,
   Markdown,
-  SectionTitle,
   STYLE_COPY,
   STYLE_OPTIONS,
+  SectionTitle,
 } from "@interestled/ui";
 import { CARD_MINUTES_MAX, Step } from "@interestled/schemas";
 import type { CardSettingsT, LearningNodeT } from "@interestled/schemas";
@@ -102,30 +103,30 @@ export function NodeCard({
       {/* Paragraph spacing, not list spacing: the items are one argument in
           order, each starting from what the one above it established, and the
           airier gap the other sections use reads them as separate notes. */}
-      <View className="gap-2 rounded-card bg-surface p-4">
+      <Card className="gap-2">
         <SectionTitle>Why it behaves this way</SectionTitle>
         {content.mechanism.map((line, index) => (
           <Markdown key={index} text={line} />
         ))}
-      </View>
+      </Card>
 
-      <View className="gap-2 rounded-card bg-surface p-4">
+      <Card className="gap-2">
         <SectionTitle>Concretely</SectionTitle>
         <Markdown text={content.example.setup} />
         <Markdown
           text={`→ ${content.example.result}`}
           className="text-base leading-6 text-ink-soft"
         />
-      </View>
+      </Card>
 
-      <View className="gap-2 rounded-card bg-surface p-4">
+      <Card className="gap-2">
         <SectionTitle>What people get wrong</SectionTitle>
         <Markdown
           text={content.misconception.belief}
           className="text-base leading-6 text-ink-soft"
         />
         <Markdown text={content.misconception.correction} />
-      </View>
+      </Card>
 
       <JargonList terms={content.jargon} />
 
@@ -220,7 +221,7 @@ function CardControls({
   const longer = readTimeAfter(settings.minutes, Step.Up, CARD_MINUTES_MAX);
 
   return (
-    <View className="gap-4 rounded-card bg-surface p-4">
+    <Card className="gap-4">
       <View className="flex-row items-center justify-between">
         <SectionTitle>How this card is written</SectionTitle>
         {rewriting ? (
@@ -284,6 +285,6 @@ function CardControls({
       {/* The way back, which the old panel had no version of: once a card had
           been asked for a different way there was no returning to the plain one. */}
       {changed ? <Button label="Back to how the topic is written" tone="quiet" onPress={onReset} /> : null}
-    </View>
+    </Card>
   );
 }

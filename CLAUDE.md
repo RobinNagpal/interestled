@@ -246,6 +246,41 @@ changing them deletes that topic's cached cards so the change is visible on the 
 node rather than only on unread ones. Drills are kept: deleting one cascades to the
 attempts made against it.
 
+## The component set
+
+**Every control is react-native-reusables underneath.** The components are
+vendored into `packages/ui/src/ui/` from the library's NativeWind registry — the
+shadcn model, where the code is copied in and owned rather than imported from a
+package that must be themed around. Buttons, inputs, cards, labels, badges,
+separators and the text scale all come from there; `packages/ui/src/components/`
+holds only what this product composes on top of them.
+
+- **Theming is the token names, not the components.** The vendored files are
+  written against shadcn's semantic tokens, and `packages/config/tailwind-preset.js`
+  names the palette a second time under those names — `primary` is `accent`,
+  `muted-foreground` is `ink-soft`, `border` is `line`. Editing colours into a
+  vendored component is what makes the set impossible to update; add the mapping
+  instead. One token does not survive the trip and is written `accent-tint` in
+  the two places that wanted it: shadcn's `accent` is a faint pressed-state wash,
+  and here `accent` is the blue.
+- **The vendored files carry no `dark:` classes.** The app is
+  `userInterfaceStyle: "light"`, and a dark variant with no dark palette behind
+  it is a claim the app cannot honour.
+- **A wrapper exists only where the composition is a product rule.** `Button`
+  always carries its own label and busy state, `Input` always carries its own
+  label, `Skeleton` is a stack of bars in the shape of what is loading. Where
+  there is no such rule the vendored component is exported straight — `Card` is
+  the whole of `Card`. A wrapper that only renames a variant is one more thing to
+  keep in step.
+- **`cn` is what makes an override work**, and it has to be taught anything
+  Tailwind did not ship: `rounded-card` is registered on its border-radius theme,
+  or `cn("rounded-md", "rounded-card")` emits both and the winner is whichever
+  the stylesheet happened to write last. `packages/ui/test/cn.test.ts` covers it,
+  because that failure renders.
+- **Adding a component means adding it from the registry**, not writing a new one
+  beside it: `pnpm dlx @react-native-reusables/cli@latest add <name>` writes the
+  NativeWind version, which then needs the three edits above.
+
 ## What the product rules are, and where they live
 
 These are load-bearing. Breaking one is a bug, not a trade-off:

@@ -1,5 +1,6 @@
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
+import { Text } from "../ui/text";
 
 /**
  * A group on the map, drawn as a card with its children inside it rather than as

@@ -1,42 +1,68 @@
-import { ActivityIndicator, Pressable, Text } from "react-native";
+import { ActivityIndicator } from "react-native";
 import type { ReactElement } from "react";
+import { Button as BaseButton } from "../ui/button";
+import type { ButtonProps } from "../ui/button";
+import { Text } from "../ui/text";
 
 export type ButtonTone = "primary" | "secondary" | "quiet";
 
-const TONES: Record<ButtonTone, { box: string; label: string }> = {
-  // One primary action per screen: a grid of equal options is where sessions end.
-  primary: { box: "bg-accent", label: "text-white" },
-  secondary: { box: "bg-surface-sunken border border-ink-faint/40", label: "text-ink" },
-  quiet: { box: "bg-transparent", label: "text-ink-soft underline" },
+/**
+ * The tones are the product's vocabulary; the variants underneath are
+ * react-native-reusables'. Keeping the tone names is what stops a screen
+ * reaching for `destructive` because it was in the list — one primary action
+ * per screen, and a grid of equal options is where sessions end.
+ */
+const TONES: Record<ButtonTone, { variant: NonNullable<ButtonProps["variant"]>; box: string; label: string }> = {
+  primary: { variant: "default", box: "", label: "" },
+  // The palette is a shade apart on purpose (A13), and a grey fill on a grey
+  // page needs an edge or the button has no boundary at all.
+  secondary: { variant: "secondary", box: "border border-line-strong", label: "" },
+  quiet: { variant: "link", box: "", label: "text-ink-soft underline" },
 };
 
+const SPINNER: Record<ButtonTone, string> = {
+  primary: "#ffffff",
+  secondary: "#4b5563",
+  quiet: "#4b5563",
+};
+
+/**
+ * `label` and `busy` are the two things every button here needs and the base
+ * component has no opinion about: the label so a caller cannot forget the Text
+ * that carries the tone's colour, and `busy` so a generation that takes twenty
+ * seconds says so on the control that started it.
+ *
+ * Everything else is the base component's — pass `size`, `className` or any
+ * Pressable prop straight through.
+ */
 export function Button({
   label,
   onPress,
   tone = "primary",
   busy = false,
   disabled = false,
-}: {
+  className,
+  ...props
+}: Omit<ButtonProps, "variant" | "children"> & {
   label: string;
-  onPress: () => void;
   tone?: ButtonTone;
   busy?: boolean;
-  disabled?: boolean;
 }): ReactElement {
-  const style = TONES[tone];
+  const look = TONES[tone];
   const off = disabled || busy;
   return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={off}
+    <BaseButton
+      variant={look.variant}
       onPress={onPress}
-      className={`min-h-12 flex-row items-center justify-center rounded-card px-4 py-3 ${style.box} ${off ? "opacity-50" : ""}`}
+      disabled={off}
+      className={`${look.box} ${className ?? ""}`}
+      {...props}
     >
       {busy ? (
-        <ActivityIndicator color={tone === "primary" ? "#ffffff" : "#4b5563"} />
+        <ActivityIndicator color={SPINNER[tone]} />
       ) : (
-        <Text className={`text-base font-semibold ${style.label}`}>{label}</Text>
+        <Text className={look.label}>{label}</Text>
       )}
-    </Pressable>
+    </BaseButton>
   );
 }

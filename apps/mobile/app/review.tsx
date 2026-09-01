@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { useGradeReview, useReview } from "@interestled/api";
 import {
   Button,
+  Card,
   EmptyState,
   ErrorState,
   LoadingContent,
@@ -81,9 +82,9 @@ export default function ReviewScreen(): ReactElement {
 
       {revealed ? (
         <View className="gap-4">
-          <View className="rounded-card bg-surface p-4">
+          <Card>
             <Markdown text={atom.answer} />
-          </View>
+          </Card>
           <Button label="I had it" onPress={() => answer(ReviewGrade.Recalled)} />
           {/* A miss reopens its node on the map, so forgetting becomes visible
               work rather than invisible decay. */}

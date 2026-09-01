@@ -1,5 +1,6 @@
-import { Pressable, Text } from "react-native";
 import type { ReactElement } from "react";
+import { Button } from "../ui/button";
+import { Text } from "../ui/text";
 
 /**
  * One action in the top bar. Written here rather than left to the navigator's
@@ -19,15 +20,20 @@ export function HeaderButton({
   tone?: "normal" | "danger";
 }): ReactElement {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <Button
+      variant="ghost"
+      size="sm"
       accessibilityLabel={accessibilityLabel ?? label}
       onPress={onPress}
-      // 44pt of touchable height: the bar is the one place a mis-tap costs the
-      // whole screen you were on.
-      className="min-h-11 justify-center px-2"
+      // 44pt of touchable height comes from the size; the padding is narrower
+      // than a body button's because the bar is the one place a mis-tap costs
+      // the whole screen you were on and the target still has to fit beside a
+      // title.
+      className="px-2"
     >
-      <Text className={`text-base ${tone === "danger" ? "text-warn" : "text-accent"}`}>{label}</Text>
-    </Pressable>
+      <Text className={`text-base font-normal ${tone === "danger" ? "text-warn" : "text-accent"}`}>
+        {label}
+      </Text>
+    </Button>
   );
 }

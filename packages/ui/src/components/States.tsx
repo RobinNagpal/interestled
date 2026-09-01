@@ -1,26 +1,23 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import type { ReactElement } from "react";
+import { Card } from "../ui/card";
+import { Skeleton as SkeletonBar } from "../ui/skeleton";
+import { Text } from "../ui/text";
 
 /**
  * A skeleton rather than a spinner wherever the shape is known: structure that
  * appears first is readable while the content arrives, and a blank wait is where
  * people switch tabs and do not come back.
  *
- * The bars are a tint of ink rather than the sunken surface. Sunken *is* the
- * screen background, so the skeleton was drawing itself in the background colour
- * — the shape was there and nobody could see it, which is the same as showing
- * nothing at all.
+ * The bars are a tint of ink rather than the sunken surface — see the note on
+ * `ui/skeleton.tsx` for why the library's own fill could not be kept.
  */
 export function Skeleton({ lines = 3 }: { lines?: number }): ReactElement {
   return (
     <View className="gap-3">
       {Array.from({ length: lines }).map((_, index) => (
-        <View
-          key={index}
-          className="h-4 rounded bg-ink-faint/25"
-          style={{ width: `${90 - index * 12}%` }}
-        />
+        <SkeletonBar key={index} className="h-4" style={{ width: `${90 - index * 12}%` }} />
       ))}
     </View>
   );
@@ -58,9 +55,9 @@ export function LoadingContent({
     <View className="gap-4 p-4">
       <View className="flex-row items-center gap-3">
         <ActivityIndicator color="#2563eb" />
-        <Text className="text-base text-ink">{label}</Text>
+        <Text>{label}</Text>
       </View>
-      {slow && hint !== undefined ? <Text className="text-sm text-ink-soft">{hint}</Text> : null}
+      {slow && hint !== undefined ? <Text variant="muted">{hint}</Text> : null}
       <Skeleton lines={lines} />
     </View>
   );
@@ -70,25 +67,25 @@ export function LoadingState({ label }: { label?: string }): ReactElement {
   return (
     <View className="flex-1 items-center justify-center gap-3 p-6">
       <ActivityIndicator color="#2563eb" />
-      {label === undefined ? null : <Text className="text-sm text-ink-soft">{label}</Text>}
+      {label === undefined ? null : <Text variant="muted">{label}</Text>}
     </View>
   );
 }
 
 export function ErrorState({ message, hint }: { message: string; hint?: string }): ReactElement {
   return (
-    <View className="gap-2 rounded-card border border-warn/40 bg-warn/5 p-4">
-      <Text className="text-base text-ink">{message}</Text>
-      {hint === undefined ? null : <Text className="text-sm text-ink-soft">{hint}</Text>}
-    </View>
+    <Card className="gap-2 border border-warn/40 bg-warn/5">
+      <Text>{message}</Text>
+      {hint === undefined ? null : <Text variant="muted">{hint}</Text>}
+    </Card>
   );
 }
 
 export function EmptyState({ title, body }: { title: string; body: string }): ReactElement {
   return (
     <View className="gap-2 p-6">
-      <Text className="text-lg font-semibold text-ink">{title}</Text>
-      <Text className="text-base text-ink-soft">{body}</Text>
+      <Text variant="h4">{title}</Text>
+      <Text className="text-ink-soft">{body}</Text>
     </View>
   );
 }

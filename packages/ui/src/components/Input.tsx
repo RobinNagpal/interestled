@@ -1,6 +1,17 @@
-import { Text, TextInput, View } from "react-native";
+import { View } from "react-native";
 import type { ReactElement } from "react";
+import { Input as BaseInput } from "../ui/input";
+import { Label } from "../ui/label";
+import { Text } from "../ui/text";
+import { Textarea } from "../ui/textarea";
 
+/**
+ * A field is never a bare box here: it carries its own label, and a long answer
+ * carries a count. Both are the reason this wraps react-native-reusables' Input
+ * rather than the screens using it directly — a placeholder standing in for a
+ * label disappears the moment typing starts, which is exactly when a reader who
+ * has lost the thread needs to see what the box was for.
+ */
 export function Input({
   label,
   value,
@@ -26,30 +37,31 @@ export function Input({
 }): ReactElement {
   // Warn before the limit rather than at it, so a long answer is never lost.
   const nearLimit = maxLength !== undefined && value.length > maxLength * 0.9;
+  const Field = multiline ? Textarea : BaseInput;
   return (
     <View className="gap-1">
-      <Text className="text-sm font-medium text-ink-soft">{label}</Text>
-      <TextInput
+      <Label>{label}</Label>
+      <Field
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#9ca3af"
         secureTextEntry={secureTextEntry}
-        multiline={multiline}
         autoFocus={autoFocus}
         keyboardType={keyboardType}
         maxLength={maxLength}
         autoCapitalize={keyboardType === "email-address" ? "none" : "sentences"}
         autoCorrect={keyboardType !== "email-address"}
-        className={`rounded-card border border-ink-faint/40 bg-surface px-3 py-3 text-base text-ink ${multiline ? "min-h-32" : ""}`}
-        style={multiline ? { textAlignVertical: "top" } : undefined}
       />
       {nearLimit ? (
-        <Text className="text-xs text-warn">
+        <Text variant="small" className="text-xs text-warn">
           {value.length} of {maxLength} characters
         </Text>
       ) : null}
-      {hint === undefined ? null : <Text className="text-xs text-ink-faint">{hint}</Text>}
+      {hint === undefined ? null : (
+        <Text variant="muted" className="text-xs text-ink-faint">
+          {hint}
+        </Text>
+      )}
     </View>
   );
 }
