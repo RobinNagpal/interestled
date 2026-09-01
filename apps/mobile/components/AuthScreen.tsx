@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
-import { Button, ErrorState, Input } from "@interestled/ui";
+import {
+  Button,
+  Card,
+  ErrorState,
+  Input,
+} from "@interestled/ui";
 import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
 
@@ -39,7 +44,7 @@ export function AuthScreen(): ReactElement {
         </Text>
       </View>
 
-      <View className="gap-4 rounded-card bg-surface p-4">
+      <Card className="gap-4">
         <Input
           label="Email"
           value={email}
@@ -64,7 +69,7 @@ export function AuthScreen(): ReactElement {
             setError(null);
           }}
         />
-      </View>
+      </Card>
     </ScrollView>
   );
 }

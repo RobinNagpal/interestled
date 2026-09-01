@@ -1,6 +1,12 @@
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import type { ReactElement } from "react";
+import { Badge, Text } from "@interestled/ui";
 
+/**
+ * A chip is a Badge with a press on it — `asChild` puts the Pressable in the
+ * Badge's place rather than inside it, so the whole pill is the target and the
+ * shape stays the one the library draws everywhere else a small label appears.
+ */
 function Chip({
   label,
   active,
@@ -11,16 +17,11 @@ function Chip({
   onPress: () => void;
 }): ReactElement {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      className={`rounded-full px-4 py-2 ${active ? "bg-accent" : "bg-surface border border-ink-faint/40"}`}
-    >
-      <Text className={active ? "text-sm font-semibold text-white" : "text-sm text-ink-soft"}>
-        {label}
-      </Text>
-    </Pressable>
+    <Badge asChild variant={active ? "default" : "outline"} className="border-line-strong px-4 py-2">
+      <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} onPress={onPress}>
+        <Text className={active ? "text-sm font-semibold" : "text-sm text-ink-soft"}>{label}</Text>
+      </Pressable>
+    </Badge>
   );
 }
 

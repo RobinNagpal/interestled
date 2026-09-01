@@ -6,6 +6,7 @@ import { useDrill, useSaveResume, useSubmitAttempt } from "@interestled/api";
 import { topicHref } from "@interestled/domain";
 import {
   Button,
+  Card,
   ErrorState,
   InlineMarkdown,
   Input,
@@ -86,9 +87,9 @@ export function NodeDrill({ topic, node }: { topic: TopicT; node: LearningNodeT 
       <ScrollView contentContainerClassName="gap-5 p-4">
         <SectionTitle>{verdict.passed ? "That holds up" : "Close — here is the gap"}</SectionTitle>
         {/* The diff, right things first, so the rest gets read. */}
-        <View className="rounded-card bg-surface p-4">
+        <Card>
           <VerdictView items={verdict.items} />
-        </View>
+        </Card>
         {verdict.passed ? (
           <InlineMarkdown
             text={`You can now ${lowerFirst(capability)}.`}

@@ -1,6 +1,7 @@
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import type { ReactElement } from "react";
 import { NodeStatus } from "@interestled/schemas";
+import { Text } from "../ui/text";
 
 /**
  * The status dots are the progress bar. Nothing here can be advanced by
@@ -23,7 +24,11 @@ export function NodeStatusDot({ status }: { status: NodeStatus }): ReactElement 
 }
 
 export function NodeStatusLabel({ status }: { status: NodeStatus }): ReactElement {
-  return <Text className="text-xs text-ink-faint">{LOOK[status].label}</Text>;
+  return (
+    <Text variant="muted" className="text-xs text-ink-faint">
+      {LOOK[status].label}
+    </Text>
+  );
 }
 
 export function statusLabel(status: NodeStatus): string {

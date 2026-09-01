@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import type { ReactElement } from "react";
+import { Badge } from "../ui/badge";
+import { Text } from "../ui/text";
 import { InlineMarkdown } from "./Markdown";
 
 /**
@@ -21,13 +23,15 @@ export function JargonList({
     <View className="flex-row flex-wrap gap-2">
       {terms.map((entry) => (
         <View key={entry.term}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setOpen(open === entry.term ? null : entry.term)}
-            className="rounded-full bg-surface-sunken px-3 py-1"
-          >
-            <Text className="text-xs text-ink-soft">{entry.term}</Text>
-          </Pressable>
+          <Badge asChild variant="secondary">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open === entry.term }}
+              onPress={() => setOpen(open === entry.term ? null : entry.term)}
+            >
+              <Text className="text-xs text-ink-soft">{entry.term}</Text>
+            </Pressable>
+          </Badge>
           {open === entry.term ? (
             <InlineMarkdown text={entry.gloss} className="mt-1 max-w-64 text-xs text-ink-soft" />
           ) : null}

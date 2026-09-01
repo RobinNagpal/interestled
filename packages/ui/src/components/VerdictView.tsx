@@ -1,7 +1,8 @@
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import type { ReactElement } from "react";
 import { VerdictLabel } from "@interestled/schemas";
 import type { VerdictItemT } from "@interestled/schemas";
+import { Text } from "../ui/text";
 import { Markdown } from "./Markdown";
 
 /**
