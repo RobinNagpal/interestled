@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   CARD_MINUTES_MAX,
   CardAngle,
-  ContentStyle,
+  ContentFormat,
+  EnglishLevel,
   DEFAULT_AVERAGE_READ_TIME,
   MAX_NODE_MINUTES,
   ReadTime,
@@ -11,6 +12,7 @@ import {
   MAX_MECHANISM_ITEMS,
   MapLevels,
   NodeStatus,
+  TechnicalDetail,
   TopicArchetype,
   TimeBudget,
   TopicStatus,
@@ -48,7 +50,9 @@ const topic: TopicT = {
   timeBudget: TimeBudget.Week,
   level: "I use Docker daily\nWant to run a small cluster",
   levels: MapLevels.Two,
-  style: ContentStyle.ShortAndCrisp,
+  englishLevel: EnglishLevel.Medium,
+  technicalDetail: TechnicalDetail.Medium,
+  format: ContentFormat.Prose,
   contentInstructions: "",
   averageReadTime: DEFAULT_AVERAGE_READ_TIME,
   status: TopicStatus.Ready,
@@ -157,12 +161,43 @@ describe("mapPrompt", () => {
     expect(long).toContain(`nothing may exceed ${MAX_NODE_MINUTES}`);
   });
 
-  it("carries the topic's writing style, as what it changes rather than its name", () => {
+  it("carries how the topic is written, as what it changes rather than as a name", () => {
     const technical = mapPrompt(
-      mapInput({ content: { ...contentSettingsOf(topic), style: ContentStyle.TechnicalAndDeep } }),
+      mapInput({
+        content: { ...contentSettingsOf(topic), technicalDetail: TechnicalDetail.High },
+      }),
     );
     expect(technical).toContain("the field's own terms");
-    expect(technical).not.toContain("technical_and_deep");
+    // The enum value itself would mean nothing to the model.
+    expect(technical).not.toContain(TechnicalDetail.High);
+  });
+
+  it("asks the two axes separately, so plain words can carry the real terms", () => {
+    // What the single style chip could never say, and what someone learning a
+    // subject in a second language is actually asking for: every value that
+    // offered the terminology also demanded the dense prose around it.
+    const prompt = mapPrompt(
+      mapInput({
+        content: {
+          ...contentSettingsOf(topic),
+          englishLevel: EnglishLevel.Simple,
+          technicalDetail: TechnicalDetail.High,
+        },
+      }),
+    );
+    expect(prompt).toContain("everyday words and short sentences");
+    expect(prompt).toContain("the field's own terms, notation and real values throughout");
+  });
+
+  it("says nothing about the shape when the topic is ordinary prose", () => {
+    // A line reading "written as prose" is one more instruction for the model to
+    // answer, and prose is what every other rule already describes.
+    const prose = mapPrompt(mapInput());
+    expect(prose).not.toContain("look up rather than read through");
+    const notes = mapPrompt(
+      mapInput({ content: { ...contentSettingsOf(topic), format: ContentFormat.ReferenceNotes } }),
+    );
+    expect(notes).toContain("look up rather than read through");
   });
 
   it("uses the default content instructions until the learner writes their own", () => {
@@ -395,11 +430,18 @@ describe("cardPrompt", () => {
   });
 
   it("writes one card in a register the topic is not written in", () => {
-    // The "In whose words" control: the card's own style reaches the prompt,
-    // and the topic's does not.
-    const prompt = cardPrompt(withSettings({ style: ContentStyle.ReferenceNotes }));
-    expect(prompt).toContain("something to look up rather than read through");
-    expect(prompt).not.toContain("One example, no second pass");
+    // The controls under a card: this card's own answers reach the prompt, and
+    // the topic's do not.
+    const notes = cardPrompt(withSettings({ format: ContentFormat.ReferenceNotes }));
+    expect(notes).toContain("something to look up rather than read through");
+
+    const plain = cardPrompt(withSettings({ englishLevel: EnglishLevel.Simple }));
+    expect(plain).toContain("everyday words and short sentences");
+    expect(plain).not.toContain("ordinary adult prose");
+
+    const detailed = cardPrompt(withSettings({ technicalDetail: TechnicalDetail.High }));
+    expect(detailed).toContain("the field's own terms, notation and real values throughout");
+    expect(detailed).not.toContain("Reach for the field's vocabulary only where nothing else");
   });
 
   it("says nothing about the learner's instructions to the grader", () => {
@@ -498,7 +540,7 @@ describe("cardPrompt", () => {
     // The one register that wants no linking sentences at all. Without the
     // carve-out the card asks for a chain and the style asks for entries, and
     // the model picks one.
-    const prompt = cardPrompt(withSettings({ style: ContentStyle.ReferenceNotes }));
+    const prompt = cardPrompt(withSettings({ format: ContentFormat.ReferenceNotes }));
     expect(prompt).toContain("No linking sentences between them");
     expect(prompt).toContain("it overrides this paragraph");
   });

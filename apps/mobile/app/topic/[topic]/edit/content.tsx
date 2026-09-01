@@ -10,11 +10,21 @@ import {
   Input,
   LoadingContent,
   SectionTitle,
-  STYLE_COPY,
-  STYLE_OPTIONS,
+  ENGLISH_COPY,
+  ENGLISH_OPTIONS,
+  FORMAT_COPY,
+  FORMAT_OPTIONS,
+  TECHNICAL_COPY,
+  TECHNICAL_OPTIONS,
 } from "@interestled/ui";
 import { READ_TIMES, ReadTimeSchema } from "@interestled/schemas";
-import type { ContentStyle, TopicContentSettingsT, TopicT } from "@interestled/schemas";
+import type {
+  ContentFormat,
+  EnglishLevel,
+  TechnicalDetail,
+  TopicContentSettingsT,
+  TopicT,
+} from "@interestled/schemas";
 import { messageOf } from "../../../../lib/errors";
 import { backHeader, goBack } from "../../../../lib/nav";
 import { ChipRow } from "../../../../components/ChipRow";
@@ -86,7 +96,9 @@ function ContentForm({
   defaults: TopicContentSettingsT;
 }): ReactElement {
   const save = useUpdateTopicContentSettings(topicSlug);
-  const [style, setStyle] = useState<ContentStyle>(topic.style);
+  const [englishLevel, setEnglishLevel] = useState<EnglishLevel>(topic.englishLevel);
+  const [technicalDetail, setTechnicalDetail] = useState<TechnicalDetail>(topic.technicalDetail);
+  const [format, setFormat] = useState<ContentFormat>(topic.format);
   const [averageReadTime, setAverageReadTime] = useState(topic.averageReadTime);
   const [instructions, setInstructions] = useState(topic.contentInstructions);
 
@@ -94,7 +106,13 @@ function ContentForm({
 
   const submit = (): void => {
     save.mutate(
-      { style, averageReadTime, contentInstructions: instructions },
+      {
+        englishLevel,
+        technicalDetail,
+        format,
+        averageReadTime,
+        contentInstructions: instructions,
+      },
       // Back to the hub, not another copy of it pushed on top.
       { onSuccess: () => goBack(editHref(topicSlug)) },
     );
@@ -102,10 +120,34 @@ function ContentForm({
 
   return (
     <ScrollView contentContainerClassName="gap-5 p-4">
+      {/* Two questions where there was one. The old single chip could not say
+          "everyday words, all the terminology", which is what someone learning a
+          subject in a second language is asking for — every value that offered
+          the terms also demanded the dense prose around them. */}
       <View className="gap-2">
-        <SectionTitle>Style</SectionTitle>
-        <ChipRow options={STYLE_OPTIONS} selected={style} onSelect={(value) => setStyle(value)} />
-        <Text className="text-sm text-ink-soft">{STYLE_COPY[style].body}</Text>
+        <SectionTitle>English</SectionTitle>
+        <ChipRow
+          options={ENGLISH_OPTIONS}
+          selected={englishLevel}
+          onSelect={(value) => setEnglishLevel(value)}
+        />
+        <Text className="text-sm text-ink-soft">{ENGLISH_COPY[englishLevel].body}</Text>
+      </View>
+
+      <View className="gap-2">
+        <SectionTitle>Technical detail</SectionTitle>
+        <ChipRow
+          options={TECHNICAL_OPTIONS}
+          selected={technicalDetail}
+          onSelect={(value) => setTechnicalDetail(value)}
+        />
+        <Text className="text-sm text-ink-soft">{TECHNICAL_COPY[technicalDetail].body}</Text>
+      </View>
+
+      <View className="gap-2">
+        <SectionTitle>Shape</SectionTitle>
+        <ChipRow options={FORMAT_OPTIONS} selected={format} onSelect={(value) => setFormat(value)} />
+        <Text className="text-sm text-ink-soft">{FORMAT_COPY[format].body}</Text>
       </View>
 
       <View className="gap-2">

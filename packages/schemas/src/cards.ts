@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { Id } from "./ids";
-import { ContentStyleSchema, MAX_NODE_MINUTES } from "./topics";
+import {
+  ContentFormatSchema,
+  EnglishLevelSchema,
+  MAX_NODE_MINUTES,
+  TechnicalDetailSchema,
+} from "./topics";
 
 /** 1 is intuition, 5 is expert. Sticky per learner, changeable per card. */
 export const CardDepth = z.number().int().min(1).max(5);
@@ -51,7 +56,9 @@ export const CardAngleSchema = z.nativeEnum(CardAngle);
 export const CardSettings = z.object({
   depth: CardDepth,
   minutes: CardMinutes,
-  style: ContentStyleSchema,
+  englishLevel: EnglishLevelSchema,
+  technicalDetail: TechnicalDetailSchema,
+  format: ContentFormatSchema,
   angle: CardAngleSchema,
 });
 
@@ -79,8 +86,10 @@ export type CardSettingsT = z.infer<typeof CardSettings>;
  * 2: the slots are one continuous explanation rather than six separate notes.
  * 3: the mechanism carries the card in short sentences, and the example and the
  *    misconception are written only where they apply.
+ * 4: how hard the English is and how much terminology appears are asked
+ *    separately, so the same card reads differently under either answer.
  */
-export const CARD_PROMPT_REVISION = 3;
+export const CARD_PROMPT_REVISION = 4;
 
 /**
  * The cache key's variant half. Depth has a column of its own, so this carries
@@ -88,7 +97,14 @@ export const CARD_PROMPT_REVISION = 3;
  * a cached card, and two that would not must never generate twice.
  */
 export function cardVariant(settings: CardSettingsT): string {
-  return `r${CARD_PROMPT_REVISION}|${settings.angle}|${settings.minutes}|${settings.style}`;
+  return [
+    `r${CARD_PROMPT_REVISION}`,
+    settings.angle,
+    settings.minutes,
+    settings.englishLevel,
+    settings.technicalDetail,
+    settings.format,
+  ].join("|");
 }
 
 const JargonTerm = z.object({

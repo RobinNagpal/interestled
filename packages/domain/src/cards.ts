@@ -25,7 +25,9 @@ export function defaultCardSettings(
   return {
     depth: CardDepth.parse(depth),
     minutes: cardMinutes(Math.min(node.minutes || topic.averageReadTime, topic.averageReadTime)),
-    style: topic.style,
+    englishLevel: topic.englishLevel,
+    technicalDetail: topic.technicalDetail,
+    format: topic.format,
     angle: CardAngle.Base,
   };
 }

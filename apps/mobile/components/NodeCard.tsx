@@ -20,8 +20,12 @@ import {
   JargonList,
   LoadingContent,
   Markdown,
-  STYLE_COPY,
-  STYLE_OPTIONS,
+  ENGLISH_COPY,
+  ENGLISH_OPTIONS,
+  FORMAT_COPY,
+  FORMAT_OPTIONS,
+  TECHNICAL_COPY,
+  TECHNICAL_OPTIONS,
   SectionTitle,
   settingsSummary,
 } from "@interestled/ui";
@@ -298,13 +302,36 @@ function CardControls({
         </View>
       </ControlRow>
 
-      <ControlRow title="In whose words">
+      <ControlRow title="English">
         <ChipRow
-          options={STYLE_OPTIONS}
-          selected={settings.style}
-          onSelect={(style) => onChange({ style })}
+          options={ENGLISH_OPTIONS}
+          selected={settings.englishLevel}
+          onSelect={(englishLevel) => onChange({ englishLevel })}
         />
-        <Text className="text-sm text-ink-soft">{STYLE_COPY[settings.style].body}</Text>
+        <Text className="text-sm text-ink-soft">{ENGLISH_COPY[settings.englishLevel].body}</Text>
+      </ControlRow>
+
+      {/* Asked apart from the English, because the two do not answer each other:
+          plain sentences carrying the real terminology is a card the single
+          chip here could not ask for. */}
+      <ControlRow title="Technical detail">
+        <ChipRow
+          options={TECHNICAL_OPTIONS}
+          selected={settings.technicalDetail}
+          onSelect={(technicalDetail) => onChange({ technicalDetail })}
+        />
+        <Text className="text-sm text-ink-soft">
+          {TECHNICAL_COPY[settings.technicalDetail].body}
+        </Text>
+      </ControlRow>
+
+      <ControlRow title="Shape">
+        <ChipRow
+          options={FORMAT_OPTIONS}
+          selected={settings.format}
+          onSelect={(format) => onChange({ format })}
+        />
+        <Text className="text-sm text-ink-soft">{FORMAT_COPY[settings.format].body}</Text>
       </ControlRow>
 
       <ControlRow title="Angle">

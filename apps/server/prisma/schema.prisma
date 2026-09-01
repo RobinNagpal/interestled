@@ -82,8 +82,19 @@ model Topic {
   // MapLevels: 2 or 3. Stored as an int rather than an enum for the same reason
   // every other fixed set here is — the enum lives in packages/schemas.
   levels              Int            @default(2)
-  // ContentStyle, as a plain string — the enum lives in packages/schemas, so
-  // another style is a code change with no migration behind it.
+  // EnglishLevel, TechnicalDetail and ContentFormat, each a plain string — the
+  // enums live in packages/schemas, so another value on any of them is a code
+  // change with no migration behind it. The defaults are here for the seconds
+  // between the migration running and the new bundle shipping, where the old
+  // code still inserts a topic naming none of them.
+  englishLevel        String         @default("medium") @map("english_level")
+  technicalDetail     String         @default("medium") @map("technical_detail")
+  format              String         @default("prose")
+  // The one column these three replaced. Nothing reads it: it stays only
+  // because the deploy runs migrations before the new bundle ships, and the old
+  // code selects it for a few seconds after this lands. Drop it — column and
+  // field together — in the next schema change. The default is what lets the
+  // new code insert a topic without naming it.
   style               String         @default("short_and_crisp")
   // Standing instructions for everything generated in this topic. Empty means
   // the default in src/llm/prompts/content-instructions.md applies — storing a

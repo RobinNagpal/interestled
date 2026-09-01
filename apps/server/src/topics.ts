@@ -306,7 +306,9 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     const topic = await findTopic(db, userId, c.req.param("slug"));
     const input = c.req.valid("json");
     const unchanged =
-      input.style === topic.style &&
+      input.englishLevel === topic.englishLevel &&
+      input.technicalDetail === topic.technicalDetail &&
+      input.format === topic.format &&
       input.contentInstructions === topic.contentInstructions &&
       input.averageReadTime === topic.averageReadTime;
     if (unchanged) {

@@ -1,13 +1,15 @@
 import {
   CardAngle,
-  ContentStyle,
+  ContentFormat,
   DrillKind,
+  EnglishLevel,
   LearningStyle,
   MAX_MECHANISM_ITEMS,
   MAX_NODE_MINUTES,
   MECHANISM_ITEM_WORDS,
   MECHANISM_SHARE,
   MapLevels,
+  TechnicalDetail,
   WORDS_PER_MINUTE,
   contentSettingsOf,
 } from "@interestled/schemas";
@@ -78,25 +80,48 @@ function instructionBlock(instructions: string): string {
 }
 
 /**
- * What each content style actually changes about the writing. Same reason the
- * learning styles have a guide: "write it in the short_and_crisp style" is an
- * instruction that changes nothing at all.
+ * What each answer actually changes about the writing. Same reason the learning
+ * styles have a guide: "write it in the short_and_crisp style" was an
+ * instruction that changed nothing at all.
  *
- * None of these names a depth. Depth decides how far down the mechanism the
- * explanation goes; these decide the words it is written in and how many of
- * them, which is a different question and asked in a different place.
+ * None of these names a depth or a length. Depth decides how far down the
+ * mechanism the explanation goes and averageReadTime decides how long it runs;
+ * these decide the words it is written in, which is a third question and was
+ * being answered by the same chip as the second until the split.
  */
-const CONTENT_STYLE_GUIDE: Record<ContentStyle, string> = {
-  [ContentStyle.ShortAndCrisp]:
-    "as few words as it takes. One example, no second pass over the same idea, nothing restated.",
-  [ContentStyle.ShortAndTechnical]:
-    "as few words as it takes, in the field's own terms and without stopping to gloss them. They have the vocabulary and want the answer, not the introduction.",
-  [ContentStyle.PlainAndDeep]:
-    "all the way to the mechanism, in everyday words. Every technical term either replaced with a plain one or glossed the first time it appears.",
-  [ContentStyle.TechnicalAndDeep]:
-    "all the way to the mechanism, in the field's own terms, used precisely. They want the real thing rather than a simplification.",
-  [ContentStyle.ReferenceNotes]:
-    "as something to look up rather than read through: the rule, the exact conditions it holds under, and the real values, each stated flat on its own. No linking sentences between them.",
+const ENGLISH_GUIDE: Record<EnglishLevel, string> = {
+  [EnglishLevel.Simple]:
+    "in everyday words and short sentences. Assume nothing about their vocabulary: where a plain word will do, it is the one to use.",
+  [EnglishLevel.Medium]: "in ordinary adult prose — neither simplified nor dense.",
+  [EnglishLevel.Advanced]:
+    "densely and precisely, with the language taken as read. No sentence spent making a point easier to read than it is to think about.",
+};
+
+/**
+ * Independent of the English above, which is the whole point of asking them
+ * apart. Plain sentences carrying the field's real terminology is what someone
+ * learning a subject in a second language wants, and the single style chip
+ * could not express it: every value that offered the terms also demanded the
+ * dense prose around them.
+ */
+const TECHNICAL_GUIDE: Record<TechnicalDetail, string> = {
+  [TechnicalDetail.Low]:
+    "Give the idea in the learner's own terms. Reach for the field's vocabulary only where nothing else will do, and gloss it on the spot.",
+  [TechnicalDetail.Medium]:
+    "Use the terms that carry weight, each glossed where it first appears. The real name for a thing, never a paraphrase standing in for it.",
+  [TechnicalDetail.High]:
+    "Use the field's own terms, notation and real values throughout, precisely. They want the real thing rather than a simplification.",
+};
+
+/**
+ * Empty for prose, because there is nothing to say: prose is what every other
+ * rule already describes, and a line saying "written as prose" is one more
+ * instruction for the model to answer.
+ */
+const FORMAT_GUIDE: Record<ContentFormat, string> = {
+  [ContentFormat.Prose]: "",
+  [ContentFormat.ReferenceNotes]:
+    "Lay it out as something to look up rather than read through: the rule, the exact conditions it holds under, and the real values, each stated flat on its own. No linking sentences between them.",
 };
 
 /** What a topic is written to before the learner has written anything of their own. */
@@ -119,7 +144,9 @@ function effectiveContentInstructions(stored: string): string {
  */
 function contentRulesBlock(content: TopicContentSettingsT): string {
   return render(promptFile("content-rules"), {
-    styleRule: CONTENT_STYLE_GUIDE[content.style],
+    englishRule: ENGLISH_GUIDE[content.englishLevel],
+    technicalRule: TECHNICAL_GUIDE[content.technicalDetail],
+    formatRule: FORMAT_GUIDE[content.format],
     contentInstructions: effectiveContentInstructions(content.contentInstructions),
   });
 }
@@ -158,7 +185,7 @@ export function mapPrompt(input: {
   level: string;
   levels: MapLevels;
   profile: ProfileT;
-  /** How this topic is written: style, standing instructions, and node length. */
+  /** How this topic is written: register, standing instructions, and node length. */
   content: TopicContentSettingsT;
   /** What to change, when the learner asked for the map again. "" the first time. */
   instructions: string;
@@ -289,10 +316,12 @@ export function cardPrompt(input: {
     depthGuide: DEPTH_GUIDE[input.settings.depth] ?? DEPTH_GUIDE[3]!,
     angleGuide: ANGLE_GUIDE[input.settings.angle],
     learner: learnerBlock(input.profile),
-    // The card's own style and length, not the topic's: a control that did not
+    // The card's own register and length, not the topic's: a control that did not
     // reach the prompt is a control that does nothing.
     contentRules: contentRulesBlock({
-      style: input.settings.style,
+      englishLevel: input.settings.englishLevel,
+      technicalDetail: input.settings.technicalDetail,
+      format: input.settings.format,
       contentInstructions: input.topic.contentInstructions,
       averageReadTime: minutes,
     }),

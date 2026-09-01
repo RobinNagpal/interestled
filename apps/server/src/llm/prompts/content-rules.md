@@ -1,4 +1,9 @@
-How this topic is written: {{styleRule}}
+How this topic is written: {{englishRule}}
+
+{{technicalRule}}
+{{#formatRule}}
+{{formatRule}}
+{{/formatRule}}
 {{#contentInstructions}}
 Standing instructions for this topic, from the learner:
 """

@@ -1,4 +1,4 @@
-import { CardAngle, ContentStyle } from "@interestled/schemas";
+import { CardAngle, ContentFormat, EnglishLevel, TechnicalDetail } from "@interestled/schemas";
 import type { CardSettingsT } from "@interestled/schemas";
 
 /**
@@ -9,35 +9,66 @@ import type { CardSettingsT } from "@interestled/schemas";
  * would end up guessing differently.
  *
  * The bodies say what each one actually changes about the writing, which is the
- * same thing CONTENT_STYLE_GUIDE tells the model server-side.
+ * same thing the guides in the server's prompts.ts tell the model.
  */
-export const STYLE_COPY: Record<ContentStyle, { label: string; body: string }> = {
-  [ContentStyle.ShortAndCrisp]: {
-    label: "Short and crisp",
-    body: "The shortest thing that answers it. One example, nothing said twice.",
+export const ENGLISH_COPY: Record<EnglishLevel, { label: string; body: string }> = {
+  [EnglishLevel.Simple]: {
+    label: "Simple",
+    body: "Everyday words, short sentences, nothing assumed about your vocabulary.",
   },
-  [ContentStyle.ShortAndTechnical]: {
-    label: "Short, technical",
-    body: "As short, but assuming you know the words. The answer without the introduction.",
-  },
-  [ContentStyle.PlainAndDeep]: {
-    label: "Plain, in depth",
-    body: "All the way down to how it works, in everyday words. Jargon replaced or explained where it first appears.",
-  },
-  [ContentStyle.TechnicalAndDeep]: {
-    label: "Technical, in depth",
-    body: "All the way down, in the field's own terms, used precisely.",
-  },
-  [ContentStyle.ReferenceNotes]: {
-    label: "Reference notes",
-    body: "Written to be looked up rather than read through: the rule, when it holds, and the real values, each on its own.",
+  [EnglishLevel.Medium]: { label: "Medium", body: "Ordinary prose — neither simplified nor dense." },
+  [EnglishLevel.Advanced]: {
+    label: "Advanced",
+    body: "Dense and precise, with the language taken as read.",
   },
 };
 
-/** Keyed by the enum, so a style added without copy fails the build rather than the screen. */
-export const STYLE_OPTIONS = Object.values(ContentStyle).map((value) => ({
+/** Keyed by the enum, so a level added without copy fails the build rather than the screen. */
+export const ENGLISH_OPTIONS = Object.values(EnglishLevel).map((value) => ({
   value,
-  label: STYLE_COPY[value].label,
+  label: ENGLISH_COPY[value].label,
+}));
+
+/**
+ * Asked apart from the English above, because the two do not answer each other:
+ * plain sentences carrying the field's real terminology is exactly what someone
+ * learning a subject in a second language wants, and one chip could not say it.
+ */
+export const TECHNICAL_COPY: Record<TechnicalDetail, { label: string; body: string }> = {
+  [TechnicalDetail.Low]: {
+    label: "Light",
+    body: "The idea in your terms. Field vocabulary only where nothing else will do.",
+  },
+  [TechnicalDetail.Medium]: {
+    label: "Some",
+    body: "The terms that carry weight, each explained where it first appears.",
+  },
+  [TechnicalDetail.High]: {
+    label: "Full",
+    body: "The field's own terms, notation and real values throughout.",
+  },
+};
+
+export const TECHNICAL_OPTIONS = Object.values(TechnicalDetail).map((value) => ({
+  value,
+  label: TECHNICAL_COPY[value].label,
+}));
+
+/** Prose to read through, or entries to look up. Neither of the two axes above. */
+export const FORMAT_COPY: Record<ContentFormat, { label: string; body: string }> = {
+  [ContentFormat.Prose]: {
+    label: "Read through",
+    body: "One explanation, in order, meant to be read from the top.",
+  },
+  [ContentFormat.ReferenceNotes]: {
+    label: "Look up",
+    body: "The rule, when it holds, and the real values — each stated flat on its own.",
+  },
+};
+
+export const FORMAT_OPTIONS = Object.values(ContentFormat).map((value) => ({
+  value,
+  label: FORMAT_COPY[value].label,
 }));
 
 /** The same depth, asked a different way. "Plain" is the way back to the card as written. */
@@ -78,8 +109,12 @@ export function settingsSummary(settings: CardSettingsT): string {
   const parts = [
     `depth ${settings.depth} of 5 — ${DEPTH_COPY[settings.depth] ?? ""}`,
     `about ${settings.minutes} min`,
-    STYLE_COPY[settings.style].label.toLowerCase(),
+    `${ENGLISH_COPY[settings.englishLevel].label.toLowerCase()} English`,
+    `${TECHNICAL_COPY[settings.technicalDetail].label.toLowerCase()} detail`,
   ];
+  if (settings.format !== ContentFormat.Prose) {
+    parts.push(FORMAT_COPY[settings.format].label.toLowerCase());
+  }
   if (settings.angle !== CardAngle.Base) {
     parts.push(ANGLE_COPY[settings.angle].toLowerCase());
   }

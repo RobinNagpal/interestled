@@ -7,11 +7,13 @@ import {
   CardContent,
   CardDepth,
   CardMinutes,
-  ContentStyleSchema,
+  ContentFormatSchema,
   DrillKind,
   DrillKindSchema,
+  EnglishLevelSchema,
   NodeStatus,
   NodeStatusSchema,
+  TechnicalDetailSchema,
   cardVariant,
   contentSettingsOf,
   newId,
@@ -139,7 +141,9 @@ async function cardFor(
 const CardQuery = z.object({
   depth: z.coerce.number().int().min(1).max(5).optional(),
   minutes: z.coerce.number().int().pipe(CardMinutes).optional(),
-  style: ContentStyleSchema.optional(),
+  englishLevel: EnglishLevelSchema.optional(),
+  technicalDetail: TechnicalDetailSchema.optional(),
+  format: ContentFormatSchema.optional(),
   angle: CardAngleSchema.optional(),
   /**
    * Write this one again at the settings it already has. The literal rather than
@@ -163,7 +167,9 @@ function settingsFrom(
     // is the learner asking for more of it now, and a control the node's own
     // estimate can veto is a control that does nothing.
     minutes: query.minutes === undefined ? base.minutes : cardMinutes(query.minutes),
-    style: query.style ?? base.style,
+    englishLevel: query.englishLevel ?? base.englishLevel,
+    technicalDetail: query.technicalDetail ?? base.technicalDetail,
+    format: query.format ?? base.format,
     angle: query.angle ?? base.angle,
   };
 }

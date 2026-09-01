@@ -19,7 +19,12 @@ import {
   flattenThreeLevelMap,
   flattenTwoLevelMap,
 } from "../src/nodes";
-import { ContentStyle, TopicArchetype } from "../src/topics";
+import {
+  ContentFormat,
+  EnglishLevel,
+  TechnicalDetail,
+  TopicArchetype,
+} from "../src/topics";
 
 describe("newId", () => {
   it("produces ids the schema accepts", () => {
@@ -112,12 +117,23 @@ describe("CardContent", () => {
     const base = {
       depth: 3,
       minutes: 5,
-      style: ContentStyle.ShortAndCrisp,
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
       angle: CardAngle.Base,
     };
     expect(cardVariant(base)).toBe(cardVariant({ ...base }));
     expect(cardVariant({ ...base, minutes: 10 })).not.toBe(cardVariant(base));
-    expect(cardVariant({ ...base, style: ContentStyle.ReferenceNotes })).not.toBe(cardVariant(base));
+    // Both axes, separately: they are two questions, so a card asked the same
+    // English at a different level of detail is a different card and must not
+    // be answered from the other one's row.
+    expect(cardVariant({ ...base, englishLevel: EnglishLevel.Simple })).not.toBe(cardVariant(base));
+    expect(cardVariant({ ...base, technicalDetail: TechnicalDetail.High })).not.toBe(
+      cardVariant(base),
+    );
+    expect(cardVariant({ ...base, format: ContentFormat.ReferenceNotes })).not.toBe(
+      cardVariant(base),
+    );
     expect(cardVariant({ ...base, angle: CardAngle.WhyItMatters })).not.toBe(cardVariant(base));
     // And the prompt generation, so rewriting card.md is not a change that
     // reaches only the nodes nobody has opened yet.

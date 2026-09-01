@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   CardAngle,
-  ContentStyle,
+  ContentFormat,
+  EnglishLevel,
   DEFAULT_AVERAGE_READ_TIME,
   LearningStyle,
   LlmProviderId,
   NodeStatus,
+  TechnicalDetail,
   ReadTime,
   TimeBudget,
   TopicArchetype,
@@ -160,7 +162,9 @@ function topicRow(): Record<string, unknown> {
     timeBudget: TimeBudget.Week,
     level: "",
     levels: 2,
-    style: ContentStyle.ShortAndCrisp,
+    englishLevel: EnglishLevel.Medium,
+    technicalDetail: TechnicalDetail.Medium,
+    format: ContentFormat.Prose,
     contentInstructions: "",
     averageReadTime: DEFAULT_AVERAGE_READ_TIME,
     status: TopicStatus.Ready,
@@ -254,7 +258,9 @@ describe("topic settings writes", () => {
   it("drops the cached cards when the writing settings change", async () => {
     const { db, updates, deletedCards } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.TechnicalAndDeep,
+      englishLevel: EnglishLevel.Advanced,
+      technicalDetail: TechnicalDetail.High,
+      format: ContentFormat.Prose,
       contentInstructions: "No YAML in the examples",
       averageReadTime: ReadTime.Ten,
     });
@@ -262,7 +268,9 @@ describe("topic settings writes", () => {
     expect(response.status).toBe(200);
     expect(updates).toEqual([
       {
-        style: ContentStyle.TechnicalAndDeep,
+        englishLevel: EnglishLevel.Advanced,
+        technicalDetail: TechnicalDetail.High,
+        format: ContentFormat.Prose,
         contentInstructions: "No YAML in the examples",
         averageReadTime: ReadTime.Ten,
       },
@@ -277,7 +285,9 @@ describe("topic settings writes", () => {
     // node's own estimate then caps the card back down to it.
     const { db, minuteWrites } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.ShortAndCrisp,
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
       contentInstructions: "",
       averageReadTime: ReadTime.Ten,
     });
@@ -294,7 +304,9 @@ describe("topic settings writes", () => {
   it("leaves the map's minutes alone when only the register changes", async () => {
     const { db, minuteWrites } = settingsDb();
     await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.TechnicalAndDeep,
+      englishLevel: EnglishLevel.Advanced,
+      technicalDetail: TechnicalDetail.High,
+      format: ContentFormat.Prose,
       contentInstructions: "",
       averageReadTime: DEFAULT_AVERAGE_READ_TIME,
     });
@@ -304,7 +316,9 @@ describe("topic settings writes", () => {
   it("writes nothing, and keeps the cards, when the settings come back unchanged", async () => {
     const { db, updates, deletedCards } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.ShortAndCrisp,
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
       contentInstructions: "",
       averageReadTime: DEFAULT_AVERAGE_READ_TIME,
     });
@@ -317,7 +331,9 @@ describe("topic settings writes", () => {
   it("refuses a read time that is not a rung on the ladder", async () => {
     const { db } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
-      style: ContentStyle.ShortAndCrisp,
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
       contentInstructions: "",
       // Between two rungs rather than off the end: both have to be refused, or
       // the map is built to a length no screen ever offered.
@@ -547,7 +563,14 @@ describe("card generation", () => {
       content: { claim: "A pod is the unit of scheduling." },
       node: { status: NodeStatus.Seen },
       // What the card was actually written to, so the controls can say so.
-      settings: { depth: 2, minutes: 3, style: ContentStyle.ShortAndCrisp, angle: CardAngle.Base },
+      settings: {
+        depth: 2,
+        minutes: 3,
+        englishLevel: EnglishLevel.Medium,
+        technicalDetail: TechnicalDetail.Medium,
+        format: ContentFormat.Prose,
+        angle: CardAngle.Base,
+      },
     });
     // Reading advances a node to Seen and no further.
     expect(statuses).toEqual([{ status: NodeStatus.Seen }]);
@@ -568,7 +591,9 @@ describe("card generation", () => {
     const { provider: recorder, prompts } = recording();
     const app = createApp(db, { provider: recorder });
     const response = await app.request(
-      `/api/nodes/n2/card?depth=5&minutes=10&style=${ContentStyle.ReferenceNotes}&angle=${CardAngle.WhereThisBreaks}`,
+      `/api/nodes/n2/card?depth=5&minutes=10&englishLevel=${EnglishLevel.Simple}` +
+        `&technicalDetail=${TechnicalDetail.High}&format=${ContentFormat.ReferenceNotes}` +
+        `&angle=${CardAngle.WhereThisBreaks}`,
       { headers: { Authorization: "Bearer good" } },
     );
 
@@ -577,7 +602,9 @@ describe("card generation", () => {
       settings: {
         depth: 5,
         minutes: 10,
-        style: ContentStyle.ReferenceNotes,
+        englishLevel: EnglishLevel.Simple,
+        technicalDetail: TechnicalDetail.High,
+        format: ContentFormat.ReferenceNotes,
         angle: CardAngle.WhereThisBreaks,
       },
     });
@@ -597,7 +624,9 @@ describe("card generation", () => {
       cardVariant({
         depth: 5,
         minutes: 10,
-        style: ContentStyle.ReferenceNotes,
+        englishLevel: EnglishLevel.Simple,
+        technicalDetail: TechnicalDetail.High,
+        format: ContentFormat.ReferenceNotes,
         angle: CardAngle.WhereThisBreaks,
       }),
     );

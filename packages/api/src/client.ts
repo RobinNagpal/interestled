@@ -285,8 +285,14 @@ export function createApiClient(config: ClientConfig): ApiClient {
       if (settings?.minutes !== undefined) {
         query.set("minutes", String(settings.minutes));
       }
-      if (settings?.style !== undefined) {
-        query.set("style", settings.style);
+      if (settings?.englishLevel !== undefined) {
+        query.set("englishLevel", settings.englishLevel);
+      }
+      if (settings?.technicalDetail !== undefined) {
+        query.set("technicalDetail", settings.technicalDetail);
+      }
+      if (settings?.format !== undefined) {
+        query.set("format", settings.format);
       }
       if (settings?.angle !== undefined) {
         query.set("angle", settings.angle);

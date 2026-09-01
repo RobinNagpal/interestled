@@ -67,7 +67,7 @@ export default function EditTopicScreen(): ReactElement {
       />
       <Choice
         title="How it is written"
-        body="The style, how long a node should take, and standing instructions carried by every card, drill and review item in this topic."
+        body="How hard the English is, how much terminology it uses, how long a node should take, and standing instructions carried by every card, drill and review item in this topic."
         label="Edit how it is written"
         onPress={() => router.push(editContentHref(topicSlug))}
       />

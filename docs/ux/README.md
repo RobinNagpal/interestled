@@ -303,9 +303,20 @@ says plainly that it replaces everything.
 **Three things are editable, not one**, each at its own address under `…/edit`:
 `…/edit/map` is the map itself; `…/edit/goals` is the goal, the starting point, the time
 budget and the one line the topics list shows; and `…/edit/content` is how the topic is
-written — a style (short and crisp, plain and in depth, technical and in depth), how
-long one node should take, and standing instructions carried by every card, drill and
-review item in that topic. The create screen's answers were previously fixed for the
+written — how hard the English is, how much of the field's own terminology appears,
+whether it is prose to read through or entries to look up, how long one node should
+take, and standing instructions carried by every card, drill and review item in that
+topic.
+
+The first two of those were one chip until they were pulled apart, and the single chip
+was quietly answering three questions: how hard the words are, how much terminology
+appears, and how long the writing runs. The third already had a control of its own, so
+"short and crisp" and "plain and in depth" differed on an axis the same screen was
+asking about twice — and no value on it could say *everyday words, all the terminology*,
+which is what someone learning a subject in a second language is asking for. Every
+option that offered the terms demanded the dense prose around them. Asking the two
+separately is nine combinations instead of five, and each one is a sentence someone
+would actually say about how they want to be written to. The create screen's answers were previously fixed for the
 life of the topic, which is backwards: reading the map is exactly what tells a learner
 the goal they gave was not the one they meant, and every generation after that was still
 reading the old one. Saving regenerates nothing — the answers change what the *next*
