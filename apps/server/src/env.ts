@@ -43,10 +43,14 @@ export const EnvSchema = z.object({
    * third of Pro per output token, and a card is a page of prose the learner can
    * already rewrite with the controls under it.
    *
+   * gemini-3.7-flash is GA rather than preview, unlike the map model. Its price
+   * is introductory and doubles on 31 December 2026, which is the date to have a
+   * view on rather than a surprise — this is the model carrying the volume.
+   *
    * Unset falls back to this default rather than to LLM_MODEL, so a deployment
    * that only names the map model still gets the cheap one for content.
    */
-  LLM_CONTENT_MODEL: unsetWhenEmpty(z.string().min(1).default("gemini-3.6-flash")),
+  LLM_CONTENT_MODEL: unsetWhenEmpty(z.string().min(1).default("gemini-3.7-flash")),
   GEMINI_API_KEY: unsetWhenEmpty(z.string().min(1).optional()),
   OPENAI_API_KEY: unsetWhenEmpty(z.string().min(1).optional()),
   ANTHROPIC_API_KEY: unsetWhenEmpty(z.string().min(1).optional()),

@@ -36,17 +36,17 @@ describe("the environment", () => {
 describe("modelFor", () => {
   it("sends a map to the reasoning model and a card to the fast one", () => {
     const parsed = EnvSchema.parse(
-      env({ LLM_MODEL: "gemini-3.1-pro-preview", LLM_CONTENT_MODEL: "gemini-3.6-flash" }),
+      env({ LLM_MODEL: "gemini-3.1-pro-preview", LLM_CONTENT_MODEL: "gemini-3.7-flash" }),
     );
     expect(modelFor(parsed, LlmTask.Map)).toBe("gemini-3.1-pro-preview");
-    expect(modelFor(parsed, LlmTask.Content)).toBe("gemini-3.6-flash");
+    expect(modelFor(parsed, LlmTask.Content)).toBe("gemini-3.7-flash");
   });
 
   it("falls back to its own default for content rather than to the map's model", () => {
     // Otherwise naming only the map model quietly puts every card on the
     // expensive one, which is the whole thing this split exists to avoid.
     const parsed = EnvSchema.parse(env({ LLM_MODEL: "gemini-3.1-pro-preview" }));
-    expect(modelFor(parsed, LlmTask.Content)).toBe("gemini-3.6-flash");
+    expect(modelFor(parsed, LlmTask.Content)).toBe("gemini-3.7-flash");
     expect(modelFor(parsed, LlmTask.Content)).not.toBe(parsed.LLM_MODEL);
   });
 });
