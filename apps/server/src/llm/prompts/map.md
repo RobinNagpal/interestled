@@ -8,6 +8,7 @@ Do not create nodes for what they already have, and stop the map at the level th
 
 {{learner}}
 {{contentRules}}
+{{choices}}
 {{instructions}}
 {{archetypes}}
 

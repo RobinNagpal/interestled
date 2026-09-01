@@ -7,6 +7,7 @@ import {
   GeneratedThreeLevelMap,
   GeneratedTwoLevelMap,
   MapLevels,
+  MapQuestionSet,
   Verdict,
   flattenLeafChildren,
   flattenSectionChildren,
@@ -16,11 +17,13 @@ import {
 import type {
   CardContentT,
   CardSettingsT,
+  ChosenOptionT,
   DrillKind,
   GeneratedAtomT,
   GeneratedMapNodeT,
   GeneratedMapT,
   LearningNodeT,
+  MapQuestionT,
   ProfileT,
   TopicContentSettingsT,
   TopicT,
@@ -32,6 +35,7 @@ import {
   cardPrompt,
   drillPrompt,
   mapPrompt,
+  mapQuestionsPrompt,
   subtreePrompt,
   SYSTEM,
   verdictPrompt,
@@ -64,6 +68,45 @@ export interface MapInput {
   content: TopicContentSettingsT;
   /** What to change, when the learner asked for the map again. "" the first time. */
   instructions: string;
+  /** The seven choices, resolved. Empty when the learner skipped every one. */
+  chosen: readonly ChosenOptionT[];
+}
+
+const QuestionList = z.object({ questions: MapQuestionSet });
+
+export interface MapQuestionsInput {
+  title: string;
+  goal: string;
+  timeBudget: string;
+  level: string;
+  levels: MapLevels;
+  profile: ProfileT;
+  content: TopicContentSettingsT;
+  instructions: string;
+  /** The map being replaced, on a rebuild. Empty when the topic is new. */
+  current: readonly LearningNodeT[];
+}
+
+/**
+ * The seven questions, generated from the same answers the map would have been
+ * generated from. It runs a little hotter than the rest: four options that are
+ * really the same option is the one way this call fails, and the default 0.3 is
+ * tuned for a map that should come out the same twice, which is the opposite of
+ * what four alternatives need.
+ */
+export async function generateMapQuestions(
+  provider: LlmProvider,
+  input: MapQuestionsInput,
+): Promise<MapQuestionT[]> {
+  const result = await generateJson(provider, {
+    system: SYSTEM,
+    prompt: mapQuestionsPrompt(input),
+    schema: QuestionList,
+    temperature: 0.8,
+    // Seven questions with four samples each is as much text as a small map.
+    maxOutputTokens: MAP_OUTPUT_TOKENS,
+  });
+  return result.questions;
 }
 
 /**

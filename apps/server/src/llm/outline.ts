@@ -19,15 +19,7 @@ const HERE = "  ← WRITE THIS ONE";
  * three, with nothing here having to ask which it is.
  */
 export function mapOutline(nodes: readonly LearningNodeT[], current: LearningNodeT): string {
-  const lines: string[] = [];
-  const walk = (entries: readonly NodeTreeT[], depth: number): void => {
-    for (const entry of entries) {
-      const mark = entry.node.id === current.id ? HERE : "";
-      lines.push(`${"  ".repeat(depth)}- ${entry.node.title}${mark}`);
-      walk(entry.children, depth + 1);
-    }
-  };
-  walk(buildTree(nodes), 0);
+  const lines = outlineLines(nodes, current.id);
   // A node that is not in the list it is being placed in would leave the marker
   // missing, and an unmarked outline is worse than none: the model would have to
   // guess which of thirty titles it is writing.
@@ -35,6 +27,28 @@ export function mapOutline(nodes: readonly LearningNodeT[], current: LearningNod
     lines.push(`- ${current.title}${HERE}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * The same outline with nothing marked — the map as it stands. It is what the
+ * seven questions before a rebuild are shown, so the four options they offer are
+ * four maps different from the one the learner is asking to be rid of.
+ */
+export function plainOutline(nodes: readonly LearningNodeT[]): string {
+  return outlineLines(nodes, null).join("\n");
+}
+
+function outlineLines(nodes: readonly LearningNodeT[], currentId: string | null): string[] {
+  const lines: string[] = [];
+  const walk = (entries: readonly NodeTreeT[], depth: number): void => {
+    for (const entry of entries) {
+      const mark = entry.node.id === currentId ? HERE : "";
+      lines.push(`${"  ".repeat(depth)}- ${entry.node.title}${mark}`);
+      walk(entry.children, depth + 1);
+    }
+  };
+  walk(buildTree(nodes), 0);
+  return lines;
 }
 
 /**

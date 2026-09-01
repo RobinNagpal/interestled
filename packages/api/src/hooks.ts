@@ -7,6 +7,7 @@ import type {
   DrillKind,
   DrillT,
   LearningNodeT,
+  MapPlanViewT,
   MoveDirection,
   NodeStatus,
   ProfileT,
@@ -16,6 +17,7 @@ import type {
   TopicContentSettingsT,
   TopicCreateInputT,
   TopicInfoInputT,
+  TopicQuestionsInputT,
   TopicRegenerateInputT,
   TopicT,
 } from "@interestled/schemas";
@@ -60,6 +62,27 @@ export function useTopic(slug: string): UseQueryResult<TopicDetailT> {
     queryKey: keys.topic(slug),
     queryFn: () => api.getTopic(slug),
     enabled: slug !== "",
+  });
+}
+
+/**
+ * The seven questions asked before a new topic's map is built. A mutation
+ * rather than a query: it is a model call the learner sets off by pressing a
+ * button, and nothing should be able to refetch it under them — a refetch would
+ * replace the four options they are reading with four different ones.
+ */
+export function useMapQuestions(): UseMutationResult<MapPlanViewT, Error, TopicCreateInputT> {
+  const api = useApi();
+  return useMutation({ mutationFn: (input: TopicCreateInputT) => api.mapQuestions(input) });
+}
+
+/** The same seven, for a rebuild, generated against the map being replaced. */
+export function useTopicMapQuestions(
+  slug: string,
+): UseMutationResult<MapPlanViewT, Error, TopicQuestionsInputT> {
+  const api = useApi();
+  return useMutation({
+    mutationFn: (input: TopicQuestionsInputT) => api.topicMapQuestions(slug, input),
   });
 }
 

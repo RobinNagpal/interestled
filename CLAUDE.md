@@ -168,6 +168,24 @@ when the call supplies something the template does not name. Both are otherwise
 silent: an unfilled `{{level}}` reaches the model as those eight characters, and
 the model answers it with something plausible and wrong.
 
+**Write every prompt in plain, human English — no AI slop.** A prompt is read by
+a model that will write in the register it was written in, so a prompt padded
+with "leverage", "delve", "it is important to note", "comprehensive" and
+"crucial" produces content padded the same way. Say the thing:
+
+- Short sentences, ordinary words, one instruction per line. If a sentence has a
+  clause that could be deleted without losing an instruction, delete it.
+- No filler openings ("In this section we will…"), no restating the request back
+  before answering it, no summarising at the end what was just said.
+- Name the concrete thing rather than the category: "the headings, one per line",
+  not "appropriate structural elements".
+- Say what to do, not how much to care. "Four options that are really the same
+  option is the one way this fails" beats "it is critically important that the
+  options be meaningfully differentiated".
+- The same holds for the copy on the screens. The rules the model must never
+  break live in `system.md`, and the tests in `apps/server/test/prompts.test.ts`
+  are what keeps them from being softened by accident.
+
 They are read from disk rather than bundled, because `__dirname` does not exist
 under the ESM `tsx` and `vitest` run, and `import.meta.url` comes out
 `undefined` once esbuild has emitted CommonJS — so `promptFiles.ts` looks in the
@@ -180,7 +198,11 @@ reaches the model is inside a per-user budget (`assertWithinBudget` in `topics.t
 Adding a new generating endpoint means adding it there too, or the deployment's model
 bill has no ceiling. Note what it counts: rebuilding a map or one group creates no
 topic, so a topic count alone would leave every rebuild outside the budget entirely —
-nodes generated in the last hour is the limit that actually binds.
+nodes generated in the last hour is the limit that actually binds. The seven choices
+need a third counter for the same reason in reverse: they are generated *before* any
+topic or node exists, so `map_plans` rows in the last hour are what bounds them — and
+that counter guards the questions endpoints only. Gating the build on it too would tell
+a learner who had just answered seven questions that they could not have the map.
 
 **What the model writes is Markdown, and it is rendered as Markdown.** Every string
 value the model returns — claims, mechanism items, drill prompts, review answers,
@@ -190,6 +212,31 @@ spans, links, and bullet, numbered and fenced blocks. A plain `<Text>` shows the
 asterisks and backticks instead, and a list arrives as one long line. Titles are the
 exception and are plain text, because they are also button labels and screen titles,
 where no component can go.
+
+**A map is built from seven choices, not from the form alone.** The create form says
+what someone wants; it does not say what the map should look like, and the model's
+first guess at that is the one decision nobody gets to correct until the whole map is
+built and wrong. So `POST /api/topics/questions` asks the model for seven questions
+with four options each, the learner picks, and the picks go into `mapPrompt`.
+
+- **The kinds are an enum, not free text.** `MapQuestionKind` fixes seven slots in one
+  order — outline, breakdown, scope, examples, code, numbers, opening — and
+  `MapQuestionSet` refuses anything else. Answers are keyed by kind, so a missing kind
+  is a question nobody is asked and a repeated one is an answer that overwrites another.
+- **An option is a sample, not a description.** Nobody can answer "how technical should
+  the examples be"; everybody can pick one of four examples. What reaches the prompt is
+  the sample as well as the label, because the sample is what was actually chosen.
+- **Every question is skippable, and a skip is absent from the prompt.** Seven mandatory
+  questions between "I want to learn this" and the map is exactly the setup cost A14
+  bans, and a default nobody chose is worse than no answer.
+- **The questions are stored, and answers are read against the row they came from.** An
+  answer is "the second option", which means nothing beside a different four options —
+  so `map_plans` holds the questions, and `planId` travels with the answers.
+- **A full rebuild asks them again**; a group rebuild does not. The questions are about
+  the shape of the whole map, and a group rebuild leaves the rest of it alone. The one
+  exception is the retry after a failed build, which falls back to the plan already
+  linked to the topic — the screen promises nothing was lost, and the plan is linked
+  before the map is generated, so nothing is.
 
 **A card is written into the map, not beside it.** `cardPrompt` is given every node of
 the topic as an outline — every heading, in reading order, with the one being written
