@@ -2,12 +2,14 @@ import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
-import { useCreateTopic } from "@interestled/api";
+import { useCreateTopic, useMapQuestions } from "@interestled/api";
 import { topicHref } from "@interestled/domain";
 import { Button, ErrorState, Input, Sheet } from "@interestled/ui";
 import { MapLevels, TimeBudget } from "@interestled/schemas";
+import type { MapAnswerT, MapPlanViewT } from "@interestled/schemas";
 import { messageOf } from "../../lib/errors";
 import { ChipRow } from "../../components/ChipRow";
+import { MapQuestions } from "../../components/MapQuestions";
 
 const BUDGETS: { value: TimeBudget; label: string }[] = [
   { value: TimeBudget.Quick, label: "20 minutes" },
@@ -43,9 +45,14 @@ const LEVELS: { value: string; label: string; body: string }[] = [
  * The two long answers are boxes asking for points rather than one line each:
  * "deploy a service" and "debug it at 3am" are different goals, and a single
  * line quietly asks people to pick one of them.
+ *
+ * Between the form and the map sit the seven choices. They are the part the form
+ * cannot get at: nobody can describe the shape they want a subject cut into, and
+ * everybody can pick it out of four.
  */
 export default function NewTopicScreen(): ReactElement {
   const create = useCreateTopic();
+  const questions = useMapQuestions();
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
   const [level, setLevel] = useState("");
@@ -55,18 +62,30 @@ export default function NewTopicScreen(): ReactElement {
   // field: it is about the map, not about the learner, and it only matters at
   // the moment the button is pressed.
   const [asking, setAsking] = useState(false);
+  // The seven questions, once they have been written. Until then the sheet is
+  // still on the level count.
+  const [plan, setPlan] = useState<MapPlanViewT | null>(null);
 
-  const submit = (): void => {
+  const input = { title, goal, timeBudget, level, levels, answers: [] };
+
+  const close = (): void => {
+    setAsking(false);
+    setPlan(null);
+  };
+
+  const submit = (answers: MapAnswerT[]): void => {
     create.mutate(
-      { title, goal, timeBudget, level, levels },
+      { ...input, planId: plan?.planId, answers },
       {
         onSuccess: (topic) => {
-          setAsking(false);
+          close();
           router.replace(topicHref(topic.slug));
         },
       },
     );
   };
+
+  const busy = questions.isPending || create.isPending;
 
   return (
     <ScrollView contentContainerClassName="gap-5 p-4">
@@ -119,35 +138,58 @@ export default function NewTopicScreen(): ReactElement {
 
       <Sheet
         visible={asking}
-        title="How deep should the map go?"
-        body="You can change this later, and rebuild any one group on its own."
-        onClose={() => (create.isPending ? undefined : setAsking(false))}
+        title={plan === null ? "How deep should the map go?" : "Which of these do you want?"}
+        body={
+          plan === null
+            ? "You can change this later, and rebuild any one group on its own."
+            : "Seven choices, and any of them can be skipped."
+        }
+        onClose={() => (busy ? undefined : close())}
       >
-        <View className="gap-2">
-          <ChipRow
-            options={LEVELS.map((option) => ({ value: option.value, label: option.label }))}
-            selected={String(levels)}
-            onSelect={(value) =>
-              setLevels(value === String(MapLevels.Three) ? MapLevels.Three : MapLevels.Two)
-            }
-          />
-          <Text className="text-sm text-ink-soft">
-            {LEVELS.find((option) => option.value === String(levels))?.body ?? ""}
-          </Text>
-        </View>
+        {plan === null ? (
+          <>
+            <View className="gap-2">
+              <ChipRow
+                options={LEVELS.map((option) => ({ value: option.value, label: option.label }))}
+                selected={String(levels)}
+                onSelect={(value) =>
+                  setLevels(value === String(MapLevels.Three) ? MapLevels.Three : MapLevels.Two)
+                }
+              />
+              <Text className="text-sm text-ink-soft">
+                {LEVELS.find((option) => option.value === String(levels))?.body ?? ""}
+              </Text>
+            </View>
 
-        {create.isError ? <ErrorState message={messageOf(create.error)} /> : null}
+            {questions.isError ? <ErrorState message={messageOf(questions.error)} /> : null}
 
-        <Button
-          label={create.isPending ? "Building your map…" : "Build the map"}
-          onPress={submit}
-          busy={create.isPending}
-        />
-        {create.isPending ? (
-          <Text className="text-center text-sm text-ink-faint">
-            One model call, usually 10–30 seconds.
-          </Text>
-        ) : null}
+            <Button
+              label={questions.isPending ? "Writing the choices…" : "Next"}
+              onPress={() => questions.mutate(input, { onSuccess: setPlan })}
+              busy={questions.isPending}
+            />
+            {questions.isPending ? (
+              <Text className="text-center text-sm text-ink-faint">
+                One model call, usually 10–30 seconds.
+              </Text>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <MapQuestions
+              questions={plan.questions}
+              finishLabel={create.isPending ? "Building your map…" : "Build the map"}
+              busy={create.isPending}
+              onFinish={submit}
+            />
+            {create.isError ? <ErrorState message={messageOf(create.error)} /> : null}
+            {create.isPending ? (
+              <Text className="text-center text-sm text-ink-faint">
+                One model call, usually 10–30 seconds.
+              </Text>
+            ) : null}
+          </>
+        )}
       </Sheet>
     </ScrollView>
   );

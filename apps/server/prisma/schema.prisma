@@ -40,6 +40,7 @@ model User {
   atoms        Atom[]
   studies      StudySession[]
   resumePoints ResumePoint[]
+  mapPlans     MapPlan[]
 
   @@map("users")
 }
@@ -112,10 +113,45 @@ model Topic {
   nodes               LearningNode[]
   studies             StudySession[]
   resumePoints        ResumePoint[]
+  mapPlans            MapPlan[]
 
   @@unique([userId, slug])
   @@index([userId])
   @@map("topics")
+}
+
+/**
+ * The seven questions asked before a map is built, and the answers given to
+ * them. One row per build attempt: the questions are generated fresh each time,
+ * so a rebuild writes a new row rather than editing the old one, and the row a
+ * map was built from stays exactly as the learner saw it.
+ *
+ * topicId is null between the questions being generated and the topic existing,
+ * which is the whole of the create flow — the learner answers seven questions
+ * about a topic that has not been created yet. It is filled in when the map is
+ * built from this plan.
+ *
+ * Rows are also the budget counter for the questions call: it is a model call
+ * reachable before any topic or node exists, so counting topics or nodes would
+ * not bound it. See assertWithinBudget in src/topics.ts.
+ */
+model MapPlan {
+  id        String   @id
+  userId    String   @map("user_id")
+  topicId   String?  @map("topic_id")
+  // MapQuestionSet — validated by the schema in packages/schemas on every read,
+  // because Json is the one column type Prisma cannot describe the shape of.
+  questions Json
+  // MapAnswers. Empty until the learner answers, and shorter than seven when
+  // they skipped one.
+  answers   Json     @default("[]")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic     Topic?   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([topicId])
+  @@map("map_plans")
 }
 
 model LearningNode {

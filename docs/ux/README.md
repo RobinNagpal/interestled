@@ -263,6 +263,21 @@ they are asked once on the profile screen and read by every generation call afte
 a learner who never opens that screen gets the same product, and a required form
 between signing up and the first node is exactly the setup cost A14 bans.
 
+**Then seven choices, which the form cannot get at.** The probe says what someone
+wants; it does not say what the map should look like, and nobody can write that down —
+"cut it up by what breaks rather than by component" is not a sentence people produce on
+demand, and it is a decision they make in two seconds when they can see both. So the
+model writes seven questions with four options each, and each option is a *sample*: the
+actual headings, an actual example, the actual first two sentences of a node. The
+learner reads four samples and picks. Which set of top-level headings, how the biggest
+one breaks up, what to leave out, what an example looks like, how much code, how many
+numbers, how a node opens.
+
+One question per screen, every one skippable, and a skipped question is absent from the
+prompt rather than answered with a default. A full rebuild asks them again, because the
+map they describe is the one being replaced; a group rebuild does not, because it is
+not changing the shape of the whole.
+
 - *The ideal:* diagnose before you instruct, and spend the diagnosis on what they can
   already do rather than on how they rate themselves.
 - *Seen in the wild:* **Duolingo's placement test.** It does not ask how good your
@@ -989,7 +1004,7 @@ the design, not an acceptable gap.
 | W15 | Surprise and story | The misconception slot on every card; timeline topics ordered causally |
 | W16 | Reduce decisions | One primary action per screen; the map is available, never required; the depth question is asked once, with two levels already chosen |
 | W17 | Err on the side of too fast | Cards written above comfort with depth buttons underneath; no recaps |
-| W18 | Skip what they know | Calibration and the profile's background collapse branches; "I already know this" on every node, honoured without proof; the calibration answers stay editable per topic, so a wrong one is corrected rather than lived with |
+| W18 | Skip what they know | Calibration and the profile's background collapse branches; the *scope* choice names what the map leaves out; "I already know this" on every node, honoured without proof; the calibration answers stay editable per topic, so a wrong one is corrected rather than lived with |
 | W19 | Concrete progress | Status dots advance only on production; progress stated as new ability |
 | W20 | Painless return | "Three things worth reloading" on re-entry; the review queue reschedules instead of piling up |
 
@@ -1010,7 +1025,7 @@ the design, not an acceptable gap.
 | A11 | Not several instructions at once | One instruction per screen; multi-step tasks render as a checklist |
 | A12 | Nothing carried across screens | Values repeated at the point of use; jargon defined on hover in place |
 | A13 | No clutter | One visual per card; groups on the map collapse, so a wide subject is still one screen; chrome hidden during drills; no badges or notifications mid-session |
-| A14 | No setup before starting | Calibration is 60 interesting seconds; the profile is optional and never blocks a topic; sign-in comes after the first node |
+| A14 | No setup before starting | Calibration is 60 interesting seconds; the seven choices are one screen each, all skippable, and every one is a pick rather than a form field; the profile is optional and never blocks a topic; sign-in comes after the first node |
 | A15 | No repeating known material | Two correct applications retires a node to spaced review; skip is always available |
 | A16 | No vague progress | A finite, visible node count and capability units, never a bare percentage; groups are excluded from it, so the total is one the learner can actually reach |
 | A17 | No harsh marking | The got/vague/missing/wrong diff; no scores, no percentages, no failure states |

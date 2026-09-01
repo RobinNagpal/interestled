@@ -6,6 +6,7 @@ import {
   CardSettings,
   Drill,
   LearningNode,
+  MapPlanView,
   NodeStatusSchema,
   Profile,
   ResumePoint,
@@ -23,6 +24,7 @@ import type {
   DrillT,
   LearningNodeT,
   LoginInputT,
+  MapPlanViewT,
   MoveDirection,
   NodeStatus,
   ProfileT,
@@ -33,6 +35,7 @@ import type {
   TopicContentSettingsT,
   TopicCreateInputT,
   TopicInfoInputT,
+  TopicQuestionsInputT,
   TopicRegenerateInputT,
   TopicT,
 } from "@interestled/schemas";
@@ -176,6 +179,13 @@ export interface ApiClient {
   updateProfile(input: ProfileUpdateInputT): Promise<ProfileT>;
 
   listTopics(): Promise<TopicT[]>;
+  /**
+   * The seven questions asked before a map is built — one for a topic that does
+   * not exist yet, one for a rebuild of a topic that does. Both cost a model
+   * call, so both are mutations rather than queries: nothing here refetches.
+   */
+  mapQuestions(input: TopicCreateInputT): Promise<MapPlanViewT>;
+  topicMapQuestions(slug: string, input: TopicQuestionsInputT): Promise<MapPlanViewT>;
   createTopic(input: TopicCreateInputT): Promise<TopicT>;
   /** Every topic call is keyed by slug, because that is what the URL carries. */
   getTopic(slug: string): Promise<TopicDetailT>;
@@ -246,6 +256,9 @@ export function createApiClient(config: ClientConfig): ApiClient {
     updateProfile: (input) => request(config, "/api/profile", "PUT", Profile, input),
 
     listTopics: () => get("/api/topics", z.array(Topic)),
+    mapQuestions: (input) => post("/api/topics/questions", MapPlanView, input),
+    topicMapQuestions: (slug, input) =>
+      post(`/api/topics/${encodeURIComponent(slug)}/questions`, MapPlanView, input),
     createTopic: (input) => post("/api/topics", Topic, input),
     getTopic: (slug) => get(`/api/topics/${encodeURIComponent(slug)}`, TopicDetail),
     regenerateTopic: (slug, input) =>

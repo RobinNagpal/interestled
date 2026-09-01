@@ -8,6 +8,7 @@ import {
   useRegenerateNode,
   useRegenerateTopic,
   useTopic,
+  useTopicMapQuestions,
 } from "@interestled/api";
 import { buildTree, editHref } from "@interestled/domain";
 import type { NodeTreeT } from "@interestled/domain";
@@ -22,10 +23,11 @@ import {
   Sheet,
 } from "@interestled/ui";
 import { MapLevels, MoveDirection } from "@interestled/schemas";
-import type { LearningNodeT } from "@interestled/schemas";
+import type { LearningNodeT, MapAnswerT, MapPlanViewT } from "@interestled/schemas";
 import { messageOf } from "../../../../lib/errors";
 import { backHeader } from "../../../../lib/nav";
 import { ChipRow } from "../../../../components/ChipRow";
+import { MapQuestions } from "../../../../components/MapQuestions";
 
 /** Which rebuild sheet is open: the whole map, one group, or nothing. */
 type Rebuilding = { kind: "map" } | { kind: "node"; node: LearningNodeT } | null;
@@ -47,11 +49,17 @@ export default function EditMapScreen(): ReactElement {
   const remove = useDeleteNode(topicSlug);
   const rebuildMap = useRegenerateTopic(topicSlug);
   const rebuildNode = useRegenerateNode(topicSlug);
+  const questions = useTopicMapQuestions(topicSlug);
 
   const [rebuilding, setRebuilding] = useState<Rebuilding>(null);
   const [instructions, setInstructions] = useState("");
   const [levels, setLevels] = useState<MapLevels>(MapLevels.Two);
   const [confirming, setConfirming] = useState<LearningNodeT | null>(null);
+  // The seven choices, once they have been written for this rebuild. They are
+  // asked again on every whole-map rebuild rather than reused: the map being
+  // replaced is part of what they are asked about, so the answers given the
+  // first time were answers about a different map.
+  const [plan, setPlan] = useState<MapPlanViewT | null>(null);
 
   const header = (
     <Stack.Screen
@@ -82,28 +90,51 @@ export default function EditMapScreen(): ReactElement {
   const { nodes } = topic.data;
   const tree = buildTree(nodes);
   const busy = move.isPending || remove.isPending || rebuildNode.isPending;
+  const rebuildBusy = rebuildMap.isPending || rebuildNode.isPending || questions.isPending;
 
   const openMapRebuild = (): void => {
     setInstructions("");
     setLevels(topic.data.topic.levels);
+    setPlan(null);
     setRebuilding({ kind: "map" });
   };
 
   const openNodeRebuild = (node: LearningNodeT): void => {
     setInstructions("");
+    setPlan(null);
     setRebuilding({ kind: "node", node });
   };
 
+  const closeRebuild = (): void => {
+    setRebuilding(null);
+    setPlan(null);
+  };
+
+  /**
+   * One group is rebuilt straight away; the whole map goes through the seven
+   * choices first. The difference is what is at stake: a group rebuild leaves
+   * every other node and its progress alone, and a whole-map rebuild replaces
+   * all of it, so it is worth a minute to get the shape right.
+   */
   const submitRebuild = (): void => {
     if (rebuilding === null) {
       return;
     }
-    const done = { onSuccess: () => setRebuilding(null) };
     if (rebuilding.kind === "map") {
-      rebuildMap.mutate({ instructions, levels }, done);
+      questions.mutate({ instructions, levels }, { onSuccess: setPlan });
       return;
     }
-    rebuildNode.mutate({ nodeId: rebuilding.node.id, instructions }, done);
+    rebuildNode.mutate(
+      { nodeId: rebuilding.node.id, instructions },
+      { onSuccess: closeRebuild },
+    );
+  };
+
+  const submitMapRebuild = (answers: MapAnswerT[]): void => {
+    rebuildMap.mutate(
+      { instructions, levels, planId: plan?.planId, answers },
+      { onSuccess: closeRebuild },
+    );
   };
 
   const renderEntry = (
@@ -187,53 +218,61 @@ export default function EditMapScreen(): ReactElement {
 
       <Sheet
         visible={rebuilding !== null}
-        title={
-          rebuilding?.kind === "node"
-            ? `Rebuild what is under “${rebuilding.node.title}”`
-            : "Rebuild the whole map"
-        }
+        title={rebuildTitle(rebuilding, plan !== null)}
         body={
           rebuilding?.kind === "node"
             ? "Everything else on the map keeps the progress you have made on it."
             : "Every node is replaced, and the progress on them goes with it."
         }
-        onClose={() =>
-          rebuildMap.isPending || rebuildNode.isPending ? undefined : setRebuilding(null)
-        }
+        onClose={() => (rebuildBusy ? undefined : closeRebuild())}
       >
-        <Input
-          label="What should be different?"
-          value={instructions}
-          onChangeText={setInstructions}
-          multiline
-          maxLength={600}
-          placeholder={"Less YAML, more on networking\nAssume I already know containers"}
-          hint="Optional. Leave it empty to build it again from the same answers."
-        />
-        {rebuilding?.kind === "map" ? (
-          <View className="gap-2">
-            <Text className="text-sm font-medium text-ink-soft">How deep should it go?</Text>
-            <ChipRow
-              options={[
-                { value: String(MapLevels.Two), label: "Two levels" },
-                { value: String(MapLevels.Three), label: "Three levels" },
-              ]}
-              selected={String(levels)}
-              onSelect={(value) =>
-                setLevels(value === String(MapLevels.Three) ? MapLevels.Three : MapLevels.Two)
-              }
+        {plan === null ? (
+          <>
+            <Input
+              label="What should be different?"
+              value={instructions}
+              onChangeText={setInstructions}
+              multiline
+              maxLength={600}
+              placeholder={"Less YAML, more on networking\nAssume I already know containers"}
+              hint="Optional. Leave it empty to build it again from the same answers."
             />
-          </View>
-        ) : null}
+            {rebuilding?.kind === "map" ? (
+              <View className="gap-2">
+                <Text className="text-sm font-medium text-ink-soft">How deep should it go?</Text>
+                <ChipRow
+                  options={[
+                    { value: String(MapLevels.Two), label: "Two levels" },
+                    { value: String(MapLevels.Three), label: "Three levels" },
+                  ]}
+                  selected={String(levels)}
+                  onSelect={(value) =>
+                    setLevels(value === String(MapLevels.Three) ? MapLevels.Three : MapLevels.Two)
+                  }
+                />
+              </View>
+            ) : null}
 
-        {rebuildMap.isError ? <ErrorState message={messageOf(rebuildMap.error)} /> : null}
-        {rebuildNode.isError ? <ErrorState message={messageOf(rebuildNode.error)} /> : null}
+            {questions.isError ? <ErrorState message={messageOf(questions.error)} /> : null}
+            {rebuildNode.isError ? <ErrorState message={messageOf(rebuildNode.error)} /> : null}
 
-        <Button
-          label={rebuildMap.isPending || rebuildNode.isPending ? "Building…" : "Build it again"}
-          onPress={submitRebuild}
-          busy={rebuildMap.isPending || rebuildNode.isPending}
-        />
+            <Button
+              label={rebuildLabel(rebuilding, questions.isPending, rebuildNode.isPending)}
+              onPress={submitRebuild}
+              busy={questions.isPending || rebuildNode.isPending}
+            />
+          </>
+        ) : (
+          <>
+            <MapQuestions
+              questions={plan.questions}
+              finishLabel={rebuildMap.isPending ? "Building…" : "Build it again"}
+              busy={rebuildMap.isPending}
+              onFinish={submitMapRebuild}
+            />
+            {rebuildMap.isError ? <ErrorState message={messageOf(rebuildMap.error)} /> : null}
+          </>
+        )}
       </Sheet>
 
       <Sheet
@@ -255,6 +294,25 @@ export default function EditMapScreen(): ReactElement {
       </Sheet>
     </ScrollView>
   );
+}
+
+/**
+ * The whole-map rebuild takes two sheets: what should be different, then the
+ * seven choices. Naming the stage in the title is what stops the second one
+ * reading as an unexplained interruption of the first.
+ */
+function rebuildTitle(rebuilding: Rebuilding, choosing: boolean): string {
+  if (rebuilding?.kind === "node") {
+    return `Rebuild what is under \u201c${rebuilding.node.title}\u201d`;
+  }
+  return choosing ? "Which of these do you want?" : "Rebuild the whole map";
+}
+
+function rebuildLabel(rebuilding: Rebuilding, asking: boolean, building: boolean): string {
+  if (rebuilding?.kind === "node") {
+    return building ? "Building\u2026" : "Build it again";
+  }
+  return asking ? "Writing the choices\u2026" : "Next";
 }
 
 function RowAction({

@@ -16,13 +16,14 @@ import {
 import type {
   CardContentT,
   CardSettingsT,
+  ChosenOptionT,
   LearningNodeT,
   ProfileT,
   TopicContentSettingsT,
   TopicT,
 } from "@interestled/schemas";
 import { cardMinutes } from "@interestled/domain";
-import { mapOutline, neighbourClaims } from "./outline";
+import { mapOutline, neighbourClaims, plainOutline } from "./outline";
 import { promptFile } from "./promptFiles";
 import { render } from "./template";
 
@@ -170,6 +171,29 @@ function leafRules(averageReadTime: number): string {
   return render(promptFile("leaf-rules"), minutesBand(averageReadTime));
 }
 
+/**
+ * The seven answers, as prompt text. Each one is the question they were asked,
+ * the option they took, and the sample that option showed them — because the
+ * sample is what they actually chose. A label alone ("By what breaks") is a
+ * phrase the model has to interpret; the five headings underneath it are not.
+ *
+ * Skipped questions are simply absent. The block disappears entirely when
+ * nothing was answered, so a map built without the questions reads exactly as it
+ * did before they existed.
+ */
+export function choicesBlock(chosen: readonly ChosenOptionT[]): string {
+  const choices = chosen
+    .map((choice) =>
+      [
+        `${choice.question}`,
+        `They chose: ${choice.label}`,
+        ...choice.sample.map((line) => `  ${line}`),
+      ].join("\n"),
+    )
+    .join("\n\n");
+  return render(promptFile("map-choices"), { choices });
+}
+
 export function mapPrompt(input: {
   title: string;
   goal: string;
@@ -181,6 +205,8 @@ export function mapPrompt(input: {
   content: TopicContentSettingsT;
   /** What to change, when the learner asked for the map again. "" the first time. */
   instructions: string;
+  /** The seven choices, resolved. Empty when every question was skipped. */
+  chosen: readonly ChosenOptionT[];
 }): string {
   const shape = render(
     promptFile(input.levels === MapLevels.Three ? "map-three-levels" : "map-two-levels"),
@@ -193,10 +219,49 @@ export function mapPrompt(input: {
     level: input.level,
     learner: learnerBlock(input.profile),
     contentRules: contentRulesBlock(input.content),
+    // Before the instructions, so the words they typed win over the option they
+    // tapped — the instructions block says it takes everything above it.
+    choices: choicesBlock(input.chosen),
     instructions: instructionBlock(input.instructions),
     archetypes: promptFile("archetypes"),
     shape,
     ordering: promptFile("ordering"),
+  });
+}
+
+/**
+ * The seven questions asked between the create form and the map.
+ *
+ * It is given everything the map prompt is given, because the questions are
+ * about the map that prompt would otherwise have produced on its own: the same
+ * learner, the same writing settings, the same rebuild instructions. On a
+ * rebuild it also gets the map being replaced, so the four options are four
+ * maps the learner has not already rejected.
+ */
+export function mapQuestionsPrompt(input: {
+  title: string;
+  goal: string;
+  timeBudget: string;
+  level: string;
+  levels: MapLevels;
+  profile: ProfileT;
+  content: TopicContentSettingsT;
+  instructions: string;
+  /** The map as it stands, when this is a rebuild. Empty for a new topic. */
+  current: readonly LearningNodeT[];
+}): string {
+  return render(promptFile("map-questions"), {
+    title: input.title,
+    goal: input.goal || "(not stated — infer the most common goal)",
+    timeBudget: input.timeBudget,
+    level: input.level,
+    levelCount: String(input.levels),
+    learner: learnerBlock(input.profile),
+    contentRules: contentRulesBlock(input.content),
+    instructions: instructionBlock(input.instructions),
+    current: render(promptFile("map-current"), {
+      current: input.current.length === 0 ? "" : plainOutline(input.current),
+    }),
   });
 }
 
