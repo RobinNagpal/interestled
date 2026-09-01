@@ -20,8 +20,6 @@ import type {
   AnsweredQuestionT,
   ParagraphLength,
   MapShapeT,
-  MinutesPerDay,
-  StudyDays,
   CardContentT,
   CardSettingsT,
   LearningNodeT,
@@ -156,9 +154,9 @@ const MAP_DEPTH_GUIDE: Record<MapDepth, string> = {
   [MapDepth.Expert]: "edge cases, failure modes, and where the standard account is wrong",
 };
 
-/** "1 day" reads wrong; the prompts are read as English. */
+/** The prompts are read as English, so "1 days" is a mistake the model can see. */
 function daysText(days: number): string {
-  return days === 1 ? "a single day" : `${days} days`;
+  return `${days} days`;
 }
 
 /**
@@ -176,22 +174,27 @@ export function seedMapInstructions(shape: MapShapeT): string {
     totalTime: minutesText(totalMinutes(shape)),
     perDay: minutesText(shape.minutesPerDay),
     days: daysText(shape.days),
+    // One day is one sitting, and "20 minutes a day for 1 days" is two ways of
+    // saying the same number with a grammatical error between them.
+    manyDays: shape.days === 1 ? "" : "yes",
     depth: MAP_DEPTH_GUIDE[shape.depth] ?? MAP_DEPTH_GUIDE[MapDepth.Working],
   });
 }
 
-/** The stored lines, or the seed when the learner has not edited them. */
-export function effectiveMapInstructions(topic: {
-  mapInstructions: string;
-  mainHeadings: number;
-  subHeadings: number;
-  minutesPerDay: MinutesPerDay;
-  days: StudyDays;
-  depth: MapDepth;
-}): string {
-  return topic.mapInstructions.trim() === ""
-    ? seedMapInstructions(mapShapeOf(topic))
-    : topic.mapInstructions.trim();
+/**
+ * The lines a topic or a request actually means: the text when the learner has
+ * written some, the seed of its own settings when they have not.
+ *
+ * One function for both because they are the same rule read at two moments — the
+ * questions are asked before there is a topic row, and the map is built after
+ * there is one. Two copies of it would have disagreed the first time either
+ * changed, and the disagreement would be invisible: both produce a plausible
+ * paragraph.
+ */
+export function effectiveMapInstructions(input: MapShapeT & { mapInstructions: string }): string {
+  return input.mapInstructions.trim() === ""
+    ? seedMapInstructions(mapShapeOf(input))
+    : input.mapInstructions.trim();
 }
 
 /**

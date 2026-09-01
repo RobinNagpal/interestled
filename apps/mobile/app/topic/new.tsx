@@ -5,20 +5,18 @@ import { router } from "expo-router";
 import { useCreateTopic, useMapQuestions } from "@interestled/api";
 import { topicHref } from "@interestled/domain";
 import { Button, ErrorState, Input, Sheet } from "@interestled/ui";
-import { MapDepth, MinutesPerDay, StudyDays } from "@interestled/schemas";
+import { MapShapeInput } from "@interestled/schemas";
 import type { MapAnswerT, MapPlanViewT, MapShapeT } from "@interestled/schemas";
 import { messageOf } from "../../lib/errors";
 import { MapQuestions } from "../../components/MapQuestions";
 import { MapShapeFields } from "../../components/MapShapeFields";
 
-/** What the settings start at, matching MapShapeInput so the seed agrees with a save. */
-const DEFAULT_SHAPE: MapShapeT = {
-  mainHeadings: 5,
-  subHeadings: 4,
-  minutesPerDay: MinutesPerDay.Twenty,
-  days: StudyDays.Fortnight,
-  depth: MapDepth.Working,
-};
+/**
+ * What the settings start at. Parsed out of the input schema rather than written
+ * again here, so the screen can never open on a shape a save would not have
+ * produced.
+ */
+const DEFAULT_SHAPE: MapShapeT = MapShapeInput.parse({});
 
 /**
  * Three questions, then the shape of the map.

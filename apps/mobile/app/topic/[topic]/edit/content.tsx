@@ -27,7 +27,9 @@ import type {
   TopicContentSettingsT,
   TopicT,
 } from "@interestled/schemas";
+import { useSeedContentInstructions } from "@interestled/api";
 import { messageOf } from "../../../../lib/errors";
+import { useSeededText } from "../../../../components/SeededInstructions";
 import { backHeader, goBack } from "../../../../lib/nav";
 import { ChipRow } from "../../../../components/ChipRow";
 
@@ -106,6 +108,13 @@ function ContentForm({
   const [instructions, setInstructions] = useState(topic.contentInstructions);
 
   const usingDefault = instructions.trim() === "";
+  // The lines this topic's own paragraph length produces, not the ones the
+  // default length would: a panel headed "in force now" has to be in force now.
+  const seed = useSeedContentInstructions();
+  const inForce =
+    useSeededText(paragraphLength, (length, onSeeded) =>
+      seed.mutate(length, { onSuccess: onSeeded }),
+    ) || defaults.contentInstructions;
 
   const submit = (): void => {
     save.mutate(
@@ -196,11 +205,11 @@ function ContentForm({
         {usingDefault ? (
           <View className="gap-2 rounded-card border border-line bg-surface-raised p-3">
             <SectionTitle>The default, in force now</SectionTitle>
-            <Text className="text-sm text-ink-soft">{defaults.contentInstructions}</Text>
+            <Text className="text-sm text-ink-soft">{inForce}</Text>
             <Button
               label="Start from this"
               tone="secondary"
-              onPress={() => setInstructions(defaults.contentInstructions)}
+              onPress={() => setInstructions(inForce)}
             />
           </View>
         ) : (

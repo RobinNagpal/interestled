@@ -5,6 +5,7 @@ import {
   MapAnswers,
   LlmTask,
   MapQuestionSet,
+  MapShape,
   MapShapeInput,
   mapShapeOf,
   MoveDirection,
@@ -28,7 +29,6 @@ import type {
   LearningNodeT,
   MapAnswersT,
   MapPlanViewT,
-  MapShapeT,
   TopicT,
 } from "@interestled/schemas";
 import { ancestorsOf, isBranch } from "@interestled/domain";
@@ -232,18 +232,6 @@ async function buildMap(
 const Instructions = z.object({ instructions: z.string().trim().max(600).default("") });
 
 /**
- * What a create or rebuild request's instruction lines actually say: the text
- * the learner edited, or the seed of the shape they chose when they left it
- * alone. Same rule as the stored value, applied one step earlier — the questions
- * are asked before there is a topic row to read it off.
- */
-function instructionsFor(input: MapShapeT & { mapInstructions: string }): string {
-  return input.mapInstructions.trim() === ""
-    ? seedMapInstructions(mapShapeOf(input))
-    : input.mapInstructions.trim();
-}
-
-/**
  * Ask the model for the seven questions, and keep the row they came from.
  *
  * The row is what the answers come back against: an answer is "the second
@@ -403,13 +391,7 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
     // default can be changed and no way for the screen to show a different one
     // from the one a save would actually apply.
     const content = TopicContentSettingsInput.parse({});
-    const shape = MapShapeInput.parse({});
-    return c.json({
-      ...content,
-      ...shape,
-      contentInstructions: seedContentInstructions(content.paragraphLength),
-      mapInstructions: seedMapInstructions(shape),
-    });
+    return c.json({ ...content, contentInstructions: seedContentInstructions(content.paragraphLength) });
   });
 
   /**
@@ -432,7 +414,7 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
         goal: input.goal,
         level: input.level,
         content: TopicContentSettingsInput.parse({}),
-        mapInstructions: instructionsFor(input),
+        mapInstructions: effectiveMapInstructions(input),
       }),
     );
   });
@@ -457,7 +439,7 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
         goal: topic.goal,
         level: topic.level,
         content: contentSettingsOf(topic),
-        mapInstructions: instructionsFor(input),
+        mapInstructions: effectiveMapInstructions(input),
       }),
     );
   });
@@ -471,6 +453,18 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
    */
   router.post("/map-instructions", zValidator("json", MapShapeInput), (c) =>
     c.json({ mapInstructions: seedMapInstructions(c.req.valid("json")) }),
+  );
+
+  /**
+   * The same for the content side. Separate from GET "/defaults" because that
+   * one answers for the defaults and this one answers for the setting the
+   * learner is looking at — a screen showing "4-5 sentences" while the topic is
+   * set to long is the screen lying about what the model gets.
+   */
+  router.post(
+    "/content-instructions",
+    zValidator("json", TopicContentSettingsInput.pick({ paragraphLength: true })),
+    (c) => c.json({ contentInstructions: seedContentInstructions(c.req.valid("json").paragraphLength) }),
   );
 
   /**
@@ -526,14 +520,17 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
     // Nodes from the previous map would collide with the new ones on the path
     // constraint, and the cascade takes their cards and drills with them.
     await db.learningNode.deleteMany({ where: { topicId: topic.id } });
+    // What the request said, over what the topic already said. A rebuild that
+    // named no shape is asking for the same map again, not for the defaults.
+    const shape = { ...mapShapeOf(topic), ...MapShape.partial().parse(input) };
     const rebuilt = toTopic(
       await db.topic.update({
         where: { id: topic.id },
         data: {
           status: TopicStatus.Generating,
           error: null,
-          ...mapShapeOf(input),
-          mapInstructions: input.mapInstructions,
+          ...shape,
+          mapInstructions: input.mapInstructions ?? topic.mapInstructions,
         },
       }),
     );

@@ -163,11 +163,13 @@ function topicRow(): Record<string, unknown> {
     summary: "Run a small cluster",
     goal: "deploy a service",
     archetype: TopicArchetype.Tool,
-    mainHeadings: 5,
-    subHeadings: 4,
-    minutesPerDay: 20,
-    days: 14,
-    depth: 2,
+    // Deliberately none of the schema defaults, so a test that means to check
+    // "the topic's own settings were kept" cannot pass by taking the defaults.
+    mainHeadings: 7,
+    subHeadings: 3,
+    minutesPerDay: 45,
+    days: 30,
+    depth: 3,
     mapInstructions: "",
     paragraphLength: "medium",
     level: "",
@@ -811,8 +813,14 @@ describe("map plans", () => {
     createdAt: Date;
   }
 
-  function planDb(plans: PlanRow[]): { db: Db; created: Record<string, unknown>[]; plans: PlanRow[] } {
+  function planDb(plans: PlanRow[]): {
+    db: Db;
+    created: Record<string, unknown>[];
+    plans: PlanRow[];
+    updates: Record<string, unknown>[];
+  } {
     const created: Record<string, unknown>[] = [];
+    const updates: Record<string, unknown>[] = [];
     const db = {
       authSession: {
         findUnique: vi.fn(async () => ({
@@ -857,7 +865,10 @@ describe("map plans", () => {
           created.push(data);
           return { ...topicRow(), ...data };
         }),
-        update: vi.fn(async () => topicRow()),
+        update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          updates.push(data);
+          return { ...topicRow(), ...data };
+        }),
       },
       learningNode: {
         count: vi.fn(async () => 0),
@@ -867,7 +878,7 @@ describe("map plans", () => {
       },
       nodePrerequisite: { createMany: vi.fn(async () => ({ count: 0 })) },
     };
-    return { db: db as unknown as Db, created, plans };
+    return { db: db as unknown as Db, created, plans, updates };
   }
 
   /** The rows a Prisma where of {id?, userId, topicId?} would have matched. */
@@ -1047,6 +1058,20 @@ describe("map plans", () => {
 
     expect(response.status).toBe(400);
     expect(topics).toEqual([]);
+  });
+
+  it("keeps the topic's own shape when a rebuild names none", async () => {
+    // A client cached from before the shape existed posts none of it. Taking the
+    // schema defaults there would silently reset the topic to five headings of
+    // four, which is a setting the learner never touched being thrown away.
+    const { db, updates } = planDb([]);
+    const { provider } = recorder(MAP);
+    const response = await post(db, provider, "/api/topics/kubernetes/regenerate", {
+      answers: [],
+    });
+
+    expect(response.status).toBe(200);
+    expect(updates[0]).toMatchObject({ mainHeadings: 7, subHeadings: 3, days: 30 });
   });
 
   it("refuses answers that arrive without the questions they answer", async () => {

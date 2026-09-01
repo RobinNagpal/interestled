@@ -1,62 +1,25 @@
-import { useEffect, useRef } from "react";
 import { Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { useSeedMapInstructions } from "@interestled/api";
-import { Input } from "@interestled/ui";
+import { DAY_OPTIONS, MAP_DEPTH_COPY, MAP_DEPTH_OPTIONS, MINUTES_OPTIONS } from "@interestled/ui";
 import {
   MAIN_HEADINGS_MAX,
   MAIN_HEADINGS_MIN,
   MAP_INSTRUCTIONS_MAX,
-  MapDepth,
-  MinutesPerDay,
   SUB_HEADINGS_MAX,
   SUB_HEADINGS_MIN,
-  StudyDays,
 } from "@interestled/schemas";
-import type { MapShapeT } from "@interestled/schemas";
+import type { MapDepth, MapShapeT, MinutesPerDay, StudyDays } from "@interestled/schemas";
 import { ChipRow } from "./ChipRow";
+import { SeededInstructions } from "./SeededInstructions";
 
-/** The numeric enums in order, for the chips. A numeric enum carries its names back too. */
-function ladder<T extends number>(values: Record<string, string | number>): T[] {
-  return Object.values(values)
-    .filter((value): value is T => typeof value === "number")
-    .sort((a, b) => a - b);
-}
-
-const MINUTES = ladder<MinutesPerDay>(MinutesPerDay);
-const DAYS = ladder<StudyDays>(StudyDays);
-
-const DEPTHS: { value: MapDepth; label: string }[] = [
-  { value: MapDepth.Orientation, label: "Orientation" },
-  { value: MapDepth.Working, label: "Working" },
-  { value: MapDepth.Mechanism, label: "Mechanism" },
-  { value: MapDepth.Internals, label: "Internals" },
-  { value: MapDepth.Expert, label: "Expert" },
-];
-
-const DEPTH_BODY: Record<MapDepth, string> = {
-  [MapDepth.Orientation]: "What it is, and when you would reach for it.",
-  [MapDepth.Working]: "Enough to use it for the everyday cases.",
-  [MapDepth.Mechanism]: "The mechanism underneath, in the field's own terms.",
-  [MapDepth.Internals]: "The layer below that — internals, protocols, the maths.",
-  [MapDepth.Expert]: "Edge cases, failure modes, and where the standard account is wrong.",
-};
-
+/** Every count between the two bounds, which is few enough to be a row of chips. */
 function counts(min: number, max: number): { value: string; label: string }[] {
   return Array.from({ length: max - min + 1 }, (_value, index) => ({
     value: String(min + index),
     label: String(min + index),
   }));
 }
-
-const DAY_LABEL: Record<StudyDays, string> = {
-  [StudyDays.One]: "1 day",
-  [StudyDays.Three]: "3 days",
-  [StudyDays.Week]: "A week",
-  [StudyDays.Fortnight]: "2 weeks",
-  [StudyDays.Month]: "A month",
-  [StudyDays.Quarter]: "3 months",
-};
 
 /**
  * How the map should be shaped, and the instruction lines those settings seed.
@@ -84,25 +47,6 @@ export function MapShapeFields({
   onInstructions: (instructions: string) => void;
 }): ReactElement {
   const seed = useSeedMapInstructions();
-  // Whether the learner has typed in the box. Once true the chips never write to
-  // it again, which is the whole of "text wins once edited".
-  const edited = useRef(instructions.trim() !== "");
-  // What the last seed was asked for, so a re-render does not re-ask for it.
-  const asked = useRef<string>("");
-
-  const key = JSON.stringify(shape);
-  useEffect(() => {
-    if (edited.current || asked.current === key) {
-      return;
-    }
-    asked.current = key;
-    // Keyed on the settings alone: the mutation and the callback are new objects
-    // on every render, so depending on them would re-ask on every keystroke. A
-    // failure is left alone — the box still holds the previous seed and the
-    // settings are sent regardless, so the cost is a stale sentence.
-    seed.mutate(shape, { onSuccess: onInstructions });
-  }, [key]);
-
   const set = (patch: Partial<MapShapeT>): void => onShape({ ...shape, ...patch });
 
   return (
@@ -128,7 +72,7 @@ export function MapShapeFields({
       <View className="gap-2">
         <Text className="text-sm font-medium text-ink-soft">How long a sitting?</Text>
         <ChipRow
-          options={MINUTES.map((value) => ({ value: String(value), label: `${value} min` }))}
+          options={MINUTES_OPTIONS}
           selected={String(shape.minutesPerDay)}
           onSelect={(value) => set({ minutesPerDay: Number(value) as MinutesPerDay })}
         />
@@ -137,7 +81,7 @@ export function MapShapeFields({
       <View className="gap-2">
         <Text className="text-sm font-medium text-ink-soft">Over how long?</Text>
         <ChipRow
-          options={DAYS.map((value) => ({ value: String(value), label: DAY_LABEL[value] }))}
+          options={DAY_OPTIONS}
           selected={String(shape.days)}
           onSelect={(value) => set({ days: Number(value) as StudyDays })}
         />
@@ -146,23 +90,21 @@ export function MapShapeFields({
       <View className="gap-2">
         <Text className="text-sm font-medium text-ink-soft">How far into it?</Text>
         <ChipRow
-          options={DEPTHS.map((entry) => ({ value: String(entry.value), label: entry.label }))}
+          options={MAP_DEPTH_OPTIONS}
           selected={String(shape.depth)}
           onSelect={(value) => set({ depth: Number(value) as MapDepth })}
         />
-        <Text className="text-sm text-ink-soft">{DEPTH_BODY[shape.depth]}</Text>
+        <Text className="text-sm text-ink-soft">{MAP_DEPTH_COPY[shape.depth].body}</Text>
       </View>
 
-      <Input
-        label="What the map will be built to"
+      <SeededInstructions
+        input={shape}
+        seed={(next, onSeeded) => seed.mutate(next, { onSuccess: onSeeded })}
         value={instructions}
-        onChangeText={(text) => {
-          edited.current = true;
-          onInstructions(text);
-        }}
-        multiline
-        maxLength={MAP_INSTRUCTIONS_MAX}
+        onChange={onInstructions}
+        label="What the map will be built to"
         hint="These are the words the model is given. Change any of them."
+        maxLength={MAP_INSTRUCTIONS_MAX}
       />
     </View>
   );

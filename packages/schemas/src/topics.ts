@@ -37,6 +37,15 @@ export enum MinutesPerDay {
 
 export const MinutesPerDaySchema = z.nativeEnum(MinutesPerDay);
 
+/**
+ * The rungs in order, for the screen that offers them. A numeric enum carries a
+ * reverse mapping, so Object.values gives the names back as well as the numbers.
+ * Same shape as READ_TIMES below, for the same reason.
+ */
+export const MINUTES_PER_DAY: readonly MinutesPerDay[] = Object.values(MinutesPerDay)
+  .filter((value): value is MinutesPerDay => typeof value === "number")
+  .sort((a, b) => a - b);
+
 export enum StudyDays {
   One = 1,
   Three = 3,
@@ -47,6 +56,10 @@ export enum StudyDays {
 }
 
 export const StudyDaysSchema = z.nativeEnum(StudyDays);
+
+export const STUDY_DAYS: readonly StudyDays[] = Object.values(StudyDays)
+  .filter((value): value is StudyDays => typeof value === "number")
+  .sort((a, b) => a - b);
 
 /**
  * How far into the subject the whole map goes. Not how it is written and not
@@ -70,6 +83,10 @@ export enum MapDepth {
 }
 
 export const MapDepthSchema = z.nativeEnum(MapDepth);
+
+export const MAP_DEPTHS: readonly MapDepth[] = Object.values(MapDepth)
+  .filter((value): value is MapDepth => typeof value === "number")
+  .sort((a, b) => a - b);
 
 /**
  * How many headings, and how many under each.
@@ -116,7 +133,7 @@ export function totalMinutes(shape: MapShapeT): number {
 }
 
 /** The shape settings alone, out of the topic every map call carries. */
-export function mapShapeOf(topic: { [K in keyof MapShapeT]: MapShapeT[K] }): MapShapeT {
+export function mapShapeOf(topic: MapShapeT): MapShapeT {
   return {
     mainHeadings: topic.mainHeadings,
     subHeadings: topic.subHeadings,
@@ -400,7 +417,12 @@ export const TopicContentSettingsInput = z.object({
  * being thrown away and replaced.
  */
 export const TopicRegenerateInput = z.object({
-  ...TopicQuestionsInput.shape,
+  // Every field optional, and the route falls back to what the topic already
+  // says. Defaults here would mean a request that omitted the shape silently
+  // reset the topic to five headings of four — which is what a client cached
+  // from before this shipped would send.
+  ...MapShape.partial().shape,
+  mapInstructions: z.string().trim().max(MAP_INSTRUCTIONS_MAX).optional(),
   ...MapChoicesInput.shape,
 });
 

@@ -1,4 +1,4 @@
-- Explain each section in short paragraphs with a heading over each, not one block of text.
+- Explain each section in paragraphs with a heading over each, not one block of text.
 - Each paragraph is {{sentences}} long.
 - Open with one concrete worked case, then state the rule it shows.
 - Use the real names, commands and numbers this subject actually uses, not placeholders.

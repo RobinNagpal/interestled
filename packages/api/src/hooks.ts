@@ -14,7 +14,9 @@ import type {
   ProfileUpdateInputT,
   ReviewInputT,
   MapShapeT,
+  ParagraphLength,
   TopicContentSettingsInputT,
+  TopicContentSettingsT,
   TopicCreateInputT,
   TopicInfoInputT,
   TopicQuestionsInputT,
@@ -29,7 +31,6 @@ import type {
   ReviewBatchT,
   SessionPlanT,
   SessionSummaryViewT,
-  TopicDefaultsT,
   TopicDetailT,
 } from "./client";
 
@@ -60,6 +61,14 @@ export function useUpdateProfile(): UseMutationResult<ProfileT, Error, ProfileUp
 export function useSeedMapInstructions(): UseMutationResult<string, Error, MapShapeT> {
   const api = useApi();
   return useMutation({ mutationFn: (shape: MapShapeT) => api.seedMapInstructions(shape) });
+}
+
+/** The same, for the lines a card is written to. */
+export function useSeedContentInstructions(): UseMutationResult<string, Error, ParagraphLength> {
+  const api = useApi();
+  return useMutation({
+    mutationFn: (paragraphLength: ParagraphLength) => api.seedContentInstructions(paragraphLength),
+  });
 }
 
 export function useTopics(): UseQueryResult<TopicT[]> {
@@ -164,7 +173,7 @@ export function useUpdateTopicContentSettings(
 }
 
 /** The defaults a topic falls back to. They never change under the app. */
-export function useTopicDefaults(): UseQueryResult<TopicDefaultsT> {
+export function useTopicDefaults(): UseQueryResult<TopicContentSettingsT> {
   const api = useApi();
   return useQuery({
     queryKey: keys.topicDefaults,

@@ -38,8 +38,11 @@ import {
   cardPrompt,
   choicesBlock,
   drillPrompt,
+  effectiveMapInstructions,
   mapPrompt,
   mapQuestionsPrompt,
+  seedContentInstructions,
+  seedMapInstructions,
   subtreePrompt,
   verdictPrompt,
 } from "../src/llm/prompts";
@@ -160,6 +163,63 @@ function mapInput(overrides: Partial<Parameters<typeof mapPrompt>[0]> = {}): Par
     ...overrides,
   };
 }
+
+const SHAPE = {
+  mainHeadings: 5,
+  subHeadings: 4,
+  minutesPerDay: MinutesPerDay.Twenty,
+  days: StudyDays.Fortnight,
+  depth: MapDepth.Working,
+};
+
+describe("seedMapInstructions", () => {
+  it("states the counts, the time and the depth as sentences the learner can edit", () => {
+    const lines = seedMapInstructions(SHAPE);
+    expect(lines).toContain("Use 5 main headings, and 4 sub-headings under each one.");
+    expect(lines).toContain("about 280 minutes to work through — 20 minutes a day for 14 days");
+    expect(lines).toContain("enough to use it for the everyday cases.");
+  });
+
+  it("calls one day one sitting, rather than 'a day for 1 days'", () => {
+    const lines = seedMapInstructions({
+      ...SHAPE,
+      days: StudyDays.One,
+      minutesPerDay: MinutesPerDay.Ten,
+    });
+    expect(lines).toContain("about 10 minutes, in one sitting.");
+    expect(lines).not.toContain("a day for");
+  });
+});
+
+describe("effectiveMapInstructions", () => {
+  it("seeds from the settings while the learner has written nothing", () => {
+    expect(effectiveMapInstructions({ ...SHAPE, mapInstructions: "  " })).toBe(
+      seedMapInstructions(SHAPE),
+    );
+  });
+
+  it("uses what they wrote once they have written it, and stops seeding", () => {
+    // The settings can only say the things somebody thought to make a setting
+    // for. Re-seeding over a sentence they wrote would throw away the answer the
+    // box exists to collect.
+    expect(effectiveMapInstructions({ ...SHAPE, mapInstructions: "- Just the failures" })).toBe(
+      "- Just the failures",
+    );
+  });
+});
+
+describe("seedContentInstructions", () => {
+  it("states the sentence range the setting means, not the name of the setting", () => {
+    expect(seedContentInstructions(ParagraphLength.Long)).toContain(
+      "Each paragraph is 6-8 sentences long.",
+    );
+    expect(seedContentInstructions(ParagraphLength.Short)).toContain("2-3 sentences");
+  });
+
+  it("does not call a paragraph short while asking for eight sentences of it", () => {
+    expect(seedContentInstructions(ParagraphLength.Long)).not.toContain("short paragraphs");
+  });
+});
 
 describe("mapPrompt", () => {
   it("passes what they already know, so branches can be dropped", () => {
