@@ -2,8 +2,14 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 import { router } from "expo-router";
-import { useCard } from "@interestled/api";
-import { depthAfter, drillHref, nodeHref, readTimeAfter } from "@interestled/domain";
+import { useCard, useRewriteCard } from "@interestled/api";
+import {
+  defaultCardSettings,
+  depthAfter,
+  drillHref,
+  nodeHref,
+  readTimeAfter,
+} from "@interestled/domain";
 import {
   ANGLE_OPTIONS,
   Button,
@@ -17,10 +23,12 @@ import {
   STYLE_COPY,
   STYLE_OPTIONS,
   SectionTitle,
+  settingsSummary,
 } from "@interestled/ui";
 import { CARD_MINUTES_MAX, Step } from "@interestled/schemas";
-import type { CardSettingsT, LearningNodeT } from "@interestled/schemas";
+import type { CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
 import { ChipRow } from "./ChipRow";
+import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
 
 /**
@@ -30,10 +38,12 @@ import { messageOf } from "../lib/errors";
  */
 export function NodeCard({
   topicSlug,
+  topic,
   node,
   nodes,
 }: {
   topicSlug: string;
+  topic: TopicT;
   node: LearningNodeT;
   nodes: readonly LearningNodeT[];
 }): ReactElement {
@@ -42,11 +52,20 @@ export function NodeCard({
   // must get.
   const [overrides, setOverrides] = useState<Partial<CardSettingsT>>({});
   const card = useCard(node.id, overrides);
+  const rewrite = useRewriteCard(node.id, overrides);
+  const { user } = useAuth();
 
   if (card.isPending) {
+    // The same rule the server writes to, so the wait names the card that
+    // actually arrives rather than a guess at it.
+    const asking = {
+      ...defaultCardSettings(topic, node, user?.defaultDepth ?? 3),
+      ...overrides,
+    };
     return (
       <LoadingContent
         label={`Writing the card for ${node.title}…`}
+        detail={settingsSummary(asking)}
         hint="The first time a node is opened its card is written for you, which takes 10–30 seconds. After that it is instant."
         lines={6}
       />
@@ -139,7 +158,9 @@ export function NodeCard({
 
       <CardControls
         settings={asked}
-        rewriting={card.isPlaceholderData || card.isFetching}
+        rewriting={card.isPlaceholderData || card.isFetching || rewrite.isPending}
+        onRewrite={() => rewrite.mutate()}
+        rewriteError={rewrite.error === null ? undefined : messageOf(rewrite.error)}
         changed={Object.keys(overrides).length > 0}
         onChange={(change) => setOverrides((current) => ({ ...current, ...change }))}
         onReset={() => setOverrides({})}
@@ -214,6 +235,8 @@ function CardControls({
   changed,
   onChange,
   onReset,
+  onRewrite,
+  rewriteError,
 }: {
   settings: CardSettingsT;
   /** The card on screen is the previous one; the next is being written. */
@@ -221,6 +244,9 @@ function CardControls({
   changed: boolean;
   onChange: (change: Partial<CardSettingsT>) => void;
   onReset: () => void;
+  /** Write it again at these same settings. */
+  onRewrite: () => void;
+  rewriteError?: string;
 }): ReactElement {
   const simpler = depthAfter(settings.depth, Step.Down);
   const deeper = depthAfter(settings.depth, Step.Up);
@@ -287,6 +313,22 @@ function CardControls({
           selected={settings.angle}
           onSelect={(angle) => onChange({ angle })}
         />
+      </ControlRow>
+
+      {/* Every control above changes what the card is. This one changes nothing
+          and asks for it again: generation is not deterministic, so the same
+          settings twice is a genuinely different explanation, and until now the
+          only way to ask for one was to move a setting to somewhere the reader
+          did not want and back. It is the one press here that always costs a
+          model call, so it says so. */}
+      <ControlRow title="Not landing?" value={settingsSummary(settings)}>
+        <Button
+          label={rewriting ? "Writing it again…" : "Write it again"}
+          tone="quiet"
+          busy={rewriting}
+          onPress={onRewrite}
+        />
+        {rewriteError === undefined ? null : <ErrorState message={rewriteError} />}
       </ControlRow>
 
       {/* The way back, which the old panel had no version of: once a card had

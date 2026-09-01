@@ -202,6 +202,29 @@ export function useCard(
   });
 }
 
+/**
+ * Write this card again at the settings it already has.
+ *
+ * A mutation rather than a refetch, because a refetch is what the cache is for:
+ * the same key answered from the same row is exactly what this control exists to
+ * go around. The result is written back under that key, so the card on screen
+ * becomes the new one and the controls keep reading the settings it was written
+ * to — and the old card stays up while it is written, the same as every other
+ * rewrite, because thirty seconds of skeleton is what makes a control feel
+ * broken rather than slow.
+ */
+export function useRewriteCard(
+  nodeId: string,
+  settings: Partial<CardSettingsT> = {},
+): UseMutationResult<CardViewT, Error, void> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.getCard(nodeId, settings, { rewrite: true }),
+    onSuccess: (card) => client.setQueryData(keys.card(nodeId, settings), card),
+  });
+}
+
 export function useDrill(nodeId: string, kind?: DrillKind): UseQueryResult<DrillT> {
   const api = useApi();
   return useQuery({

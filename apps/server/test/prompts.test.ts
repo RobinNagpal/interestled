@@ -17,11 +17,11 @@ import {
   contentSettingsOf,
 } from "@interestled/schemas";
 import type { CardContentT, LearningNodeT, ProfileT, TopicT } from "@interestled/schemas";
+import { defaultCardSettings } from "@interestled/domain";
 import {
   SYSTEM,
   atomsPrompt,
   cardPrompt,
-  defaultCardSettings,
   drillPrompt,
   mapPrompt,
   subtreePrompt,

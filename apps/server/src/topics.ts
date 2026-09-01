@@ -61,6 +61,30 @@ const MAX_TOPICS_PER_USER = 100;
  * what gets counted, and a big map costs more of the allowance than a small one.
  */
 const MAX_GENERATED_NODES_PER_HOUR = 400;
+/**
+ * Writing a card again at settings it already has is the one generating call a
+ * learner can make without limit: every other one either creates nodes or is
+ * answered from the cache the second time. A button that costs a model call per
+ * press and nothing else needs its own ceiling, or the deployment's bill has
+ * none.
+ */
+const MAX_REWRITTEN_CARDS_PER_HOUR = 40;
+
+/**
+ * Cards written in the last hour, against the ceiling. Ordinary card generation
+ * is not counted: it is bounded already by how many nodes there are to open and
+ * answered from the cache thereafter, and counting it would make a long reading
+ * session refuse to show the next node.
+ */
+export async function assertRewriteBudget(db: Db, userId: string): Promise<void> {
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const recent = await db.conceptCard.count({
+    where: { node: { topic: { userId } }, createdAt: { gte: hourAgo } },
+  });
+  if (recent >= MAX_REWRITTEN_CARDS_PER_HOUR) {
+    throw new ConflictError("That is a lot of rewriting in one hour — the limit resets shortly.");
+  }
+}
 
 async function assertWithinBudget(db: Db, userId: string, isNewTopic: boolean): Promise<void> {
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000);

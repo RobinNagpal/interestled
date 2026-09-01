@@ -118,7 +118,7 @@ export default function NodePathScreen(): ReactElement {
   return (
     <>
       <Stack.Screen options={{ title: node.title, headerLeft: backHeader(parentPath) }} />
-      <NodeCard topicSlug={topicSlug} node={node} nodes={nodes} />
+      <NodeCard topicSlug={topicSlug} topic={topic.data.topic} node={node} nodes={nodes} />
     </>
   );
 }

@@ -46,7 +46,14 @@ function stubDb(
   const db = {
     user: {
       findUnique: vi.fn(async () => null),
-      create: vi.fn(async () => ({ id: "u1", email: "a@b.com", createdAt: new Date() })),
+      create: vi.fn(async () => ({
+        id: "u1",
+        email: "a@b.com",
+        // The column's own default, which the real row always carries: the
+        // register response says where this learner's cards will start.
+        defaultDepth: 2,
+        createdAt: new Date(),
+      })),
       // The profile lives on the user row; these two are all /api/profile touches.
       findUniqueOrThrow: vi.fn(async () => ({ ...profileRow })),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: object }) => {
@@ -505,6 +512,8 @@ describe("card generation", () => {
       conceptCard: {
         findUnique: vi.fn(async () => null),
         upsert: vi.fn(async () => ({})),
+        // What the rewrite budget counts: cards written in the last hour.
+        count: vi.fn(async () => 0),
       },
     };
     return { db: db as unknown as Db, statuses };
@@ -623,5 +632,64 @@ describe("card generation", () => {
     // only, or a hit costs a second read of every node in the topic.
     expect(cached.learningNode.findMany).toHaveBeenCalledTimes(1);
     expect(cached.user.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it("writes the card again on a rewrite, and replaces the row it read past", async () => {
+    // The one control that changes nothing about the card and asks for it
+    // anyway. Serving it from the cache would make it the only button here that
+    // provably does nothing, since the cached row is exactly what it is asking
+    // to go around.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as {
+      conceptCard: { findUnique: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
+    };
+    stub.conceptCard.findUnique = vi.fn(async () => ({ content: JSON.parse(CARD) }));
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request(
+      "/api/nodes/n2/card?rewrite=1",
+      { headers: { Authorization: "Bearer good" } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prompts).toHaveLength(1);
+    expect(stub.conceptCard.findUnique).not.toHaveBeenCalled();
+    // And the new card replaces the old one rather than losing to it: an upsert
+    // that no-ops on conflict would generate, charge for it, and then answer
+    // with the row it was asked to go around on the next open.
+    const written = stub.conceptCard.upsert.mock.calls[0]?.[0] as
+      | { update: { content?: unknown; createdAt?: Date } }
+      | undefined;
+    expect(written?.update.content).toMatchObject({ claim: "A pod is the unit of scheduling." });
+    expect(written?.update.createdAt).toBeInstanceOf(Date);
+  });
+
+  it("refuses a rewrite once the hour's ceiling is reached", async () => {
+    // Every other generating call either creates nodes or is answered from the
+    // cache the second time. This one costs a model call per press, so without
+    // a ceiling the deployment's bill has none.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as { conceptCard: { count: ReturnType<typeof vi.fn> } };
+    stub.conceptCard.count = vi.fn(async () => 40);
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request(
+      "/api/nodes/n2/card?rewrite=1",
+      { headers: { Authorization: "Bearer good" } },
+    );
+
+    expect(response.status).toBe(409);
+    expect(prompts).toEqual([]);
+  });
+
+  it("reads \"rewrite=false\" as not a rewrite, rather than as a rewrite", async () => {
+    // Boolean("false") is true, which is the whole reason this is a literal:
+    // a client saying it does not want one would otherwise be charged for one
+    // and lose the card its reader was looking at.
+    const { db } = cardDb(mapRows(), "n2");
+    const { provider: recorder } = recording();
+    const response = await createApp(db, { provider: recorder }).request(
+      "/api/nodes/n2/card?rewrite=false",
+      { headers: { Authorization: "Bearer good" } },
+    );
+    expect(response.status).toBe(400);
   });
 });

@@ -38,10 +38,18 @@ const SLOW_AFTER_MS = 1200;
  */
 export function LoadingContent({
   label,
+  detail,
   hint,
   lines = 5,
 }: {
   label: string;
+  /**
+   * What is being written, shown at once rather than after the slow threshold:
+   * it is not an apology for the wait, it is the answer to what the wait is
+   * producing, and it is the one moment the settings a card was asked for are
+   * visible in the product.
+   */
+  detail?: string;
   hint?: string;
   lines?: number;
 }): ReactElement {
@@ -57,6 +65,7 @@ export function LoadingContent({
         <ActivityIndicator color="#2563eb" />
         <Text>{label}</Text>
       </View>
+      {detail === undefined ? null : <Text variant="muted">{detail}</Text>}
       {slow && hint !== undefined ? <Text variant="muted">{hint}</Text> : null}
       <Skeleton lines={lines} />
     </View>

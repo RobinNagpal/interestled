@@ -1,4 +1,5 @@
 import { CardAngle, ContentStyle } from "@interestled/schemas";
+import type { CardSettingsT } from "@interestled/schemas";
 
 /**
  * The words for the settings, in one place because two screens now set the same
@@ -60,3 +61,27 @@ export const DEPTH_COPY: Record<number, string> = {
   4: "the layer under it",
   5: "expert",
 };
+
+/**
+ * The settings a card is being, or has been, written to — as one line.
+ *
+ * Writing a card takes ten to thirty seconds, and a wait that says only that
+ * something is happening is one nobody can tell from a hang. Naming what is
+ * being written also makes the wait worth having: the reader can see that the
+ * length and the register they chose are the ones being used, which is the only
+ * moment the settings screen's answers are ever visible in the product.
+ *
+ * The angle is left out when it is Base, because "Plain" is the absence of an
+ * angle rather than one more thing chosen.
+ */
+export function settingsSummary(settings: CardSettingsT): string {
+  const parts = [
+    `depth ${settings.depth} of 5 — ${DEPTH_COPY[settings.depth] ?? ""}`,
+    `about ${settings.minutes} min`,
+    STYLE_COPY[settings.style].label.toLowerCase(),
+  ];
+  if (settings.angle !== CardAngle.Base) {
+    parts.push(ANGLE_COPY[settings.angle].toLowerCase());
+  }
+  return parts.join(" · ");
+}

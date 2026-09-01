@@ -1,7 +1,5 @@
 import {
-  CARD_MINUTES_MAX,
   CardAngle,
-  CardDepth,
   ContentStyle,
   DrillKind,
   LearningStyle,
@@ -21,6 +19,7 @@ import type {
   TopicContentSettingsT,
   TopicT,
 } from "@interestled/schemas";
+import { cardMinutes } from "@interestled/domain";
 import { mapOutline, neighbourClaims } from "./outline";
 import { promptFile } from "./promptFiles";
 import { render } from "./template";
@@ -265,30 +264,6 @@ function mechanismItems(minutes: number): string {
   const low = Math.max(1, Math.round(target * 0.75));
   const high = Math.min(MAX_MECHANISM_ITEMS, Math.max(low + 2, Math.round(target * 1.25)));
   return `${low}-${high}`;
-}
-
-/**
- * The settings a card is written to when the learner has not overridden any of
- * them: the topic's own style and read time, and the node's own estimate where
- * that is shorter — a longer card than the map admits to is the map lying about
- * time, which is the one thing it is not allowed to do.
- */
-export function defaultCardSettings(
-  topic: TopicT,
-  node: LearningNodeT,
-  depth: number,
-): CardSettingsT {
-  return {
-    depth: CardDepth.parse(depth),
-    minutes: cardMinutes(Math.min(node.minutes || topic.averageReadTime, topic.averageReadTime)),
-    style: topic.style,
-    angle: CardAngle.Base,
-  };
-}
-
-/** Never zero (a branch), never past what one card can hold. */
-export function cardMinutes(minutes: number): number {
-  return Math.max(1, Math.min(minutes, CARD_MINUTES_MAX));
 }
 
 export function cardPrompt(input: {

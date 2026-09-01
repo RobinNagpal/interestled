@@ -17,14 +17,21 @@ import {
   newId,
 } from "@interestled/schemas";
 import type { CardContentT, CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
-import { advance, masteryDrill, missingPrerequisites, nextDefaultDepth } from "@interestled/domain";
+import {
+  advance,
+  cardMinutes,
+  defaultCardSettings,
+  masteryDrill,
+  missingPrerequisites,
+  nextDefaultDepth,
+} from "@interestled/domain";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
 import { generateAtoms, generateCard, generateDrill, gradeAttempt } from "./llm";
-import { cardMinutes, defaultCardSettings } from "./llm";
 import type { LlmProvider } from "./llm";
 import { loadProfile } from "./profile";
+import { assertRewriteBudget } from "./topics";
 import { toDrill, toNode, toTopic } from "./rows";
 
 async function loadNode(
@@ -73,11 +80,24 @@ async function cardFor(
   topic: TopicT,
   node: LearningNodeT,
   settings: CardSettingsT,
+  /**
+   * Write it again at the settings it already has, rather than reading the row.
+   * Generation is not deterministic, so the same request twice is a genuinely
+   * different card — which is the whole of what the control offers, and why it
+   * cannot be served from the cache it is asking to go around.
+   */
+  rewrite = false,
 ): Promise<CardContentT> {
   const key = { nodeId: node.id, depth: settings.depth, variant: cardVariant(settings) };
-  const cached = await db.conceptCard.findUnique({ where: { nodeId_depth_variant: key } });
-  if (cached !== null) {
-    return CardContent.parse(cached.content);
+  if (rewrite) {
+    // The one generating call a learner can repeat without bound: every other
+    // one either creates nodes or is answered from the cache the second time.
+    await assertRewriteBudget(db, userId);
+  } else {
+    const cached = await db.conceptCard.findUnique({ where: { nodeId_depth_variant: key } });
+    if (cached !== null) {
+      return CardContent.parse(cached.content);
+    }
   }
   // Read only on a miss. A hit is the normal case, and neither the profile nor
   // the rest of the map is needed anywhere but the prompt, so this must not
@@ -97,11 +117,14 @@ async function cardFor(
   });
   // Two concurrent readers of the same uncached card both generate, and the
   // slower insert would collide on the unique key. The row is identical either
-  // way, so treat the collision as the cache hit it effectively is.
+  // way, so treat the collision as the cache hit it effectively is — except on
+  // a rewrite, which exists precisely to replace what is there. createdAt moves
+  // with the content, because it is what the rewrite budget counts and a row
+  // that keeps its original date is a rewrite the ceiling never sees.
   await db.conceptCard.upsert({
     where: { nodeId_depth_variant: key },
     create: { id: newId(), ...key, content },
-    update: {},
+    update: rewrite ? { content, createdAt: new Date() } : {},
   });
   return content;
 }
@@ -118,6 +141,13 @@ const CardQuery = z.object({
   minutes: z.coerce.number().int().pipe(CardMinutes).optional(),
   style: ContentStyleSchema.optional(),
   angle: CardAngleSchema.optional(),
+  /**
+   * Write this one again at the settings it already has. The literal rather than
+   * a coerced boolean: `Boolean("false")` is true, so a client saying it does
+   * not want a rewrite would get one — which costs a model call and throws away
+   * the card the reader was looking at.
+   */
+  rewrite: z.literal("1").optional(),
 });
 
 function settingsFrom(
@@ -151,7 +181,15 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
     await refuseGroup(db, node);
     const settings = settingsFrom(c.req.valid("query"), topic, node, c.get("defaultDepth"));
 
-    const content = await cardFor(db, provider(), userId, topic, node, settings);
+    const content = await cardFor(
+      db,
+      provider(),
+      userId,
+      topic,
+      node,
+      settings,
+      c.req.valid("query").rewrite === "1",
+    );
 
     if (node.status === NodeStatus.Untouched) {
       await db.learningNode.update({ where: { id: node.id }, data: { status: NodeStatus.Seen } });

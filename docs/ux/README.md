@@ -406,6 +406,23 @@ the screen, which is the app showing its working.
 - *Covers:* W13 (one thing at a time), A1 (long unbroken text), A5 (no preamble), A13
   (one visual, nothing decorative).
 
+One more control sits with them, and it changes nothing: *Write it again*, at the
+settings the card already has. Generation is not deterministic, so the same request
+twice is a genuinely different explanation — and until it existed the only way to ask
+for one was to move a setting somewhere the reader did not want it and back again.
+It is the one press here that always costs a model call, so the panel names the
+settings it will use, and the count of cards written in an hour is capped per learner:
+every other generating call either creates nodes or is answered from the cache the
+second time round, and this one would otherwise have no ceiling at all.
+
+The wait itself now says what is being written — *depth 3 of 5 — the mechanism · about
+3 min · short and crisp*. Ten to thirty seconds against a label that says only that
+something is happening is a wait nobody can tell from a hang, and it is also the one
+moment the answers given on the settings screen are visible anywhere in the product.
+The rule that turns a topic and a node into those settings is shared between the server
+and the app rather than written twice, because a wait that describes a card other than
+the one that arrives is worse than a wait that describes nothing.
+
 ### The controls under a card
 
 Four things decide how a card comes out, and all four sit under it: how deep it goes,
