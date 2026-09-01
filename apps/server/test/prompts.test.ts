@@ -9,7 +9,7 @@ import {
   ReadTime,
   DrillKind,
   LearningStyle,
-  MAX_MECHANISM_ITEMS,
+  MAX_MECHANISM_SECTIONS,
   MapLevels,
   MapQuestionKind,
   NodeStatus,
@@ -91,7 +91,7 @@ const node: LearningNodeT = {
 
 const card: CardContentT = {
   claim: "A controller loops forever comparing what you asked for to what exists.",
-  mechanism: ["The API server holds desired state."],
+  mechanism: [{ heading: "The loop", body: "The API server holds desired state." }],
   example: { setup: "3 replicas, one node dies", result: "a new pod appears in 4s" },
   misconception: { belief: "kubectl creates the pod", correction: "the controller does" },
   jargon: [],
@@ -531,8 +531,8 @@ describe("cardPrompt", () => {
     expect(unwrapped(prompt)).toContain("1600 are the mechanism");
     // Length comes from more items, not from longer ones — a wall of text is
     // still a wall of text at ten minutes (A1).
-    expect(prompt).toContain("27-44 items");
-    expect(unwrapped(prompt)).toContain("about 45 words, never a paragraph");
+    expect(prompt).toContain("15-25 sections");
+    expect(unwrapped(prompt)).toContain("about 80 words");
   });
 
   it("stops at what one card can hold, however long the node claims", () => {
@@ -599,20 +599,30 @@ describe("cardPrompt", () => {
     expect(unwrapped(prompt)).toContain("what people actually get wrong HERE");
   });
 
-  it("asks for one continuous explanation rather than six separate notes", () => {
-    // What the live cards actually read like: five mechanism items each opening
-    // with its own heading ("Central bank monetization: ..."), an example that
-    // starts over in its own terms, and a misconception bolted on the end.
-    const prompt = cardPrompt(cardInput({}));
-    expect(unwrapped(prompt)).toContain("one continuous explanation");
-    expect(unwrapped(prompt)).toContain("starts from what the one before it established");
-    expect(unwrapped(prompt)).toContain("shuffled without a reader noticing");
-    expect(prompt).toContain("Never label an item");
-    expect(unwrapped(prompt)).toContain("No term followed by a colon");
-    // Each of the three sections is joined to the one above it, not just the
-    // items inside one of them.
-    expect(unwrapped(prompt)).toContain("that same mechanism happening");
-    expect(unwrapped(prompt)).toContain("names the step above that rules it out");
+  it("asks for one continuous explanation rather than separate notes", () => {
+    const prompt = unwrapped(cardPrompt(cardInput({})));
+    expect(prompt).toContain("one continuous explanation");
+    expect(prompt).toContain("starts from what the one above it established");
+    expect(prompt).toContain("reordered without a reader noticing");
+    // Each slot is joined to the one above it, not just the sentences inside one.
+    expect(prompt).toContain("that same mechanism happening");
+    expect(prompt).toContain("names the step above that rules it out");
+  });
+
+  it("asks for headings that name a step, not headings that label a term", () => {
+    // The heading is a real field now, so the old ban on gluing one to a
+    // sentence is gone — but the failure it was there to stop is not. A card
+    // whose headings are terms is a glossary, whatever the schema says, and the
+    // sentences under them stop needing each other.
+    const prompt = unwrapped(cardPrompt(cardInput({})));
+    expect(prompt).toContain("says what this step of the argument does");
+    expect(prompt).toContain("is a label on a term");
+    expect(prompt).toContain("they are a glossary rather than an explanation");
+    // And the flow inside a section, which is the half a heading makes easy to lose.
+    expect(prompt).toContain("Each sentence follows from the one before it");
+    expect(prompt).toContain("never open a body by restating its own heading");
+    // Plain text, because it is set as a heading rather than parsed as one.
+    expect(prompt).toContain("Plain text, so no");
   });
 
   it("says when a slot is written and when it is left out, rather than demanding six", () => {
@@ -648,17 +658,17 @@ describe("cardPrompt", () => {
     );
     expect(prompt).toContain("1000 words in all");
     expect(prompt).toContain("800 are the mechanism");
-    expect(prompt).toContain("13-22 items");
+    expect(prompt).toContain("8-13 sections");
   });
 
-  it("never asks for more items than the schema will accept", () => {
+  it("never asks for more sections than the schema will accept", () => {
     // A count the prompt asks for and the schema then refuses is a card that
     // fails validation for doing as it was told.
     for (const minutes of [1, 2, 3, 5, 7, 10]) {
       const prompt = cardPrompt(withSettings({ minutes }));
-      const range = /(\d+)-(\d+) items/.exec(prompt);
+      const range = /(\d+)-(\d+) sections/.exec(prompt);
       expect(range).not.toBeNull();
-      expect(Number(range![2])).toBeLessThanOrEqual(MAX_MECHANISM_ITEMS);
+      expect(Number(range![2])).toBeLessThanOrEqual(MAX_MECHANISM_SECTIONS);
       expect(Number(range![1])).toBeGreaterThanOrEqual(1);
     }
   });
@@ -748,7 +758,9 @@ describe("atomsPrompt", () => {
     const prompt = atomsPrompt({ node, card: bare, content: contentSettingsOf(topic) });
     expect(prompt).not.toContain("Worked example:");
     expect(prompt).not.toContain("Misconception:");
-    expect(prompt).toContain("Mechanism: The API server holds desired state.");
+    // The heading goes down with its body: a drill is written against what the
+    // card said, and dropping it loses the step the paragraph is about.
+    expect(prompt).toContain("Mechanism: The loop. The API server holds desired state.");
   });
 });
 

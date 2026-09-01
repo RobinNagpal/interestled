@@ -492,7 +492,7 @@ describe("card generation", () => {
 
   const CARD = JSON.stringify({
     claim: "A pod is the unit of scheduling.",
-    mechanism: ["The scheduler places pods."],
+    mechanism: [{ heading: "What schedules a pod", body: "The scheduler places pods." }],
     example: { setup: "3 replicas, one node dies", result: "a new pod in 4s" },
     misconception: { belief: "kubectl creates it", correction: "the controller does" },
     jargon: [],

@@ -235,7 +235,7 @@ that counter guards the questions endpoints only. Gating the build on it too wou
 a learner who had just answered seven questions that they could not have the map.
 
 **What the model writes is Markdown, and it is rendered as Markdown.** Every string
-value the model returns — claims, mechanism items, drill prompts, review answers,
+value the model returns — claims, mechanism bodies, drill prompts, review answers,
 verdict notes — reaches the screen through `Markdown` / `InlineMarkdown` in
 `packages/ui`, which parse the subset the system prompt asks for: inline emphasis, code
 spans, links, and bullet, numbered and fenced blocks. A plain `<Text>` shows the
@@ -278,15 +278,18 @@ every card view.
 
 **A card is one explanation, not six notes about the same subject.** The slots are
 read top to bottom in one sitting, so each one starts from what the one above it
-established: the mechanism items are a chain in order rather than a set, the example
+established: the mechanism sections are a chain in order rather than a set, the example
 is that mechanism happening, and the misconception is a belief still holdable after
 reading both. Two things in the prompts do the work, and both are easy to undo by
-accident. `card.md` bans the label pattern (`Central bank monetization: the Reichsbank
-bought…` — a heading glued to a sentence), which is what a model reaches for when
-asked for "separate" items. And the `SYSTEM` rule is *cut recaps*, not *cut
-transitions*: guideline A17 is about the three minutes of "last time we covered", and
-reading it as a ban on connectives is what produced cards written as disconnected
-fragments. Both halves are covered by tests.
+accident. `card.md` says what a heading is for — the step of the argument the paragraph
+under it makes, never the name of a term — because a card whose headings are terms is a
+glossary whatever the schema says, and the paragraphs under them stop needing each
+other. (It used to ban the label outright, when the mechanism was bare strings and
+`Central bank monetization: the Reichsbank bought…` was the only place a name could go.
+There is somewhere to put it now; the failure it was guarding against is unchanged.)
+And the `SYSTEM` rule is *cut recaps*, not *cut transitions*: guideline A17 is about the
+three minutes of "last time we covered", and reading it as a ban on connectives is what
+produced cards written as disconnected fragments. Both halves are covered by tests.
 
 **Changing how a card is written reaches nobody until `CARD_PROMPT_REVISION` moves.**
 Cards are cached forever, keyed by `(nodeId, depth, cardVariant(settings))`, so a
@@ -319,16 +322,26 @@ a rewrite of an old row is one the ceiling never counts.
 **A card is written to the learner's read time, not to a constant.** `CARD_MINUTES_MAX`
 is the ceiling one card can hold, and `CardContent`'s limits are the outer bound of a
 card that long — not the size of an ordinary one, which is the minutes in the settings.
-Length arrives as more mechanism items, never longer ones: `MECHANISM_SHARE` of the
-words are the mechanism, and that budget divided by `MECHANISM_ITEM_WORDS` is the item
-count `mechanismItems` asks for. Do not also fix the count — a fixed count and a fixed
-item length between them already decide a card's length, and naming a read time as well
-is what left the read time as the part that gave way. `MAX_MECHANISM_ITEMS` is derived
-from the same constants, so a count the prompt asks for can never be one the schema
-refuses. Changing a topic's `averageReadTime` rescales its leaves' minutes
+Length arrives as more mechanism sections, never longer ones: `MECHANISM_SHARE` of the
+words are the mechanism, and that budget divided by `MECHANISM_SECTION_WORDS` is the
+count `mechanismSections` asks for. Do not also fix the count — a fixed count and a
+fixed section length between them already decide a card's length, and naming a read time
+as well is what left the read time as the part that gave way. `MAX_MECHANISM_SECTIONS`
+is derived from the same constants, so a count the prompt asks for can never be one the
+schema refuses. Changing a topic's `averageReadTime` rescales its leaves' minutes
 (`rescaleMinutes` in `topics.ts`), because the node's own estimate is what the default
 card length is capped to: without that the setting is half-applied and a ten-minute
 topic still writes three-minute cards.
+
+**The mechanism is headed sections, and the heading is a title.** `mechanism` is
+`{heading, body}[]`: a short paragraph with a name over it, because thirty unlabelled
+items running down a ten-minute card give the reader nothing to navigate by. The heading
+is plain text like every other title in the product — set as a heading rather than
+parsed as one, so a `**` in it renders as asterisks — and the body is Markdown like the
+rest of the card. Anything downstream of the card takes both: `mechanismProse` in
+`prompts.ts` joins each heading to its body for the drill and review calls, because a
+drill is written against what the card said and dropping the heading loses the step the
+paragraph is about.
 
 **`example` and `misconception` are written where they apply, not always.** A node that
 is itself one case has no second case to instantiate it with, and a descriptive node has
