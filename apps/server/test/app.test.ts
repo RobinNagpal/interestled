@@ -4,6 +4,7 @@ import {
   DEFAULT_AVERAGE_READ_TIME,
   LearningStyle,
   LlmProviderId,
+  NodeStatus,
   ReadTime,
   TimeBudget,
   TopicArchetype,
@@ -376,5 +377,146 @@ describe("profile", () => {
       body: JSON.stringify({ age: null, background: "", learningStyles: ["visuals", "visuals"] }),
     });
     expect(writes[0]?.data).toMatchObject({ learningStyles: ["visuals"] });
+  });
+});
+
+/**
+ * The card route, end to end against a stub row store. What it is here to catch
+ * is the map reaching the prompt: a card written from its own title alone
+ * re-explains the nodes before it and spends the ones after it, and nothing else
+ * in the suite would notice if the outline stopped being sent.
+ */
+describe("card generation", () => {
+  /** A two-level map: one group, three nodes, the middle one being written. */
+  function mapRows(): Record<string, unknown>[] {
+    const base = {
+      topicId: "t1",
+      minutes: 3,
+      archetype: TopicArchetype.Tool,
+      status: NodeStatus.Untouched,
+      capability: "do it",
+      createdAt: new Date(),
+    };
+    const leaf = (id: string, slug: string, title: string, orderIndex: number) => ({
+      ...base,
+      id,
+      parentId: "g1",
+      path: `pods/${slug}`,
+      title,
+      claim: "c",
+      orderIndex,
+    });
+    return [
+      // A branch, so minutes 0: nobody sits down and reads a heading.
+      { ...base, id: "g1", parentId: null, path: "pods", title: "Pods and containers", claim: "c", minutes: 0, orderIndex: 0 },
+      leaf("n1", "what-a-pod-is", "What a pod is", 0),
+      leaf("n2", "restarts", "Restarts and probes", 1),
+      leaf("n3", "probes-in-anger", "Probes in anger", 2),
+    ];
+  }
+
+  const CARD = JSON.stringify({
+    claim: "A pod is the unit of scheduling.",
+    mechanism: ["The scheduler places pods."],
+    example: { setup: "3 replicas, one node dies", result: "a new pod in 4s" },
+    misconception: { belief: "kubectl creates it", correction: "the controller does" },
+    jargon: [],
+  });
+
+  function cardDb(rows: Record<string, unknown>[], nodeId: string): { db: Db; statuses: object[] } {
+    const statuses: object[] = [];
+    const db = {
+      authSession: {
+        findUnique: vi.fn(async () => ({
+          token: "good",
+          userId: "u1",
+          expiresAt: new Date(Date.now() + 60_000),
+          user: { id: "u1", defaultDepth: 2 },
+        })),
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+      },
+      user: {
+        findUniqueOrThrow: vi.fn(async () => ({ age: null, background: "", learningStyles: [] })),
+      },
+      learningNode: {
+        findFirst: vi.fn(async () => ({
+          ...rows.find((row) => row.id === nodeId)!,
+          prerequisites: [],
+          topic: topicRow(),
+        })),
+        // A leaf: nothing hangs off it, so it has a card rather than children.
+        count: vi.fn(async () => 0),
+        findMany: vi.fn(async () => rows.map((row) => ({ ...row, prerequisites: [] }))),
+        update: vi.fn(async ({ data }: { data: object }) => {
+          statuses.push(data);
+          return { ...rows.find((row) => row.id === nodeId)!, ...data, prerequisites: [] };
+        }),
+      },
+      conceptCard: {
+        findUnique: vi.fn(async () => null),
+        upsert: vi.fn(async () => ({})),
+      },
+    };
+    return { db: db as unknown as Db, statuses };
+  }
+
+  /** Records what actually reached the model. */
+  function recording(): { provider: () => LlmProvider; prompts: string[] } {
+    const prompts: string[] = [];
+    return {
+      prompts,
+      provider: () => ({
+        id: LlmProviderId.Gemini,
+        model: "test",
+        complete: async (request) => {
+          prompts.push(request.prompt);
+          return CARD;
+        },
+      }),
+    };
+  }
+
+  it("sends the whole map, with this node marked, and marks the node seen", async () => {
+    const { db, statuses } = cardDb(mapRows(), "n2");
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
+      headers: { Authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      content: { claim: "A pod is the unit of scheduling." },
+      node: { status: NodeStatus.Seen },
+    });
+    // Reading advances a node to Seen and no further.
+    expect(statuses).toEqual([{ status: NodeStatus.Seen }]);
+
+    const prompt = prompts[0] ?? "";
+    expect(prompt).toContain("- Pods and containers");
+    expect(prompt).toContain("  - What a pod is");
+    expect(prompt).toContain("  - Restarts and probes  ← WRITE THIS ONE");
+    expect(prompt).toContain("  - Probes in anger");
+    expect(prompt).toContain("has been covered already");
+  });
+
+  it("does not read the map when the card is already cached", async () => {
+    const { db } = cardDb(mapRows(), "n2");
+    const cached = db as unknown as {
+      conceptCard: { findUnique: ReturnType<typeof vi.fn> };
+      learningNode: { findMany: ReturnType<typeof vi.fn> };
+      user: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
+    };
+    cached.conceptCard.findUnique = vi.fn(async () => ({ content: JSON.parse(CARD) }));
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
+      headers: { Authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(prompts).toEqual([]);
+    // One findMany, for the prerequisite notes — the outline query is on a miss
+    // only, or a hit costs a second read of every node in the topic.
+    expect(cached.learningNode.findMany).toHaveBeenCalledTimes(1);
+    expect(cached.user.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 });

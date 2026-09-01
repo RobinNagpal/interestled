@@ -621,12 +621,40 @@ export function spansToText(spans: readonly MarkdownSpanT[]): string {
     .join("");
 }
 
-/** Markdown with its marks taken off — for a preview line or an accessibility label. */
+/** The schemes a written link may name. `javascript:` is deliberately not one. */
+const SAFE_SCHEME = /^(?:https?:|mailto:)/i;
+/** A bare domain, which is what gets written when the scheme is forgotten. */
+const BARE_DOMAIN = /^[\w-]+(?:\.[\w-]+)+(?:[/?#]|$)/;
+
+/**
+ * Where a link may actually go, or null when it may not go anywhere.
+ *
+ * The href is written by the model, and the model is steerable by the learner's
+ * own standing instructions, so this is the one place a card's content could ask
+ * the app to run something rather than open something. Only the schemes a real
+ * reference uses are opened, a bare domain gets the scheme it meant, and
+ * anything else is drawn as the words it is rather than as a link.
+ */
+export function linkTarget(href: string): string | null {
+  const trimmed = href.trim();
+  if (SAFE_SCHEME.test(trimmed)) {
+    return trimmed;
+  }
+  return BARE_DOMAIN.test(trimmed) ? `https://${trimmed}` : null;
+}
+
+/**
+ * Markdown with its marks taken off — for a preview line or an accessibility
+ * label. It comes back as one line: the callers are places that hold one, and a
+ * newline out of a code block or a blank list item would show as a gap in it.
+ */
 export function plainText(source: string): string {
   return parseMarkdown(source)
     .map(plainTextOfBlock)
     .filter((line) => line !== "")
-    .join(" ");
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function plainTextOfBlock(block: MarkdownBlockT): string {

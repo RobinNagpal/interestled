@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MarkdownBlockKind,
   MarkdownSpanKind,
+  linkTarget,
   parseMarkdown,
   parseSpans,
   plainText,
@@ -167,10 +168,161 @@ describe("parseMarkdown", () => {
   });
 });
 
+describe("linkTarget", () => {
+  it("opens the schemes a reference actually uses", () => {
+    expect(linkTarget("https://kubernetes.io/docs")).toBe("https://kubernetes.io/docs");
+    expect(linkTarget("http://example.com")).toBe("http://example.com");
+    expect(linkTarget("mailto:someone@example.com")).toBe("mailto:someone@example.com");
+  });
+
+  it("gives a bare domain the scheme it meant", () => {
+    expect(linkTarget("kubernetes.io/docs")).toBe("https://kubernetes.io/docs");
+  });
+
+  it("refuses anything that would run rather than open", () => {
+    // The href is model-written, and the model is steerable by the learner's own
+    // standing instructions, so this is the one place content could ask the app
+    // to execute something.
+    expect(linkTarget("javascript:alert(1)")).toBeNull();
+    expect(linkTarget("  JavaScript:alert(1)")).toBeNull();
+    expect(linkTarget("data:text/html,<script>alert(1)</script>")).toBeNull();
+    expect(linkTarget("file:///etc/passwd")).toBeNull();
+    expect(linkTarget("")).toBeNull();
+  });
+});
+
 describe("plainText", () => {
   it("strips the marks for the places that can only take a string", () => {
     expect(plainText("**Pods** are `ephemeral`\n\n- and they are replaced")).toBe(
       "Pods are ephemeral and they are replaced",
     );
+  });
+
+  it("comes back as one line, whatever it was", () => {
+    // It fills the resume card, which holds a single line.
+    expect(plainText("Run:\n\n```sh\nkubectl get pods\nkubectl top pods\n```")).toBe(
+      "Run: kubectl get pods kubectl top pods",
+    );
+  });
+});
+
+describe("the shapes a model actually produces", () => {
+  it("keeps a table as text, since nothing renders one", () => {
+    // The system prompt bans tables; one arriving anyway must not vanish.
+    const blocks = parseMarkdown("| a | b |\n| --- | --- |\n| 1 | 2 |");
+    expect(kinds(blocks)).toEqual([MarkdownBlockKind.Paragraph]);
+    expect(plainText("| a | b |")).toContain("a");
+  });
+
+  it("keeps a code block written inside a list item", () => {
+    const list = firstList(
+      parseMarkdown("1. Run it:\n\n   ```sh\n   kubectl get pods\n   ```\n\n2. Then check."),
+    );
+    if (list.kind !== MarkdownBlockKind.OrderedList) {
+      throw new Error("expected an ordered list");
+    }
+    expect(list.items).toHaveLength(2);
+    expect(kinds(list.items[0]!.blocks)).toEqual([
+      MarkdownBlockKind.Paragraph,
+      MarkdownBlockKind.Code,
+    ]);
+  });
+
+  it("reads a list inside a quote", () => {
+    const [quote] = parseMarkdown("> quoted\n> - with a list\n> - inside it");
+    if (quote?.kind !== MarkdownBlockKind.Quote) {
+      throw new Error("expected a quote");
+    }
+    expect(kinds(quote.blocks)).toEqual([
+      MarkdownBlockKind.Paragraph,
+      MarkdownBlockKind.BulletList,
+    ]);
+  });
+
+  it("keeps an item with nothing in it, rather than losing the one after it", () => {
+    const list = firstList(parseMarkdown("- \n- item after an empty bullet"));
+    if (list.kind !== MarkdownBlockKind.BulletList) {
+      throw new Error("expected a bullet list");
+    }
+    expect(list.items).toHaveLength(2);
+    expect(list.items[0]!.blocks).toEqual([]);
+    expect(plainText("- \n- item after an empty bullet")).toBe("item after an empty bullet");
+  });
+
+  it("numbers past nine, where a fixed-width gutter used to wrap", () => {
+    const text = Array.from({ length: 12 }, (_, index) => `${index + 1}. step`).join("\n");
+    const list = firstList(parseMarkdown(text));
+    if (list.kind !== MarkdownBlockKind.OrderedList) {
+      throw new Error("expected an ordered list");
+    }
+    expect(list.items).toHaveLength(12);
+  });
+});
+
+/** Deterministic, so a failure here is a failure anyone can reproduce. */
+function rng(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+function randomText(next: () => number, chars: readonly string[], length: number): string {
+  let out = "";
+  for (let index = 0; index < length; index += 1) {
+    out += chars[Math.floor(next() * chars.length)]!;
+  }
+  return out;
+}
+
+/**
+ * The model writes whatever it writes, and a card that throws is a card the
+ * learner cannot read at all. These are the two properties that matter: it
+ * always finishes, and it never silently eats the text.
+ */
+describe("whatever the model writes", () => {
+  const MARKS = [..."abc *_`~#>-+.!()[]\\|123\n \t"];
+  // Fences carry an info string that is structure rather than prose, so they are
+  // left out of the "nothing is lost" run and covered by their own test above.
+  const NO_FENCES = [..."abc *_#>-+.\n \t"];
+
+  it("always finishes, whatever it is given", () => {
+    const next = rng(12345);
+    for (let round = 0; round < 2000; round += 1) {
+      const text = randomText(next, MARKS, 1 + Math.floor(next() * 120));
+      const started = Date.now();
+      expect(Array.isArray(parseMarkdown(text))).toBe(true);
+      expect(Date.now() - started).toBeLessThan(500);
+    }
+  });
+
+  it("never drops a letter on the way through", () => {
+    const next = rng(777);
+    for (let round = 0; round < 2000; round += 1) {
+      const text = randomText(next, NO_FENCES, 1 + Math.floor(next() * 120));
+      expect(plainText(text).replace(/[^a-z]/g, "")).toBe(text.replace(/[^a-z]/g, ""));
+    }
+  });
+
+  it("does not stall on the pathological cases", () => {
+    const cases = [
+      "*".repeat(400),
+      "`".repeat(400),
+      "**".repeat(200),
+      "[a](".repeat(100),
+      "- ".repeat(200),
+      "> ".repeat(200),
+      "  ".repeat(200) + "- deep",
+      "```".repeat(50),
+      "*a".repeat(300),
+      "a".repeat(5000),
+    ];
+    const started = Date.now();
+    for (const text of cases) {
+      parseMarkdown(text);
+      plainText(text);
+    }
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 });

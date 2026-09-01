@@ -7,8 +7,9 @@ The whole map, in the order it is read, with this node marked:
 
 Write this node as one part of that sequence, continuous with the rest:
 - Everything above the marked node has been covered already. Build on it, and
-  name it where that helps ("the loop from Reconciliation"), but never explain it
-  again.
+  never explain it again — but name it when this node leans on it ("the loop from
+  Reconciliation"), because nothing on the map is locked and a reader can arrive
+  here first.
 - Everything below it is still to come. Do not pre-empt it; at most name what
   comes next, in one clause.
 - Stay inside this node's own claim. Two nodes covering the same ground is the
