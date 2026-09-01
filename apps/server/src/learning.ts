@@ -11,6 +11,7 @@ import {
   DrillKind,
   DrillKindSchema,
   EnglishLevelSchema,
+  LlmTask,
   NodeStatus,
   NodeStatusSchema,
   TechnicalDetailSchema,
@@ -174,7 +175,12 @@ function settingsFrom(
   };
 }
 
-export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv> {
+/**
+ * Every model call in this file writes inside a map the learner already has —
+ * a card, a drill, a verdict, a review item — so every one of them asks for the
+ * content model.
+ */
+export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
 
   /**
@@ -189,7 +195,7 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
 
     const content = await cardFor(
       db,
-      provider(),
+      provider(LlmTask.Content),
       userId,
       topic,
       node,
@@ -243,13 +249,13 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
     }
     const card = await cardFor(
       db,
-      provider(),
+      provider(LlmTask.Content),
       userId,
       topic,
       node,
       defaultCardSettings(topic, node, c.get("defaultDepth")),
     );
-    const generated = await generateDrill(provider(), {
+    const generated = await generateDrill(provider(LlmTask.Content), {
       node,
       kind,
       card,
@@ -279,7 +285,7 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
     const node = toNode(drillRow.node);
     const topic = toTopic(drillRow.node.topic);
 
-    const verdict = await gradeAttempt(provider(), {
+    const verdict = await gradeAttempt(provider(LlmTask.Content), {
       prompt: drill.prompt,
       referencePoints: drill.referencePoints,
       response: input.response,
@@ -315,7 +321,7 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
         // already moved, so a model failure here must not turn a successful
         // attempt into an error the learner sees. The next pass retries it.
         const settings = defaultCardSettings(topic, node, c.get("defaultDepth"));
-        await createAtoms(db, provider(), userId, topic, node, settings).catch((error: unknown) => {
+        await createAtoms(db, provider(LlmTask.Content), userId, topic, node, settings).catch((error: unknown) => {
           console.error("atom extraction failed", error);
         });
       }

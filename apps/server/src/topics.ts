@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import {
   MAX_NODE_MINUTES,
   MapAnswers,
+  LlmTask,
   MapQuestionSet,
   MoveDirection,
   MoveDirectionSchema,
@@ -357,7 +358,11 @@ async function linkPlan(
   await db.mapPlan.updateMany({ where: { id: planId, userId }, data: { topicId, answers } });
 }
 
-export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv> {
+/**
+ * Every model call in this file builds map structure — the seven choices, the
+ * whole map, and one group of it — so every one of them asks for the map model.
+ */
+export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
 
   router.get("/", async (c) => {
@@ -402,7 +407,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     const userId = c.get("userId");
     await assertWithinBudget(db, userId, { newTopic: true, newPlan: true });
     return c.json(
-      await createPlan(db, provider(), userId, null, {
+      await createPlan(db, provider(LlmTask.Map), userId, null, {
         title: input.title,
         goal: input.goal,
         timeBudget: input.timeBudget,
@@ -433,7 +438,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
       orderBy: { orderIndex: "asc" },
     });
     return c.json(
-      await createPlan(db, provider(), userId, topic.id, {
+      await createPlan(db, provider(LlmTask.Map), userId, topic.id, {
         title: topic.title,
         goal: topic.goal,
         timeBudget: topic.timeBudget,
@@ -475,7 +480,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
       },
     });
     await linkPlan(db, userId, input.planId, created.id, input.answers);
-    const failure = await buildMap(db, provider(), toTopic(created), input.levels, "", chosen);
+    const failure = await buildMap(db, provider(LlmTask.Map), toTopic(created), input.levels, "", chosen);
     if (failure !== null) {
       return c.json({ error: failure, topicSlug: created.slug }, 502);
     }
@@ -501,7 +506,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
       where: { id: topic.id },
       data: { status: TopicStatus.Generating, error: null, levels },
     });
-    const failure = await buildMap(db, provider(), topic, levels, input.instructions, chosen);
+    const failure = await buildMap(db, provider(LlmTask.Map), topic, levels, input.instructions, chosen);
     if (failure !== null) {
       return c.json({ error: failure, topicSlug: topic.slug }, 502);
     }
@@ -601,7 +606,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
       (candidate) => candidate.parentId === node.parentId && candidate.id !== node.id,
     );
     const generated = await generateSubtree(
-      provider(),
+      provider(LlmTask.Map),
       {
         topic,
         trail: [...ancestorsOf(node, nodes).map((row) => row.title), node.title],

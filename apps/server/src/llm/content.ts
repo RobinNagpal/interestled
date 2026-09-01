@@ -54,8 +54,19 @@ export type GeneratedDrillT = z.infer<typeof GeneratedDrill>;
 
 const AtomList = z.object({ atoms: z.array(GeneratedAtom).min(1).max(6) });
 
-/** The map is the product's spine, so it is the one call worth more tokens. */
-const MAP_OUTPUT_TOKENS = 8192;
+/**
+ * What the map-shaped calls may spend, thinking included.
+ *
+ * The map is the product's spine, so it was always the call worth more tokens.
+ * The number moved when the map moved onto a reasoning model: Gemini 3 Pro
+ * cannot be told not to think, and its thinking is spent from this same
+ * allowance — a budget sized for the reply alone gets eaten by the reasoning and
+ * returns MAX_TOKENS with half a document, or with nothing at all. Comfortably
+ * under the 64k a Gemini 3 model will emit, because the cost of being wrong here
+ * is a generation that fails rather than tokens actually spent: nothing bills
+ * for headroom the model does not use.
+ */
+const MAP_OUTPUT_TOKENS = 32768;
 
 export interface MapInput {
   title: string;
@@ -71,16 +82,6 @@ export interface MapInput {
   /** The seven choices, resolved. Empty when the learner skipped every one. */
   chosen: readonly ChosenOptionT[];
 }
-
-/**
- * Seven questions, four options each, most of them carrying several lines of
- * sample — twenty-eight samples is more text than the map itself, and it is one
- * of the two calls in the app that a thinking model spends real tokens
- * deliberating over before it writes anything. Sharing the map's budget is what
- * makes the whole reply arrive cut in half, which reaches the learner as a shape
- * error rather than as the budget it is.
- */
-const QUESTIONS_OUTPUT_TOKENS = 16384;
 
 const QuestionList = z.object({ questions: MapQuestionSet });
 
@@ -117,7 +118,9 @@ export async function generateMapQuestions(
     prompt: mapQuestionsPrompt(input),
     schema: QuestionList,
     temperature: 0.4,
-    maxOutputTokens: QUESTIONS_OUTPUT_TOKENS,
+    // Twenty-eight samples is more text than a map, and it runs on the map's
+    // model, so it gets the map's allowance.
+    maxOutputTokens: MAP_OUTPUT_TOKENS,
   });
   return result.questions;
 }
