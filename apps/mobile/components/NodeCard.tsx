@@ -4,7 +4,15 @@ import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useCard } from "@interestled/api";
 import { drillHref, nodeHref } from "@interestled/domain";
-import { Button, ErrorState, JargonList, LoadingContent, SectionTitle } from "@interestled/ui";
+import {
+  Button,
+  ErrorState,
+  InlineMarkdown,
+  JargonList,
+  LoadingContent,
+  Markdown,
+  SectionTitle,
+} from "@interestled/ui";
 import { DepthAction } from "@interestled/schemas";
 import type { CardDepthT, LearningNodeT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
@@ -59,7 +67,7 @@ export function NodeCard({
     <ScrollView contentContainerClassName="gap-5 p-4">
       <View className="gap-1">
         {/* The claim first: the answer arrives before any context. */}
-        <Text className="text-xl font-semibold text-ink">{content.claim}</Text>
+        <InlineMarkdown text={content.claim} className="text-xl font-semibold text-ink" />
       </View>
 
       {/* Advisory, not a gate. A live question is the strongest motivation the
@@ -90,22 +98,26 @@ export function NodeCard({
       <View className="gap-3 rounded-card bg-surface p-4">
         <SectionTitle>Why it behaves this way</SectionTitle>
         {content.mechanism.map((line, index) => (
-          <Text key={index} className="text-base leading-6 text-ink">
-            {line}
-          </Text>
+          <Markdown key={index} text={line} />
         ))}
       </View>
 
       <View className="gap-2 rounded-card bg-surface p-4">
         <SectionTitle>Concretely</SectionTitle>
-        <Text className="text-base leading-6 text-ink">{content.example.setup}</Text>
-        <Text className="text-base leading-6 text-ink-soft">→ {content.example.result}</Text>
+        <Markdown text={content.example.setup} />
+        <Markdown
+          text={`→ ${content.example.result}`}
+          className="text-base leading-6 text-ink-soft"
+        />
       </View>
 
       <View className="gap-2 rounded-card bg-surface p-4">
         <SectionTitle>What people get wrong</SectionTitle>
-        <Text className="text-base leading-6 text-ink-soft">{content.misconception.belief}</Text>
-        <Text className="text-base leading-6 text-ink">{content.misconception.correction}</Text>
+        <Markdown
+          text={content.misconception.belief}
+          className="text-base leading-6 text-ink-soft"
+        />
+        <Markdown text={content.misconception.correction} />
       </View>
 
       <JargonList terms={content.jargon} />

@@ -88,10 +88,23 @@ async function cardFor(
   if (cached !== null) {
     return CardContent.parse(cached.content);
   }
-  // Read only on a miss. A hit is the normal case, and the profile is only ever
-  // needed by the prompt, so this must not become a query on every card view.
-  const profile = await loadProfile(db, userId);
-  const content = await generateCard(provider, { topic, node, depth, variant, profile });
+  // Read only on a miss. A hit is the normal case, and neither the profile nor
+  // the rest of the map is needed anywhere but the prompt, so this must not
+  // become two queries on every card view.
+  const [profile, rows] = await Promise.all([
+    loadProfile(db, userId),
+    db.learningNode.findMany({ where: { topicId: topic.id } }),
+  ]);
+  // The whole map goes to the prompt: a card written from its own title alone
+  // re-explains the nodes before it and spends the ones after it.
+  const content = await generateCard(provider, {
+    topic,
+    node,
+    nodes: rows.map(toNode),
+    depth,
+    variant,
+    profile,
+  });
   // Two concurrent readers of the same uncached card both generate, and the
   // slower insert would collide on the unique key. The row is identical either
   // way, so treat the collision as the cache hit it effectively is.

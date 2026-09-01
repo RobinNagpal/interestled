@@ -12,6 +12,7 @@ import {
 import {
   EmptyState,
   ErrorState,
+  InlineMarkdown,
   Minutes,
   NodeStatusDot,
   SectionTitle,
@@ -141,8 +142,11 @@ function GroupScreen({
   return (
     <ScrollView contentContainerClassName="gap-4 p-4">
       <View className="gap-1">
-        <Text className="text-lg text-ink">{node.claim}</Text>
-        <Text className="text-sm text-ink-soft">You will be able to {node.capability}.</Text>
+        <InlineMarkdown text={node.claim} className="text-lg text-ink" />
+        <InlineMarkdown
+          text={`You will be able to ${node.capability}.`}
+          className="text-sm text-ink-soft"
+        />
       </View>
       <SectionTitle>What is in here</SectionTitle>
       {children.map((child) => (
@@ -155,9 +159,11 @@ function GroupScreen({
           {isBranch(child, nodes) ? null : <NodeStatusDot status={child.status} />}
           <View className="flex-1 gap-0.5">
             <Text className="text-base font-medium text-ink">{child.title}</Text>
-            <Text className="text-sm text-ink-soft" numberOfLines={2}>
-              {child.claim}
-            </Text>
+            <InlineMarkdown
+              text={child.claim}
+              className="text-sm text-ink-soft"
+              numberOfLines={2}
+            />
             <View className="flex-row items-center gap-2">
               <Minutes value={rollupMinutes(child, nodes)} />
               {isBranch(child, nodes) ? null : (

@@ -344,6 +344,16 @@ It also forces the generator to produce the two parts that are normally missing 
 the real learning happens. The card opens on the claim, so the answer arrives before any
 context does.
 
+Each card is written into the map rather than beside it: the generator is given every
+heading of the topic, in reading order, with the node it is writing marked. What sits
+above that mark has been covered and is not explained again; what sits below it is not
+spent early. Without that, every card opens by re-teaching the three before it, which is
+the preamble problem arriving one node at a time.
+
+What comes back is Markdown, and it is drawn as Markdown — `kubectl get pods` set as
+code, a list of parallel items set as a list. The alternative is the marks themselves on
+the screen, which is the app showing its working.
+
 - *The ideal:* a fixed, predictable structure removes a cost the reader is otherwise
   paying on every page, and the fixed slots force the author to write the hard parts.
 - *Seen in the wild:* **Bartosz Ciechanowski's explainers** (bartoszciechanowski.com,

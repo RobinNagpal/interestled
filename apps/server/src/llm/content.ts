@@ -141,9 +141,21 @@ export async function generateSubtree(
   );
 }
 
+/**
+ * One card. `nodes` is the whole map: the prompt puts the node in its place in
+ * it, which is what stops every card opening by re-explaining the three before
+ * it (see mapOutline in ./outline).
+ */
 export function generateCard(
   provider: LlmProvider,
-  input: { topic: TopicT; node: LearningNodeT; depth: number; variant: string; profile: ProfileT },
+  input: {
+    topic: TopicT;
+    node: LearningNodeT;
+    nodes: readonly LearningNodeT[];
+    depth: number;
+    variant: string;
+    profile: ProfileT;
+  },
 ): Promise<CardContentT> {
   return generateJson(provider, {
     system: SYSTEM,

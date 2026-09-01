@@ -14,6 +14,7 @@ import type {
   TopicContentSettingsT,
   TopicT,
 } from "@interestled/schemas";
+import { mapOutline } from "./outline";
 import { promptFile } from "./promptFiles";
 import { render } from "./template";
 
@@ -245,6 +246,12 @@ const CARD_MINUTES_MAX = 4;
 export function cardPrompt(input: {
   topic: TopicT;
   node: LearningNodeT;
+  /**
+   * Every node of this topic, so the card is written into the map rather than
+   * beside it: what came before it is not re-explained, and what comes after it
+   * is not spent early.
+   */
+  nodes: readonly LearningNodeT[];
   depth: number;
   variant: string;
   profile: ProfileT;
@@ -261,6 +268,7 @@ export function cardPrompt(input: {
     topic: input.topic.title,
     node: input.node.title,
     claim: input.node.claim,
+    outline: mapOutline(input.nodes, input.node),
     depthGuide: DEPTH_GUIDE[input.depth] ?? DEPTH_GUIDE[3]!,
     variantGuide: VARIANT_GUIDE[input.variant] ?? "",
     learner: learnerBlock(input.profile),
