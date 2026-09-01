@@ -2,18 +2,16 @@ Someone is about to have a knowledge map built for them. Before you build it,
 give them seven choices about what it should look like.
 
 They asked to learn: {{title}}
-What they want to be able to do: {{goal}}
-Time available: {{timeBudget}}
-{{^level}}They did not say where they are starting from.{{/level}}{{#level}}Where they are now and where they want to get to:
-{{level}}
-No option should cover what they already have, and none should go past where
-they said they want to get to.{{/level}}
-The map will have {{levelCount}} levels.
+{{^goal}}They did not say what they want it for.{{/goal}}{{#goal}}How they plan to use this:
+{{goal}}{{/goal}}
+{{^level}}They did not say what they already know.{{/level}}{{#level}}What they already know:
+{{level}}{{/level}}
+
+How they want the map built:
+{{mapInstructions}}
 
 {{learner}}
 {{contentRules}}
-{{instructions}}
-{{current}}
 
 Each question has exactly four options. An option is a short label and a sample.
 
@@ -52,20 +50,23 @@ Ask these seven, in this order. The "kind" is the exact string in the JSON.
 2. kind "breakdown" — take the heading that will carry the most of this subject
    and break it up four different ways, 3-5 items each. Name that heading in the
    question. The sample is the items, one per line.
-3. kind "scope" — four things the map could leave out to stay short. Each option
-   names what goes, not what stays. The sample is the specific things dropped.
-4. kind "examples" — four kinds of worked example. The sample is the first line
+3. kind "known" — read what they said they already know and turn it into four
+   sets of headings the map could drop because of it. Each set is 2-4 named
+   things, and each is a different reading of what they wrote: the literal one,
+   a wider one that assumes the neighbouring ideas too, a narrower one that
+   keeps anything they might only half know, and one that drops nothing because
+   what they wrote does not cover this subject's own material. The sample is the
+   headings that would go. If they said nothing about what they know, ask instead
+   which parts of this subject people usually arrive already knowing.
+4. kind "recap" — for whatever comes out under the last question, four ways it
+   could still be mentioned on the way past: not at all, one line naming it, a
+   short refresher, or kept in full after all. The sample is what that would look
+   like for one of the things being dropped.
+5. kind "scope" — four things the map could leave out to stay inside the time
+   they have. Each option names what goes, not what stays. The sample is the
+   specific things dropped.
+6. kind "examples" — four kinds of worked example. The sample is the first line
    or two of an actual example of that kind, from this subject.
-5. kind "code" — four ways code could appear: none at all, one-line commands,
-   a few lines, a short annotated block — whatever the real choices are here. The
-   sample is actual code, in backticks, and a few lines of it at most; for the
-   option with no code in it, the sample is the same thing said in words. If this
-   subject has no code anywhere, ask the same question about what they would
-   actually be looking at: a sentence to take apart, a bar of music, a lab
-   result, a page of accounts.
-6. kind "numbers" — four ways numbers could appear: none, rough sizes, real
-   figures, worked arithmetic, the formula itself. The sample is actual numbers
-   or an actual formula from this subject.
 7. kind "opening" — pick one thing from this subject that will get its own short
    write-up, and open it four different ways. Name that thing in the question.
    Each sample is the first two sentences, written as they would really be

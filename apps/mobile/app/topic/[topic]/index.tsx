@@ -25,7 +25,7 @@ import {
   LoadingContent,
   statusLabel,
 } from "@interestled/ui";
-import { NodeStatus, TopicStatus } from "@interestled/schemas";
+import { NodeStatus, TopicStatus, mapShapeOf } from "@interestled/schemas";
 import type { LearningNodeT } from "@interestled/schemas";
 import { messageOf } from "../../../lib/errors";
 import { backHeader } from "../../../lib/nav";
@@ -111,7 +111,7 @@ export default function TopicScreen(): ReactElement {
           // build that failed was made from, which is what the hint above
           // promises. Asking the seven questions again here would be asking
           // someone to redo work that was never lost.
-          onPress={() => regenerate.mutate({ instructions: "", answers: [] })}
+          onPress={() => regenerate.mutate({ ...mapShapeOf(topic.data.topic), mapInstructions: topic.data.topic.mapInstructions, answers: [] })}
           busy={regenerate.isPending}
         />
         {regenerate.isError ? <ErrorState message={messageOf(regenerate.error)} /> : null}

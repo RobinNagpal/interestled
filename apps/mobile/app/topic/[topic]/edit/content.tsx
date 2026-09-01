@@ -15,9 +15,11 @@ import {
   LoadingContent,
   SectionTitle,
   TECHNICAL_COPY,
+  PARAGRAPH_OPTIONS,
   TECHNICAL_OPTIONS,
 } from "@interestled/ui";
 import { READ_TIMES, ReadTimeSchema } from "@interestled/schemas";
+import type { ParagraphLength } from "@interestled/schemas";
 import type {
   ContentFormat,
   EnglishLevel,
@@ -25,7 +27,9 @@ import type {
   TopicContentSettingsT,
   TopicT,
 } from "@interestled/schemas";
+import { useSeedContentInstructions } from "@interestled/api";
 import { messageOf } from "../../../../lib/errors";
+import { useSeededText } from "../../../../components/SeededInstructions";
 import { backHeader, goBack } from "../../../../lib/nav";
 import { ChipRow } from "../../../../components/ChipRow";
 
@@ -99,10 +103,18 @@ function ContentForm({
   const [englishLevel, setEnglishLevel] = useState<EnglishLevel>(topic.englishLevel);
   const [technicalDetail, setTechnicalDetail] = useState<TechnicalDetail>(topic.technicalDetail);
   const [format, setFormat] = useState<ContentFormat>(topic.format);
+  const [paragraphLength, setParagraphLength] = useState<ParagraphLength>(topic.paragraphLength);
   const [averageReadTime, setAverageReadTime] = useState(topic.averageReadTime);
   const [instructions, setInstructions] = useState(topic.contentInstructions);
 
   const usingDefault = instructions.trim() === "";
+  // The lines this topic's own paragraph length produces, not the ones the
+  // default length would: a panel headed "in force now" has to be in force now.
+  const seed = useSeedContentInstructions();
+  const inForce =
+    useSeededText(paragraphLength, (length, onSeeded) =>
+      seed.mutate(length, { onSuccess: onSeeded }),
+    ) || defaults.contentInstructions;
 
   const submit = (): void => {
     save.mutate(
@@ -110,6 +122,7 @@ function ContentForm({
         englishLevel,
         technicalDetail,
         format,
+        paragraphLength,
         averageReadTime,
         contentInstructions: instructions,
       },
@@ -149,6 +162,19 @@ function ContentForm({
       </View>
 
       <View className="gap-2">
+        <SectionTitle>How long a paragraph runs</SectionTitle>
+        <ChipRow
+          options={PARAGRAPH_OPTIONS}
+          selected={paragraphLength}
+          onSelect={(value) => setParagraphLength(value)}
+        />
+        <Text className="text-sm text-ink-soft">
+          Each section is written in paragraphs this long, with a heading over each. It is the one
+          thing about the shape of a card you feel immediately.
+        </Text>
+      </View>
+
+      <View className="gap-2">
         <SectionTitle>How long one node should take</SectionTitle>
         <ChipRow
           options={READ_TIME_OPTIONS}
@@ -179,11 +205,11 @@ function ContentForm({
         {usingDefault ? (
           <View className="gap-2 rounded-card border border-line bg-surface-raised p-3">
             <SectionTitle>The default, in force now</SectionTitle>
-            <Text className="text-sm text-ink-soft">{defaults.contentInstructions}</Text>
+            <Text className="text-sm text-ink-soft">{inForce}</Text>
             <Button
               label="Start from this"
               tone="secondary"
-              onPress={() => setInstructions(defaults.contentInstructions)}
+              onPress={() => setInstructions(inForce)}
             />
           </View>
         ) : (

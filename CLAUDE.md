@@ -104,11 +104,22 @@ structure:
   at one level. Reading order comes from `inMapOrder`, which walks the tree; sorting
   the flat list by `orderIndex` interleaves the levels.
 
-`MapLevels` (2 or 3) is asked on the create screen and stored on the topic. The two
-level counts are separate Zod schemas rather than one recursive shape: a recursive
-schema would let the model return four levels or one, and the point of asking is that
-the answer is honoured. `flattenTwoLevelMap` / `flattenThreeLevelMap` turn either into
-the flat `GeneratedMap` rows that `prepareNodes` stores.
+**A map is two levels, and its shape is settings rather than a level count.**
+`MapShape` — `mainHeadings`, `subHeadings`, `minutesPerDay`, `days`, `depth` — replaced
+`MapLevels` and `TimeBudget`, which were answering the same questions more vaguely and
+in a second place. The heading counts say the shape, minutes a day times days says the
+size, and depth says how far into the subject it goes. The counts are bounded by the
+generated-map schema's own bounds, because a setting the parse then refuses reaches the
+learner as a failed generation rather than as a setting.
+
+**The settings seed instruction lines, and the lines are what the model gets.**
+`seedMapInstructions` renders `map-instructions.md` from the shape — "Use 5 main
+headings, and 4 sub-headings under each one" — and the learner sees that text before
+pressing the button and can rewrite any of it. `topics.map_instructions` is `""` until
+they do, so moving a chip re-seeds; once it holds text, the text is what reaches the
+model and what a rebuild shows, and the chips stop touching it. The same pattern runs on
+the content side through `seedContentInstructions` and `paragraphLength`. A chip is a
+setting somebody has to imagine the effect of; a sentence is one they can disagree with.
 
 ## Accounts and sessions
 
@@ -250,7 +261,7 @@ built and wrong. So `POST /api/topics/questions` asks the model for seven questi
 with four options each, the learner picks, and the picks go into `mapPrompt`.
 
 - **The kinds are an enum, not free text.** `MapQuestionKind` fixes seven slots in one
-  order — outline, breakdown, scope, examples, code, numbers, opening — and
+  order — outline, breakdown, known, recap, scope, examples, opening — and
   `MapQuestionSet` refuses anything else. Answers are keyed by kind, so a missing kind
   is a question nobody is asked and a repeated one is an answer that overwrites another.
   An answer with nothing picked is refused, because a skipped question is the answer
@@ -273,11 +284,19 @@ with four options each, the learner picks, and the picks go into `mapPrompt`.
 - **The questions are stored, and answers are read against the row they came from.** An
   answer is "the second option", which means nothing beside a different four options —
   so `map_plans` holds the questions, and `planId` travels with the answers.
+- **Two of the seven spend what the learner typed into "what do you already know".** A
+  sentence about what somebody knows is not something a model can act on safely; four
+  named sets of headings it could drop is, and only the learner can say which set is
+  right. *recap* then asks how much of what goes still gets a mention. They replaced
+  questions about code and about numbers, which asked how content is written when the
+  content settings already decide that.
 - **A full rebuild asks them again**; a group rebuild does not. The questions are about
   the shape of the whole map, and a group rebuild leaves the rest of it alone. The one
   exception is the retry after a failed build, which falls back to the plan already
   linked to the topic — the screen promises nothing was lost, and the plan is linked
-  before the map is generated, so nothing is.
+  before the map is generated, so nothing is. The map being replaced is never sent to
+  the questions call: the learner is describing the map they want, not editing the one
+  they have, and showing the old one only invites it back as one of the four.
 
 **A card is written into the map, not beside it.** `cardPrompt` is given every node of
 the topic as an outline — every heading, in reading order, with the one being written

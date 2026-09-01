@@ -11,9 +11,9 @@ import {
   MapPlanView,
   MapQuestionKind,
   NodeStatus,
+  ParagraphLength,
   TechnicalDetail,
   ReadTime,
-  TimeBudget,
   TopicArchetype,
   TopicStatus,
   cardVariant,
@@ -163,9 +163,16 @@ function topicRow(): Record<string, unknown> {
     summary: "Run a small cluster",
     goal: "deploy a service",
     archetype: TopicArchetype.Tool,
-    timeBudget: TimeBudget.Week,
+    // Deliberately none of the schema defaults, so a test that means to check
+    // "the topic's own settings were kept" cannot pass by taking the defaults.
+    mainHeadings: 7,
+    subHeadings: 3,
+    minutesPerDay: 45,
+    days: 30,
+    depth: 3,
+    mapInstructions: "",
+    paragraphLength: "medium",
     level: "",
-    levels: 2,
     englishLevel: EnglishLevel.Medium,
     technicalDetail: TechnicalDetail.Medium,
     format: ContentFormat.Prose,
@@ -248,12 +255,11 @@ describe("topic settings writes", () => {
       summary: "Run and debug a small cluster",
       goal: "deploy a service\nread the logs",
       level: "I use Docker daily",
-      timeBudget: TimeBudget.Ongoing,
     });
 
     expect(response.status).toBe(200);
     expect(updates).toEqual([
-      expect.objectContaining({ summary: "Run and debug a small cluster", timeBudget: TimeBudget.Ongoing }),
+      expect.objectContaining({ summary: "Run and debug a small cluster" }),
     ]);
     // No regeneration, and above all no nodes deleted.
     expect(deletedNodes).toEqual([]);
@@ -275,6 +281,9 @@ describe("topic settings writes", () => {
         englishLevel: EnglishLevel.Advanced,
         technicalDetail: TechnicalDetail.High,
         format: ContentFormat.Prose,
+        // Defaulted rather than sent: the screen always holds every setting, so
+        // a save that omitted one would be a screen that had lost it.
+        paragraphLength: ParagraphLength.Medium,
         contentInstructions: "No YAML in the examples",
         averageReadTime: ReadTime.Ten,
       },
@@ -641,6 +650,7 @@ describe("card generation", () => {
       cardVariant({
         depth: 5,
         minutes: 10,
+        paragraphLength: ParagraphLength.Medium,
         englishLevel: EnglishLevel.Simple,
         technicalDetail: TechnicalDetail.High,
         format: ContentFormat.ReferenceNotes,
@@ -803,8 +813,14 @@ describe("map plans", () => {
     createdAt: Date;
   }
 
-  function planDb(plans: PlanRow[]): { db: Db; created: Record<string, unknown>[]; plans: PlanRow[] } {
+  function planDb(plans: PlanRow[]): {
+    db: Db;
+    created: Record<string, unknown>[];
+    plans: PlanRow[];
+    updates: Record<string, unknown>[];
+  } {
     const created: Record<string, unknown>[] = [];
+    const updates: Record<string, unknown>[] = [];
     const db = {
       authSession: {
         findUnique: vi.fn(async () => ({
@@ -849,7 +865,10 @@ describe("map plans", () => {
           created.push(data);
           return { ...topicRow(), ...data };
         }),
-        update: vi.fn(async () => topicRow()),
+        update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          updates.push(data);
+          return { ...topicRow(), ...data };
+        }),
       },
       learningNode: {
         count: vi.fn(async () => 0),
@@ -859,7 +878,7 @@ describe("map plans", () => {
       },
       nodePrerequisite: { createMany: vi.fn(async () => ({ count: 0 })) },
     };
-    return { db: db as unknown as Db, created, plans };
+    return { db: db as unknown as Db, created, plans, updates };
   }
 
   /** The rows a Prisma where of {id?, userId, topicId?} would have matched. */
@@ -1041,6 +1060,20 @@ describe("map plans", () => {
     expect(topics).toEqual([]);
   });
 
+  it("keeps the topic's own shape when a rebuild names none", async () => {
+    // A client cached from before the shape existed posts none of it. Taking the
+    // schema defaults there would silently reset the topic to five headings of
+    // four, which is a setting the learner never touched being thrown away.
+    const { db, updates } = planDb([]);
+    const { provider } = recorder(MAP);
+    const response = await post(db, provider, "/api/topics/kubernetes/regenerate", {
+      answers: [],
+    });
+
+    expect(response.status).toBe(200);
+    expect(updates[0]).toMatchObject({ mainHeadings: 7, subHeadings: 3, days: 30 });
+  });
+
   it("refuses answers that arrive without the questions they answer", async () => {
     // "The second one" of a set of four this request never names. Building a map
     // that silently dropped every pick would be worse than saying so.
@@ -1100,7 +1133,7 @@ describe("map plans", () => {
         userId: "u1",
         topicId: "t1",
         questions: JSON.parse(QUESTIONS).questions,
-        answers: [{ kind: MapQuestionKind.Code, optionIndexes: [3] }],
+        answers: [{ kind: MapQuestionKind.Known, optionIndexes: [3] }],
         createdAt: new Date(),
       },
     ]);
@@ -1111,6 +1144,6 @@ describe("map plans", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(prompts[0]).toContain("Sample 3 for code");
+    expect(prompts[0]).toContain("Sample 3 for known");
   });
 });

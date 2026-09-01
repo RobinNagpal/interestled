@@ -1,4 +1,16 @@
-import { CardAngle, ContentFormat, EnglishLevel, TechnicalDetail } from "@interestled/schemas";
+import {
+  CardAngle,
+  ContentFormat,
+  EnglishLevel,
+  MAP_DEPTHS,
+  MINUTES_PER_DAY,
+  MapDepth,
+  PARAGRAPH_SENTENCES,
+  ParagraphLength,
+  STUDY_DAYS,
+  StudyDays,
+  TechnicalDetail,
+} from "@interestled/schemas";
 import type { CardSettingsT } from "@interestled/schemas";
 
 /**
@@ -65,6 +77,78 @@ export const FORMAT_COPY: Record<ContentFormat, { label: string; body: string }>
 export const FORMAT_OPTIONS = Object.values(ContentFormat).map((value) => ({
   value,
   label: FORMAT_COPY[value].label,
+}));
+
+/**
+ * What each map depth means, and what each rung of the day ladder is called.
+ *
+ * MAP_DEPTH_COPY is not DEPTH_COPY further down: that one is the card's depth,
+ * which decides how far a single explanation digs and follows the learner across
+ * every topic. This decides where the whole map stops. Both run 1-5, which is
+ * exactly why they need different names.
+ * Here with the rest of the settings copy: the create screen and the rebuild
+ * sheet both offer them, and two screens naming the same chip differently is the
+ * thing this file exists to stop.
+ *
+ * The bodies say what the depth actually changes about the map, which is the
+ * same thing MAP_DEPTH_GUIDE in the server's prompts.ts tells the model.
+ */
+export const MAP_DEPTH_COPY: Record<MapDepth, { label: string; body: string }> = {
+  [MapDepth.Orientation]: {
+    label: "Orientation",
+    body: "What it is, and when you would reach for it.",
+  },
+  [MapDepth.Working]: { label: "Working", body: "Enough to use it for the everyday cases." },
+  [MapDepth.Mechanism]: {
+    label: "Mechanism",
+    body: "The mechanism underneath, in the field's own terms.",
+  },
+  [MapDepth.Internals]: {
+    label: "Internals",
+    body: "The layer below that — internals, protocols, the maths.",
+  },
+  [MapDepth.Expert]: {
+    label: "Expert",
+    body: "Edge cases, failure modes, and where the standard account is wrong.",
+  },
+};
+
+export const MAP_DEPTH_OPTIONS = MAP_DEPTHS.map((value) => ({
+  value: String(value),
+  label: MAP_DEPTH_COPY[value].label,
+}));
+
+/** "14 days" is a number; "2 weeks" is the thing somebody is agreeing to. */
+export const DAY_COPY: Record<StudyDays, string> = {
+  [StudyDays.One]: "1 day",
+  [StudyDays.Three]: "3 days",
+  [StudyDays.Week]: "A week",
+  [StudyDays.Fortnight]: "2 weeks",
+  [StudyDays.Month]: "A month",
+  [StudyDays.Quarter]: "3 months",
+};
+
+export const DAY_OPTIONS = STUDY_DAYS.map((value) => ({
+  value: String(value),
+  label: DAY_COPY[value],
+}));
+
+export const MINUTES_OPTIONS = MINUTES_PER_DAY.map((value) => ({
+  value: String(value),
+  label: `${value} min`,
+}));
+
+/**
+ * How long a paragraph runs, labelled by the sentence count — the thing actually
+ * being chosen, rather than a word for it.
+ *
+ * Here rather than on a screen because both places that offer it must offer the
+ * same three: the topic's settings screen, and the panel under a card where the
+ * learner overrides them for that card alone.
+ */
+export const PARAGRAPH_OPTIONS = Object.values(ParagraphLength).map((value) => ({
+  value,
+  label: PARAGRAPH_SENTENCES[value],
 }));
 
 /** The same depth, asked a different way. "Plain" is the way back to the card as written. */

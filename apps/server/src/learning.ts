@@ -14,6 +14,7 @@ import {
   LlmTask,
   NodeStatus,
   NodeStatusSchema,
+  ParagraphLengthSchema,
   TechnicalDetailSchema,
   cardVariant,
   contentSettingsOf,
@@ -145,6 +146,7 @@ const CardQuery = z.object({
   englishLevel: EnglishLevelSchema.optional(),
   technicalDetail: TechnicalDetailSchema.optional(),
   format: ContentFormatSchema.optional(),
+  paragraphLength: ParagraphLengthSchema.optional(),
   angle: CardAngleSchema.optional(),
   /**
    * Write this one again at the settings it already has. The literal rather than
@@ -171,6 +173,7 @@ function settingsFrom(
     englishLevel: query.englishLevel ?? base.englishLevel,
     technicalDetail: query.technicalDetail ?? base.technicalDetail,
     format: query.format ?? base.format,
+    paragraphLength: query.paragraphLength ?? base.paragraphLength,
     angle: query.angle ?? base.angle,
   };
 }

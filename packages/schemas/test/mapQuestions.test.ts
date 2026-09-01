@@ -101,14 +101,14 @@ describe("MapAnswers", () => {
   it("refuses an answer that picked nothing, because that is a skip", () => {
     // A skip is the answer being absent. Present-and-empty would be a second way
     // of saying the same thing, and the two would drift apart.
-    expect(MapAnswers.safeParse([{ kind: MapQuestionKind.Code, optionIndexes: [] }]).success).toBe(
+    expect(MapAnswers.safeParse([{ kind: MapQuestionKind.Known, optionIndexes: [] }]).success).toBe(
       false,
     );
   });
 
   it("refuses the same option picked twice", () => {
     expect(
-      MapAnswers.safeParse([{ kind: MapQuestionKind.Code, optionIndexes: [1, 1] }]).success,
+      MapAnswers.safeParse([{ kind: MapQuestionKind.Known, optionIndexes: [1, 1] }]).success,
     ).toBe(false);
   });
 
@@ -122,7 +122,7 @@ describe("MapAnswers", () => {
 
   it("refuses an option that is not one of the four", () => {
     expect(
-      MapAnswers.safeParse([{ kind: MapQuestionKind.Code, optionIndexes: [4] }]).success,
+      MapAnswers.safeParse([{ kind: MapQuestionKind.Known, optionIndexes: [4] }]).success,
     ).toBe(false);
   });
 });
@@ -130,13 +130,13 @@ describe("MapAnswers", () => {
 describe("answeredQuestions", () => {
   it("resolves every pick against the question it was shown for", () => {
     const answered = answeredQuestions(sevenQuestions, [
-      { kind: MapQuestionKind.Code, optionIndexes: [2, 0] },
+      { kind: MapQuestionKind.Known, optionIndexes: [2, 0] },
       { kind: MapQuestionKind.Outline, optionIndexes: [0] },
     ]);
     // In the order the questions were asked, not the order they came back in.
     expect(answered.map((entry) => entry.kind)).toEqual([
       MapQuestionKind.Outline,
-      MapQuestionKind.Code,
+      MapQuestionKind.Known,
     ]);
     // And each question's picks in the order they were shown, not the order tapped.
     expect(answered[1]?.picked.map((option) => option.label)).toEqual([
@@ -178,7 +178,7 @@ describe("answeredQuestions", () => {
     const outlineOnly = [sevenQuestions[0]!];
     const answered = answeredQuestions(outlineOnly, [
       { kind: MapQuestionKind.Outline, optionIndexes: [1] },
-      { kind: MapQuestionKind.Numbers, optionIndexes: [1] },
+      { kind: MapQuestionKind.Recap, optionIndexes: [1] },
     ]);
     expect(answered).toHaveLength(1);
     expect(answered[0]?.kind).toBe(MapQuestionKind.Outline);

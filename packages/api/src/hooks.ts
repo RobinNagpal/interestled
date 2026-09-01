@@ -13,6 +13,8 @@ import type {
   ProfileT,
   ProfileUpdateInputT,
   ReviewInputT,
+  MapShapeT,
+  ParagraphLength,
   TopicContentSettingsInputT,
   TopicContentSettingsT,
   TopicCreateInputT,
@@ -48,6 +50,24 @@ export function useUpdateProfile(): UseMutationResult<ProfileT, Error, ProfileUp
   return useMutation({
     mutationFn: (input: ProfileUpdateInputT) => api.updateProfile(input),
     onSuccess: (profile) => client.setQueryData(keys.profile, profile),
+  });
+}
+
+/**
+ * The instruction lines a set of shape settings seeds. A mutation rather than a
+ * query because it is asked for as the chips move, and a query keyed on five
+ * numbers would cache a row per combination anybody ever touched.
+ */
+export function useSeedMapInstructions(): UseMutationResult<string, Error, MapShapeT> {
+  const api = useApi();
+  return useMutation({ mutationFn: (shape: MapShapeT) => api.seedMapInstructions(shape) });
+}
+
+/** The same, for the lines a card is written to. */
+export function useSeedContentInstructions(): UseMutationResult<string, Error, ParagraphLength> {
+  const api = useApi();
+  return useMutation({
+    mutationFn: (paragraphLength: ParagraphLength) => api.seedContentInstructions(paragraphLength),
   });
 }
 

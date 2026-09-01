@@ -1,15 +1,16 @@
 Build a knowledge map for: {{title}}
 
-What they want to be able to do: {{goal}}
-Time available: {{timeBudget}}
-{{^level}}They did not say where they are starting from.{{/level}}{{#level}}Where they are now and where they want to get to:
-{{level}}
-Do not create nodes for what they already have, and stop the map at the level they asked for.{{/level}}
+{{^goal}}They did not say what they want it for.{{/goal}}{{#goal}}How they plan to use this:
+{{goal}}{{/goal}}
+{{^level}}They did not say what they already know.{{/level}}{{#level}}What they already know:
+{{level}}{{/level}}
+
+How they want the map built:
+{{mapInstructions}}
 
 {{learner}}
 {{contentRules}}
 {{choices}}
-{{instructions}}
 {{archetypes}}
 
 {{shape}}

@@ -22,6 +22,7 @@ import {
   ENGLISH_OPTIONS,
   FORMAT_COPY,
   FORMAT_OPTIONS,
+  PARAGRAPH_OPTIONS,
   JargonList,
   LoadingContent,
   Markdown,
@@ -333,6 +334,14 @@ function CardControls({
         <Text className="text-sm text-ink-soft">
           {TECHNICAL_COPY[settings.technicalDetail].body}
         </Text>
+      </ControlRow>
+
+      <ControlRow title="Paragraph length">
+        <ChipRow
+          options={PARAGRAPH_OPTIONS}
+          selected={settings.paragraphLength}
+          onSelect={(paragraphLength) => onChange({ paragraphLength })}
+        />
       </ControlRow>
 
       <ControlRow title="Shape">

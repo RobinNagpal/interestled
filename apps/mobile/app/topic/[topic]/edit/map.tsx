@@ -22,12 +22,12 @@ import {
   SectionTitle,
   Sheet,
 } from "@interestled/ui";
-import { MapLevels, MoveDirection } from "@interestled/schemas";
-import type { LearningNodeT, MapAnswerT, MapPlanViewT } from "@interestled/schemas";
+import { MoveDirection, mapShapeOf } from "@interestled/schemas";
+import type { LearningNodeT, MapAnswerT, MapPlanViewT, MapShapeT } from "@interestled/schemas";
 import { messageOf } from "../../../../lib/errors";
 import { backHeader } from "../../../../lib/nav";
-import { ChipRow } from "../../../../components/ChipRow";
 import { MapQuestions } from "../../../../components/MapQuestions";
+import { MapShapeFields } from "../../../../components/MapShapeFields";
 
 /** Which rebuild sheet is open: the whole map, one group, or nothing. */
 type Rebuilding = { kind: "map" } | { kind: "node"; node: LearningNodeT } | null;
@@ -52,8 +52,12 @@ export default function EditMapScreen(): ReactElement {
   const questions = useTopicMapQuestions(topicSlug);
 
   const [rebuilding, setRebuilding] = useState<Rebuilding>(null);
+  // What a group rebuild is told to change. Free text, and only that: a group
+  // rebuild does not touch the shape of the whole map.
   const [instructions, setInstructions] = useState("");
-  const [levels, setLevels] = useState<MapLevels>(MapLevels.Two);
+  // The whole-map rebuild's own settings, opened at whatever the topic says now.
+  const [shape, setShape] = useState<MapShapeT | null>(null);
+  const [mapInstructions, setMapInstructions] = useState("");
   const [confirming, setConfirming] = useState<LearningNodeT | null>(null);
   // The seven choices, once they have been written for this rebuild. They are
   // asked again on every whole-map rebuild rather than reused: the map being
@@ -94,7 +98,10 @@ export default function EditMapScreen(): ReactElement {
 
   const openMapRebuild = (): void => {
     setInstructions("");
-    setLevels(topic.data.topic.levels);
+    // The topic's own settings and its own lines, so a rebuild starts from what
+    // it was last built to rather than from the defaults.
+    setShape(mapShapeOf(topic.data.topic));
+    setMapInstructions(topic.data.topic.mapInstructions);
     setPlan(null);
     setRebuilding({ kind: "map" });
   };
@@ -121,7 +128,11 @@ export default function EditMapScreen(): ReactElement {
       return;
     }
     if (rebuilding.kind === "map") {
-      questions.mutate({ instructions, levels }, { onSuccess: setPlan });
+      // The shape is set whenever the map sheet is open; a null one is a state
+      // that cannot happen rather than a case to build a map from defaults for.
+      if (shape !== null) {
+        questions.mutate({ ...shape, mapInstructions }, { onSuccess: setPlan });
+      }
       return;
     }
     rebuildNode.mutate(
@@ -131,8 +142,11 @@ export default function EditMapScreen(): ReactElement {
   };
 
   const submitMapRebuild = (answers: MapAnswerT[]): void => {
+    if (shape === null) {
+      return;
+    }
     rebuildMap.mutate(
-      { instructions, levels, planId: plan?.planId, answers },
+      { ...shape, mapInstructions, planId: plan?.planId, answers },
       { onSuccess: closeRebuild },
     );
   };
@@ -228,29 +242,24 @@ export default function EditMapScreen(): ReactElement {
       >
         {plan === null ? (
           <>
-            <Input
-              label="What should be different?"
-              value={instructions}
-              onChangeText={setInstructions}
-              multiline
-              maxLength={600}
-              placeholder={"Less YAML, more on networking\nAssume I already know containers"}
-              hint="Optional. Leave it empty to build it again from the same answers."
-            />
-            {rebuilding?.kind === "map" ? (
-              <View className="gap-2">
-                <Text className="text-sm font-medium text-ink-soft">How deep should it go?</Text>
-                <ChipRow
-                  options={[
-                    { value: String(MapLevels.Two), label: "Two levels" },
-                    { value: String(MapLevels.Three), label: "Three levels" },
-                  ]}
-                  selected={String(levels)}
-                  onSelect={(value) =>
-                    setLevels(value === String(MapLevels.Three) ? MapLevels.Three : MapLevels.Two)
-                  }
-                />
-              </View>
+            {rebuilding?.kind === "node" ? (
+              <Input
+                label="What should be different?"
+                value={instructions}
+                onChangeText={setInstructions}
+                multiline
+                maxLength={600}
+                placeholder={"Less YAML, more on networking\nAssume I already know containers"}
+                hint="Optional. Leave it empty to build it again from the same answers."
+              />
+            ) : null}
+            {rebuilding?.kind === "map" && shape !== null ? (
+              <MapShapeFields
+                shape={shape}
+                onShape={setShape}
+                instructions={mapInstructions}
+                onInstructions={setMapInstructions}
+              />
             ) : null}
 
             {questions.isError ? <ErrorState message={messageOf(questions.error)} /> : null}
