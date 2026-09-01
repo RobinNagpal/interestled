@@ -54,8 +54,19 @@ export type GeneratedDrillT = z.infer<typeof GeneratedDrill>;
 
 const AtomList = z.object({ atoms: z.array(GeneratedAtom).min(1).max(6) });
 
-/** The map is the product's spine, so it is the one call worth more tokens. */
-const MAP_OUTPUT_TOKENS = 8192;
+/**
+ * What the map-shaped calls may spend, thinking included.
+ *
+ * The map is the product's spine, so it was always the call worth more tokens.
+ * The number moved when the map moved onto a reasoning model: Gemini 3 Pro
+ * cannot be told not to think, and its thinking is spent from this same
+ * allowance — a budget sized for the reply alone gets eaten by the reasoning and
+ * returns MAX_TOKENS with half a document, or with nothing at all. Comfortably
+ * under the 64k a Gemini 3 model will emit, because the cost of being wrong here
+ * is a generation that fails rather than tokens actually spent: nothing bills
+ * for headroom the model does not use.
+ */
+const MAP_OUTPUT_TOKENS = 32768;
 
 export interface MapInput {
   title: string;
@@ -89,10 +100,14 @@ export interface MapQuestionsInput {
 
 /**
  * The seven questions, generated from the same answers the map would have been
- * generated from. It runs a little hotter than the rest: four options that are
- * really the same option is the one way this call fails, and the default 0.3 is
- * tuned for a map that should come out the same twice, which is the opposite of
- * what four alternatives need.
+ * generated from.
+ *
+ * A little hotter than the rest, because four options that are really the same
+ * option is the one way this call is useless, and the default 0.3 is tuned for a
+ * map that should come out the same twice. Only a little: this is also the
+ * strictest schema in the app — seven named kinds, four options each — and
+ * sampling noise costs a whole retry when it drifts off that. The differences
+ * between the four options are the prompt's job, not the temperature's.
  */
 export async function generateMapQuestions(
   provider: LlmProvider,
@@ -102,8 +117,9 @@ export async function generateMapQuestions(
     system: SYSTEM,
     prompt: mapQuestionsPrompt(input),
     schema: QuestionList,
-    temperature: 0.8,
-    // Seven questions with four samples each is as much text as a small map.
+    temperature: 0.4,
+    // Twenty-eight samples is more text than a map, and it runs on the map's
+    // model, so it gets the map's allowance.
     maxOutputTokens: MAP_OUTPUT_TOKENS,
   });
   return result.questions;

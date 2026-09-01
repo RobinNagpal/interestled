@@ -13,6 +13,28 @@ export enum LlmProviderId {
 
 export const LlmProviderIdSchema = z.nativeEnum(LlmProviderId);
 
+/**
+ * What a call is for, which is what decides which model answers it.
+ *
+ * Two, because there are two jobs with different stakes. A map is generated once
+ * and everything else hangs off it — a bad cut of the subject is wrong on every
+ * screen afterwards and the learner cannot correct it without rebuilding — so it
+ * goes to the reasoning model. Cards, drills, review items and grading are
+ * written many times per map, each one small, each one already scoped by the map
+ * above it, and each one cheap to rewrite, so they go to the fast one.
+ *
+ * An enum rather than two provider arguments because the call site should say
+ * which job it is doing, and a boolean at ten call sites says nothing.
+ */
+export enum LlmTask {
+  /** The map, the seven choices that shape it, and rebuilding one group of it. */
+  Map = "map",
+  /** Everything written inside a map: cards, drills, review items, verdicts. */
+  Content = "content",
+}
+
+export const LlmTaskSchema = z.nativeEnum(LlmTask);
+
 /** What a provider needs to answer one structured request. */
 export const LlmModelConfig = z.object({
   provider: LlmProviderIdSchema,

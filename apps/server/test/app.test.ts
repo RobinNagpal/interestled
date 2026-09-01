@@ -6,6 +6,7 @@ import {
   DEFAULT_AVERAGE_READ_TIME,
   LearningStyle,
   LlmProviderId,
+  LlmTask,
   MAP_QUESTION_KINDS,
   MapPlanView,
   MapQuestionKind,
@@ -538,25 +539,34 @@ describe("card generation", () => {
     return { db: db as unknown as Db, statuses };
   }
 
-  /** Records what actually reached the model. */
-  function recording(): { provider: () => LlmProvider; prompts: string[] } {
+  /** Records what actually reached the model, and which model was asked for. */
+  function recording(): {
+    provider: (task: LlmTask) => LlmProvider;
+    prompts: string[];
+    tasks: LlmTask[];
+  } {
     const prompts: string[] = [];
+    const tasks: LlmTask[] = [];
     return {
       prompts,
-      provider: () => ({
-        id: LlmProviderId.Gemini,
-        model: "test",
-        complete: async (request) => {
-          prompts.push(request.prompt);
-          return CARD;
-        },
-      }),
+      tasks,
+      provider: (task: LlmTask) => {
+        tasks.push(task);
+        return {
+          id: LlmProviderId.Gemini,
+          model: "test",
+          complete: async (request) => {
+            prompts.push(request.prompt);
+            return CARD;
+          },
+        };
+      },
     };
   }
 
   it("sends the whole map, with this node marked, and marks the node seen", async () => {
     const { db, statuses } = cardDb(mapRows(), "n2");
-    const { provider: recorder, prompts } = recording();
+    const { provider: recorder, prompts, tasks } = recording();
     const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
       headers: { Authorization: "Bearer good" },
     });
@@ -575,6 +585,10 @@ describe("card generation", () => {
         angle: CardAngle.Base,
       },
     });
+    // A card is written inside a map that already exists, many times per map and
+    // cheap to write again, so it goes to the fast model rather than the one the
+    // map was built on.
+    expect(tasks).toEqual([LlmTask.Content]);
     // Reading advances a node to Seen and no further.
     expect(statuses).toEqual([{ status: NodeStatus.Seen }]);
 
@@ -861,25 +875,34 @@ describe("map plans", () => {
     );
   }
 
-  /** Replays the canned replies in order and keeps every prompt sent. */
-  function recorder(...replies: string[]): { provider: () => LlmProvider; prompts: string[] } {
+  /** Replays the canned replies in order, keeping every prompt and every task. */
+  function recorder(...replies: string[]): {
+    provider: (task: LlmTask) => LlmProvider;
+    prompts: string[];
+    tasks: LlmTask[];
+  } {
     const prompts: string[] = [];
+    const tasks: LlmTask[] = [];
     return {
       prompts,
-      provider: () => ({
-        id: LlmProviderId.Gemini,
-        model: "test",
-        complete: async (request) => {
-          prompts.push(request.prompt);
-          return replies.shift() ?? "";
-        },
-      }),
+      tasks,
+      provider: (task: LlmTask) => {
+        tasks.push(task);
+        return {
+          id: LlmProviderId.Gemini,
+          model: "test",
+          complete: async (request) => {
+            prompts.push(request.prompt);
+            return replies.shift() ?? "";
+          },
+        };
+      },
     };
   }
 
   const post = async (
     db: Db,
-    provider: () => LlmProvider,
+    provider: (task: LlmTask) => LlmProvider,
     path: string,
     body: object,
   ): Promise<Response> =>
@@ -910,7 +933,7 @@ describe("map plans", () => {
 
   it("builds the map from the sample the learner picked, and records the pick", async () => {
     const { db, plans, created: topics } = planDb([]);
-    const { provider, prompts } = recorder(QUESTIONS, MAP);
+    const { provider, prompts, tasks } = recorder(QUESTIONS, MAP);
     const app = createApp(db, { provider });
     const asked = await app.request("/api/topics/questions", {
       method: "POST",
@@ -926,6 +949,10 @@ describe("map plans", () => {
     });
 
     expect(built.status).toBe(201);
+    // Both calls are map-shaped, so both go to the reasoning model. A map is
+    // generated once and everything hangs off it; writing it on the cheap model
+    // to save a few cents is the wrong end to save at.
+    expect(tasks).toEqual([LlmTask.Map, LlmTask.Map]);
     // The second prompt is the map. What reaches it is the sample, not the label
     // alone — the sample is the thing that was actually chosen.
     expect(prompts[1]).toContain("Sample 2 for outline");

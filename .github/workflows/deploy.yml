@@ -12,7 +12,7 @@
 #            DATABASE_URL                              (same Postgres the API uses)
 #            GEMINI_API_KEY                             (the model provider's key)
 #   vars:    S3_BUCKET, CLOUDFRONT_DISTRIBUTION_ID, DEPLOY_HOST, SSH_HOST_KEY,
-#            SITE_URL, LLM_PROVIDER, LLM_MODEL
+#            SITE_URL, LLM_PROVIDER, LLM_MODEL, LLM_CONTENT_MODEL
 name: Deploy
 
 on:
@@ -140,6 +140,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_CONTENT_MODEL: ${{ vars.LLM_CONTENT_MODEL }}
         run: |
           ssh_opts=(
             -i "$HOME/.ssh/id_deploy"
@@ -160,6 +161,7 @@ jobs:
             "DATABASE_URL=$DATABASE_URL" \
             "LLM_PROVIDER=$LLM_PROVIDER" \
             "LLM_MODEL=$LLM_MODEL" \
+            "LLM_CONTENT_MODEL=$LLM_CONTENT_MODEL" \
             "GEMINI_API_KEY=$GEMINI_API_KEY" \
             | ssh "${ssh_opts[@]}" "deploy@$DEPLOY_HOST" "umask 077 && cat > /etc/$APP-api.env"
 

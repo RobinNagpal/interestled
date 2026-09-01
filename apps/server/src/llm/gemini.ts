@@ -5,12 +5,31 @@ import type { GenerateRequest, LlmProvider } from "./types";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
-/** Only the fields we read. A non-strict object ignores everything else Google sends. */
+/**
+ * Only the fields we read. A non-strict object ignores everything else Google
+ * sends.
+ *
+ * `parts` is optional and `finishReason` is read because of what a truncated
+ * reply looks like: the candidate comes back with the reason set to MAX_TOKENS
+ * and either half a JSON document or, on a model that thinks, no parts at all.
+ * Both used to surface as "the model could not produce content in the required
+ * shape", which names neither the cause nor the fix.
+ */
 const GeminiResponse = z.object({
   candidates: z
-    .array(z.object({ content: z.object({ parts: z.array(z.object({ text: z.string() })) }) }))
+    .array(
+      z.object({
+        content: z
+          .object({ parts: z.array(z.object({ text: z.string() })).optional() })
+          .optional(),
+        finishReason: z.string().optional(),
+      }),
+    )
     .min(1),
 });
+
+/** Gemini's word for "I hit maxOutputTokens", which is a budget bug, not a model one. */
+const TRUNCATED = "MAX_TOKENS";
 
 const GeminiError = z.object({ error: z.object({ message: z.string() }) });
 
@@ -59,10 +78,24 @@ export function createGeminiProvider(options: GeminiOptions): LlmProvider {
       }
       const parsed = GeminiResponse.safeParse(body);
       if (!parsed.success) {
-        // A blocked or truncated response has candidates missing rather than malformed.
+        // A blocked response has candidates missing rather than malformed.
         throw new GenerationError("Gemini returned no usable candidate");
       }
-      return parsed.data.candidates[0]!.content.parts.map((part) => part.text).join("");
+      const candidate = parsed.data.candidates[0]!;
+      const text = (candidate.content?.parts ?? []).map((part) => part.text).join("");
+      if (candidate.finishReason === TRUNCATED) {
+        // Said plainly, because the answer is to raise maxOutputTokens for the
+        // call that asked, and no amount of retrying will do it.
+        throw new GenerationError(
+          `Gemini ran out of output tokens after ${text.length} characters — the reply was cut off`,
+        );
+      }
+      if (text === "") {
+        throw new GenerationError(
+          `Gemini returned no text (finish reason: ${candidate.finishReason ?? "not stated"})`,
+        );
+      }
+      return text;
     },
   };
 }

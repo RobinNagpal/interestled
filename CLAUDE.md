@@ -143,7 +143,30 @@ thing standing between an anonymous visitor and an unbounded model bill.
 The server talks to exactly one interface, `LlmProvider` in `src/llm/types.ts`, with a
 single method that returns text. Everything above it asks for JSON matching a Zod
 schema through `generateJson`, which validates and retries once with the validation
-errors named.
+errors named, and logs both attempts when it gives up — the 502 is a sentence for the
+learner, so without that log a failed generation leaves nothing on the box to read.
+
+**Two models, chosen by what the call is for, never by where it is called from.**
+`LlmTask` has two members and `createProvider(task)` is the only place a model name is
+resolved:
+
+- `LlmTask.Map` — the map, the seven choices in front of it, and one group rebuilt.
+  `LLM_MODEL`, a reasoning model. A map is generated once and everything hangs off it:
+  a bad cut of the subject is wrong on every screen afterwards and cannot be corrected
+  without rebuilding.
+- `LlmTask.Content` — cards, drills, review items and verdicts. `LLM_CONTENT_MODEL`, a
+  fast one. These are written many times per map, each already scoped by the map above
+  it, and each cheap to write again — the controls under a card do exactly that.
+
+An unset `LLM_CONTENT_MODEL` falls back to its own default rather than to `LLM_MODEL`,
+so a deployment that names only the map model still gets the cheap one for content.
+
+**A reasoning model spends its thinking from `maxOutputTokens`.** Gemini 3 Pro cannot be
+told not to think, and a budget sized for the reply alone is eaten by the reasoning:
+the reply comes back as `MAX_TOKENS` with half a JSON document, or with no text at all.
+That is why the map-shaped calls carry 32768 and why `gemini.ts` reads `finishReason` —
+a truncated reply that does not say so arrives as "the model could not produce content
+in the required shape", which names neither the cause nor the fix.
 
 Adding a provider is therefore:
 
@@ -152,6 +175,13 @@ Adding a provider is therefore:
 3. one env var, and one line in the block of `.github/workflows/deploy.yml` that
    writes `/etc/interestled-api.env` — that file is rewritten whole on every
    deploy, so a key omitted there is a key the service never sees.
+
+**An unset repository variable is not an absent line.** The workflow writes
+`LLM_MODEL=${{ vars.LLM_MODEL }}`, and an unset variable interpolates to nothing, so
+the file gets `LLM_MODEL=`. Zod fills a default for `undefined` and not for `""`, so
+every optional variable in `env.ts` is wrapped in `unsetWhenEmpty` — without it, adding
+a variable nobody has set yet fails the parse on the first request and takes down
+registration, login and the map screen for what is supposed to be an optional setting.
 
 No migration, because `LLM_PROVIDER` is configuration rather than data. Nothing else
 in the codebase may name a provider.
@@ -415,11 +445,13 @@ secrets and variables. Nothing set by hand on the box survives, which is the poi
 the workflow is the source of truth. The corollary is in *LLM providers* above: a key
 that is not in the workflow is a key the service never sees.
 
-**`LLM_MODEL` is a repository variable, not a constant.** Google retires models —
-`gemini-2.0-flash` began returning 404 "no longer available" in August 2026, which
-fails every generation at runtime while registration, login and the map screen all
-look healthy. Moving on is a variable change, not a release; the default in `env.ts`
-is only a default.
+**`LLM_MODEL` and `LLM_CONTENT_MODEL` are repository variables, not constants.** Google
+retires models — `gemini-2.0-flash` began returning 404 "no longer available" in August
+2026, which fails every generation at runtime while registration, login and the map
+screen all look healthy. Moving on is a variable change, not a release; the defaults in
+`env.ts` are only defaults. Note that `gemini-3.1-pro-preview` is preview-only — there
+is no stable `gemini-3.1-pro` on the Gemini API — so it is a name worth re-checking
+rather than assuming.
 
 **Migrations run from the GitHub runner** against RDS, before the new code ships, so a
 failed migration stops the deploy with the old version still serving. Schema changes

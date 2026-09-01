@@ -63,6 +63,25 @@ describe("generateJson", () => {
     );
     expect(provider.calls).toHaveLength(2);
   });
+
+  it("logs why both attempts were rejected, because the 502 cannot say it", async () => {
+    // The learner gets a sentence they can act on. Without this the box keeps
+    // nothing at all, and "the shape was wrong" — without which field, or
+    // whether the reply was cut off rather than wrong — is not something anybody
+    // can fix.
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((line: string) => {
+      logged.push(line);
+    });
+    const provider = scripted('{"title":"x"}', "not json at all");
+    await expect(
+      generateJson(provider, { system: "s", prompt: "p", schema: Shape }),
+    ).rejects.toBeInstanceOf(GenerationError);
+    spy.mockRestore();
+
+    expect(logged.join(" ")).toContain("count");
+    expect(logged.join(" ")).toContain("not JSON");
+  });
 });
 
 describe("gemini provider", () => {
@@ -103,6 +122,62 @@ describe("gemini provider", () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     await expect(provider.complete({ system: "s", prompt: "p" })).rejects.toThrow("API key not valid");
+  });
+
+  it("says the reply was cut off rather than blaming its shape", async () => {
+    // A reply truncated at maxOutputTokens used to reach the learner as "the
+    // model could not produce content in the required shape", which names
+    // neither the cause nor the fix — the fix is a bigger budget for the call
+    // that asked, and no amount of retrying gets there.
+    const truncated = {
+      candidates: [
+        { content: { parts: [{ text: '{"questions":[{"kind":"outl' }] }, finishReason: "MAX_TOKENS" },
+      ],
+    };
+    const fetchImpl = vi.fn(
+      async (_url: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) =>
+        new Response(JSON.stringify(truncated), { status: 200 }),
+    );
+    const provider = createGeminiProvider({
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await expect(provider.complete({ system: "s", prompt: "p" })).rejects.toThrow(
+      "ran out of output tokens",
+    );
+  });
+
+  it("says so when a thinking model spends the whole budget and writes nothing", async () => {
+    // Same truncation, no parts at all: the model thought until the budget was
+    // gone. Reading finishReason is what tells the two apart from a block.
+    const empty = { candidates: [{ finishReason: "MAX_TOKENS" }] };
+    const fetchImpl = vi.fn(
+      async (_url: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) =>
+        new Response(JSON.stringify(empty), { status: 200 }),
+    );
+    const provider = createGeminiProvider({
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await expect(provider.complete({ system: "s", prompt: "p" })).rejects.toThrow(
+      "ran out of output tokens",
+    );
+  });
+
+  it("names the finish reason when the reply is empty for some other reason", async () => {
+    const blocked = { candidates: [{ content: { parts: [] }, finishReason: "SAFETY" }] };
+    const fetchImpl = vi.fn(
+      async (_url: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) =>
+        new Response(JSON.stringify(blocked), { status: 200 }),
+    );
+    const provider = createGeminiProvider({
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await expect(provider.complete({ system: "s", prompt: "p" })).rejects.toThrow("SAFETY");
   });
 
   it("fails loudly when a response carries no candidate", async () => {

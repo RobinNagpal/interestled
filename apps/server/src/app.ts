@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { Prisma } from "@prisma/client";
+import type { LlmTask } from "@interestled/schemas";
 import { z } from "zod";
 import { authRouter, requireAuth, sessionRouter } from "./auth";
 import type { AuthEnv } from "./auth";
@@ -41,16 +42,27 @@ function allowedOrigins(): string[] {
 
 export interface AppOptions {
   /**
-   * Built lazily and once: a missing API key must fail the request that needed
-   * the model, not stop the server from serving anything at all.
+   * Built lazily and once per task: a missing API key must fail the request that
+   * needed the model, not stop the server from serving anything at all. The task
+   * is what picks the model, so a map and a card can be answered by two.
    */
-  provider?: () => LlmProvider;
+  provider?: (task: LlmTask) => LlmProvider;
 }
 
 export function createApp(db: Db, options: AppOptions = {}): Hono {
   const app = new Hono();
-  let cached: LlmProvider | null = null;
-  const provider = options.provider ?? ((): LlmProvider => (cached ??= createProvider()));
+  const cached = new Map<LlmTask, LlmProvider>();
+  const provider =
+    options.provider ??
+    ((task: LlmTask): LlmProvider => {
+      const existing = cached.get(task);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const built = createProvider(task);
+      cached.set(task, built);
+      return built;
+    });
 
   const origins = allowedOrigins();
   app.use("*", cors({ origin: (origin) => (origins.includes(origin) ? origin : null) }));
