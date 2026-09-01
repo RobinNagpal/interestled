@@ -4,6 +4,7 @@ export * from "./auth";
 export * from "./profile";
 export * from "./llm";
 export * from "./topics";
+export * from "./mapQuestions";
 export * from "./nodes";
 export * from "./cards";
 export * from "./drills";

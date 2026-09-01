@@ -5,6 +5,9 @@ import {
   DEFAULT_AVERAGE_READ_TIME,
   LearningStyle,
   LlmProviderId,
+  MAP_QUESTION_KINDS,
+  MapPlanView,
+  MapQuestionKind,
   NodeStatus,
   ReadTime,
   TimeBudget,
@@ -623,5 +626,258 @@ describe("card generation", () => {
     // only, or a hit costs a second read of every node in the topic.
     expect(cached.learningNode.findMany).toHaveBeenCalledTimes(1);
     expect(cached.user.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The seven choices asked between the create form and the map.
+ *
+ * Two things are load-bearing and neither is visible from the route alone: an
+ * answer only means anything against the four options the learner was shown, so
+ * the plan row is what it is read against; and the plan is a model call that
+ * happens before any topic or node exists, so the ownership check and the budget
+ * counter both have to be its own.
+ */
+describe("map plans", () => {
+  /** Seven questions in the order the enum fixes, as the model would return them. */
+  const QUESTIONS = JSON.stringify({
+    questions: MAP_QUESTION_KINDS.map((kind) => ({
+      kind,
+      question: `A question about ${kind}`,
+      options: [0, 1, 2, 3].map((index) => ({
+        label: `Option ${index} for ${kind}`,
+        sample: [`Sample ${index} for ${kind}`],
+      })),
+    })),
+  });
+
+  /** The smallest map the two-level schema accepts: three groups, two nodes each. */
+  const MAP = JSON.stringify({
+    archetype: TopicArchetype.Tool,
+    sections: [0, 1, 2].map((group) => ({
+      key: `group_${group}`,
+      title: `Group ${group}`,
+      claim: "One part of the subject.",
+      capability: "read a manifest",
+      nodes: [0, 1].map((leaf) => ({
+        key: `node_${group}_${leaf}`,
+        title: `Node ${group}.${leaf}`,
+        claim: "One thing that is true.",
+        minutes: 3,
+        capability: "say what it does",
+        prerequisiteKeys: [],
+      })),
+    })),
+  });
+
+  interface PlanRow {
+    id: string;
+    userId: string;
+    topicId: string | null;
+    questions: unknown;
+    answers: unknown;
+    createdAt: Date;
+  }
+
+  function planDb(plans: PlanRow[]): { db: Db; created: Record<string, unknown>[]; plans: PlanRow[] } {
+    const created: Record<string, unknown>[] = [];
+    const db = {
+      authSession: {
+        findUnique: vi.fn(async () => ({
+          token: "good",
+          userId: "u1",
+          expiresAt: new Date(Date.now() + 60_000),
+          user: { id: "u1", defaultDepth: 2 },
+        })),
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+      },
+      user: {
+        findUniqueOrThrow: vi.fn(async () => ({ age: null, background: "", learningStyles: [] })),
+      },
+      mapPlan: {
+        count: vi.fn(async () => plans.length),
+        create: vi.fn(async ({ data }: { data: PlanRow }) => {
+          plans.push({ ...data, answers: [], createdAt: new Date() });
+          return data;
+        }),
+        findFirst: vi.fn(async ({ where }: { where: { id?: string; userId: string; topicId?: string } }) =>
+          matching(plans, where)[0] ?? null,
+        ),
+        findMany: vi.fn(async ({ where }: { where: { id?: string; userId: string; topicId?: string } }) =>
+          matching(plans, where),
+        ),
+        updateMany: vi.fn(
+          async ({ where, data }: { where: { id: string }; data: { topicId: string; answers: unknown } }) => {
+            const plan = plans.find((candidate) => candidate.id === where.id);
+            if (plan !== undefined) {
+              Object.assign(plan, data);
+            }
+            return { count: plan === undefined ? 0 : 1 };
+          },
+        ),
+      },
+      topic: {
+        count: vi.fn(async () => 0),
+        findMany: vi.fn(async () => []),
+        findFirst: vi.fn(async () => topicRow()),
+        findUniqueOrThrow: vi.fn(async () => topicRow()),
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          created.push(data);
+          return { ...topicRow(), ...data };
+        }),
+        update: vi.fn(async () => topicRow()),
+      },
+      learningNode: {
+        count: vi.fn(async () => 0),
+        findMany: vi.fn(async () => []),
+        createMany: vi.fn(async () => ({ count: 1 })),
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+      },
+      nodePrerequisite: { createMany: vi.fn(async () => ({ count: 0 })) },
+    };
+    return { db: db as unknown as Db, created, plans };
+  }
+
+  /** The rows a Prisma where of {id?, userId, topicId?} would have matched. */
+  function matching(
+    plans: PlanRow[],
+    where: { id?: string; userId: string; topicId?: string },
+  ): PlanRow[] {
+    return plans.filter(
+      (plan) =>
+        plan.userId === where.userId &&
+        (where.id === undefined || plan.id === where.id) &&
+        (where.topicId === undefined || plan.topicId === where.topicId),
+    );
+  }
+
+  /** Replays the canned replies in order and keeps every prompt sent. */
+  function recorder(...replies: string[]): { provider: () => LlmProvider; prompts: string[] } {
+    const prompts: string[] = [];
+    return {
+      prompts,
+      provider: () => ({
+        id: LlmProviderId.Gemini,
+        model: "test",
+        complete: async (request) => {
+          prompts.push(request.prompt);
+          return replies.shift() ?? "";
+        },
+      }),
+    };
+  }
+
+  const post = async (
+    db: Db,
+    provider: () => LlmProvider,
+    path: string,
+    body: object,
+  ): Promise<Response> =>
+    createApp(db, { provider }).request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: "Bearer good" },
+      body: JSON.stringify(body),
+    });
+
+  it("answers with seven questions and keeps the row they were asked from", async () => {
+    const { db, plans } = planDb([]);
+    const { provider } = recorder(QUESTIONS);
+    const response = await post(db, provider, "/api/topics/questions", {
+      title: "Kubernetes",
+      goal: "deploy a service",
+    });
+
+    expect(response.status).toBe(200);
+    // Parsed rather than read loosely: the shape is the contract the client is
+    // written against, and MapPlanView is what enforces the seven.
+    const body = MapPlanView.parse(await response.json());
+    expect(body.questions).toHaveLength(MAP_QUESTION_KINDS.length);
+    expect(body.planId).toBe(plans[0]?.id);
+    // No topic yet: the learner is answering questions about one that may never
+    // be created, which is why the column is nullable.
+    expect(plans[0]?.topicId).toBeNull();
+  });
+
+  it("builds the map from the sample the learner picked, and records the pick", async () => {
+    const { db, plans, created: topics } = planDb([]);
+    const { provider, prompts } = recorder(QUESTIONS, MAP);
+    const app = createApp(db, { provider });
+    const asked = await app.request("/api/topics/questions", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: "Bearer good" },
+      body: JSON.stringify({ title: "Kubernetes" }),
+    });
+    const { planId } = MapPlanView.parse(await asked.json());
+
+    const built = await post(db, provider, "/api/topics", {
+      title: "Kubernetes",
+      planId,
+      answers: [{ kind: MapQuestionKind.Outline, optionIndex: 2 }],
+    });
+
+    expect(built.status).toBe(201);
+    // The second prompt is the map. What reaches it is the sample, not the label
+    // alone — the sample is the thing that was actually chosen.
+    expect(prompts[1]).toContain("Sample 2 for outline");
+    expect(prompts[1]).toContain("Option 2 for outline");
+    // And the row now says which topic it built and what was answered.
+    expect(plans[0]?.topicId).toBe(topics[0]?.id);
+    expect(plans[0]?.answers).toEqual([{ kind: MapQuestionKind.Outline, optionIndex: 2 }]);
+  });
+
+  it("refuses a plan belonging to someone else, before creating anything", async () => {
+    const { db, created: topics } = planDb([
+      {
+        id: "p-other",
+        userId: "u2",
+        topicId: null,
+        questions: JSON.parse(QUESTIONS).questions,
+        answers: [],
+        createdAt: new Date(),
+      },
+    ]);
+    const { provider } = recorder(MAP);
+    const response = await post(db, provider, "/api/topics", {
+      title: "Kubernetes",
+      planId: "p-other",
+      answers: [{ kind: MapQuestionKind.Outline, optionIndex: 0 }],
+    });
+
+    expect(response.status).toBe(404);
+    // No half-made topic left behind, and no model call spent on it.
+    expect(topics).toEqual([]);
+  });
+
+  it("builds a map with no choices at all, so a skipped question changes nothing else", async () => {
+    const { db } = planDb([]);
+    const { provider, prompts } = recorder(MAP);
+    const response = await post(db, provider, "/api/topics", { title: "Kubernetes" });
+
+    expect(response.status).toBe(201);
+    expect(prompts[0]).not.toContain("They chose:");
+  });
+
+  it("retries a failed build from the answers the failed build used", async () => {
+    // The screen after a failure says nothing was lost. The plan was linked
+    // before the map was generated, so the answers outlived the failure — asking
+    // the seven questions again there would be asking for work already done.
+    const { db } = planDb([
+      {
+        id: "p1",
+        userId: "u1",
+        topicId: "t1",
+        questions: JSON.parse(QUESTIONS).questions,
+        answers: [{ kind: MapQuestionKind.Code, optionIndex: 3 }],
+        createdAt: new Date(),
+      },
+    ]);
+    const { provider, prompts } = recorder(MAP);
+    const response = await post(db, provider, "/api/topics/kubernetes/regenerate", {
+      instructions: "",
+      answers: [],
+    });
+
+    expect(response.status).toBe(200);
+    expect(prompts[0]).toContain("Sample 3 for code");
   });
 });

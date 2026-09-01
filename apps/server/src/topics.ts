@@ -2,27 +2,44 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import {
   MAX_NODE_MINUTES,
+  MapAnswers,
+  MapQuestionSet,
   MoveDirection,
   MoveDirectionSchema,
   SUMMARY_MAX,
   TopicContentSettingsInput,
   TopicCreateInput,
   TopicInfoInput,
+  TopicQuestionsInput,
   TopicRegenerateInput,
   TopicStatus,
   TopicSummary,
+  chosenOptions,
   contentSettingsOf,
   newId,
   uniqueSlug,
 } from "@interestled/schemas";
-import type { GeneratedMapT, LearningNodeT, MapLevels, TopicT } from "@interestled/schemas";
+import type {
+  ChosenOptionT,
+  GeneratedMapT,
+  LearningNodeT,
+  MapAnswersT,
+  MapLevels,
+  MapPlanViewT,
+  TopicT,
+} from "@interestled/schemas";
 import { ancestorsOf, isBranch } from "@interestled/domain";
 import { z } from "zod";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
-import { DEFAULT_CONTENT_INSTRUCTIONS, generateMap, generateSubtree } from "./llm";
-import type { LlmProvider } from "./llm";
+import {
+  DEFAULT_CONTENT_INSTRUCTIONS,
+  generateMap,
+  generateMapQuestions,
+  generateSubtree,
+} from "./llm";
+import type { LlmProvider, MapQuestionsInput } from "./llm";
 import { insertNodes, loadTopicDetail, prepareNodes } from "./maps";
 import { loadProfile } from "./profile";
 import { toNode, toTopic } from "./rows";
@@ -61,13 +78,25 @@ const MAX_TOPICS_PER_USER = 100;
  * what gets counted, and a big map costs more of the allowance than a small one.
  */
 const MAX_GENERATED_NODES_PER_HOUR = 400;
+/**
+ * The seven questions are a model call that happens BEFORE a topic or a node
+ * exists, so neither of the counters above can see it: a client that asked for
+ * questions and never built the map would sit outside the budget entirely. One
+ * plan row is written per questions call, which makes the rows the counter.
+ *
+ * Higher than the topic limit because answering seven questions and then
+ * changing your mind is a thing people do, and each of those is a plan with no
+ * topic behind it.
+ */
+const MAX_MAP_PLANS_PER_HOUR = 30;
 
 async function assertWithinBudget(db: Db, userId: string, isNewTopic: boolean): Promise<void> {
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const [recentTopics, totalTopics, recentNodes] = await Promise.all([
+  const [recentTopics, totalTopics, recentNodes, recentPlans] = await Promise.all([
     isNewTopic ? db.topic.count({ where: { userId, createdAt: { gte: hourAgo } } }) : Promise.resolve(0),
     isNewTopic ? db.topic.count({ where: { userId } }) : Promise.resolve(0),
     db.learningNode.count({ where: { topic: { userId }, createdAt: { gte: hourAgo } } }),
+    db.mapPlan.count({ where: { userId, createdAt: { gte: hourAgo } } }),
   ]);
   if (isNewTopic && recentTopics >= MAX_TOPICS_PER_HOUR) {
     throw new ConflictError(
@@ -78,6 +107,9 @@ async function assertWithinBudget(db: Db, userId: string, isNewTopic: boolean): 
     throw new ConflictError(`You have reached ${MAX_TOPICS_PER_USER} topics. Delete one to add another.`);
   }
   if (recentNodes >= MAX_GENERATED_NODES_PER_HOUR) {
+    throw new ConflictError("That is a lot of map building in one hour — the limit resets shortly.");
+  }
+  if (recentPlans >= MAX_MAP_PLANS_PER_HOUR) {
     throw new ConflictError("That is a lot of map building in one hour — the limit resets shortly.");
   }
 }
@@ -120,6 +152,7 @@ async function buildMap(
   topic: TopicT,
   levels: MapLevels,
   instructions: string,
+  chosen: readonly ChosenOptionT[],
 ): Promise<string | null> {
   try {
     const map = await generateMap(provider, {
@@ -130,6 +163,7 @@ async function buildMap(
       levels,
       content: contentSettingsOf(topic),
       instructions,
+      chosen,
       // Read here rather than passed in, so a rebuild picks up a profile edited
       // since the topic was created — which is a common reason to rebuild.
       profile: await loadProfile(db, topic.userId),
@@ -147,6 +181,118 @@ async function buildMap(
 }
 
 const Instructions = z.object({ instructions: z.string().trim().max(600).default("") });
+
+/**
+ * Ask the model for the seven questions, and keep the row they came from.
+ *
+ * The row is what the answers come back against: an answer is "the second
+ * option of the outline question", which only means anything beside the four
+ * options the learner was actually shown. Generating the questions again to
+ * interpret an answer would interpret it against four different options.
+ */
+async function createPlan(
+  db: Db,
+  provider: LlmProvider,
+  userId: string,
+  topicId: string | null,
+  input: Omit<MapQuestionsInput, "profile">,
+): Promise<MapPlanViewT> {
+  const questions = await generateMapQuestions(provider, {
+    ...input,
+    profile: await loadProfile(db, userId),
+  });
+  const row = await db.mapPlan.create({ data: { id: newId(), userId, topicId, questions } });
+  return { planId: row.id, questions };
+}
+
+/**
+ * The answers, resolved against the questions they were given for.
+ *
+ * A plan id belonging to someone else is a 404 like every other row in this
+ * product — there are no roles, so ownership is the whole of authorisation. No
+ * plan id at all is fine and means no choices were made: the build goes ahead
+ * and the map prompt says nothing about them.
+ */
+async function resolveChoices(
+  db: Db,
+  userId: string,
+  planId: string | undefined,
+  answers: MapAnswersT,
+): Promise<ChosenOptionT[]> {
+  if (planId === undefined) {
+    return [];
+  }
+  const row = await db.mapPlan.findFirst({ where: { id: planId, userId } });
+  if (row === null) {
+    throw new NotFoundError("Those choices are no longer available — answer them again.");
+  }
+  // Parsed rather than trusted: the column is Json, which is the one shape
+  // Prisma cannot describe, so this is the boundary where it becomes typed.
+  return chosenOptions(MapQuestionSet.parse(row.questions), answers);
+}
+
+/** How far back a retry looks for the answers the failed build was made from. */
+const RECENT_PLANS = 5;
+
+/**
+ * The choices behind a rebuild: the ones the learner has just answered, or —
+ * when the build carries no plan at all — the ones the last build of this topic
+ * used.
+ *
+ * The fallback is what makes "Try again" after a failed generation honest. That
+ * screen says rebuilding uses the answers already given, and the plan is linked
+ * to the topic before the map is generated, so a build that died still left the
+ * seven answers behind. Without this the retry would quietly build a different
+ * map from the one that failed.
+ */
+async function rebuildChoices(
+  db: Db,
+  userId: string,
+  topicId: string,
+  planId: string | undefined,
+  answers: MapAnswersT,
+): Promise<ChosenOptionT[]> {
+  if (planId !== undefined) {
+    const chosen = await resolveChoices(db, userId, planId, answers);
+    await linkPlan(db, userId, planId, topicId, answers);
+    return chosen;
+  }
+  // The most recent plan that was actually answered, rather than simply the most
+  // recent: opening the rebuild sheet writes a plan, and closing it again leaves
+  // that unanswered row sitting on top of the one the last build used.
+  const previous = await db.mapPlan.findMany({
+    where: { userId, topicId },
+    orderBy: { createdAt: "desc" },
+    take: RECENT_PLANS,
+  });
+  for (const plan of previous) {
+    const answered = MapAnswers.parse(plan.answers);
+    if (answered.length > 0) {
+      return chosenOptions(MapQuestionSet.parse(plan.questions), answered);
+    }
+  }
+  return [];
+}
+
+/**
+ * Record what was answered, and which topic the plan ended up building. Kept
+ * apart from resolveChoices because the topic does not exist yet when a new
+ * topic's answers are read — the row is linked once it does.
+ */
+async function linkPlan(
+  db: Db,
+  userId: string,
+  planId: string | undefined,
+  topicId: string,
+  answers: MapAnswersT,
+): Promise<void> {
+  if (planId === undefined) {
+    return;
+  }
+  // Scoped by owner like every other write here, even though resolveChoices has
+  // already refused a plan belonging to anyone else.
+  await db.mapPlan.updateMany({ where: { id: planId, userId }, data: { topicId, answers } });
+}
 
 export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
@@ -179,6 +325,65 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
   );
 
   /**
+   * The seven questions asked before a new topic's map is built.
+   *
+   * It answers with the questions and the row they were saved as; the answers
+   * come back to POST "/" carrying that id, so each answer is read against the
+   * four options the learner was actually shown.
+   *
+   * "questions" is one segment, like "defaults", and the only other one-segment
+   * POST here is the create itself — so this cannot be shadowed by a topic slug.
+   */
+  router.post("/questions", zValidator("json", TopicCreateInput), async (c) => {
+    const input = c.req.valid("json");
+    const userId = c.get("userId");
+    await assertWithinBudget(db, userId, true);
+    return c.json(
+      await createPlan(db, provider(), userId, null, {
+        title: input.title,
+        goal: input.goal,
+        timeBudget: input.timeBudget,
+        level: input.level,
+        levels: input.levels,
+        content: TopicContentSettingsInput.parse({}),
+        instructions: "",
+        // Nothing to replace: this topic does not exist yet.
+        current: [],
+      }),
+    );
+  });
+
+  /**
+   * The same seven questions before a rebuild. They are generated again rather
+   * than reused, because the map being replaced is part of what they are asked
+   * about — four options that include the map the learner has just rejected are
+   * three options.
+   */
+  router.post("/:slug/questions", zValidator("json", TopicQuestionsInput), async (c) => {
+    const userId = c.get("userId");
+    const topic = await findTopic(db, userId, c.req.param("slug"));
+    const input = c.req.valid("json");
+    await assertWithinBudget(db, userId, false);
+    const nodes = await db.learningNode.findMany({
+      where: { topicId: topic.id },
+      include: { prerequisites: { select: { prerequisiteId: true } } },
+      orderBy: { orderIndex: "asc" },
+    });
+    return c.json(
+      await createPlan(db, provider(), userId, topic.id, {
+        title: topic.title,
+        goal: topic.goal,
+        timeBudget: topic.timeBudget,
+        level: topic.level,
+        levels: input.levels ?? topic.levels,
+        content: contentSettingsOf(topic),
+        instructions: input.instructions,
+        current: nodes.map(toNode),
+      }),
+    );
+  });
+
+  /**
    * Creating a topic generates its map inline. It is one call and the learner
    * has nothing to do until it lands, so a background job would only add a
    * polling screen — the client shows a skeleton instead.
@@ -187,6 +392,9 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     const input = c.req.valid("json");
     const userId = c.get("userId");
     await assertWithinBudget(db, userId, true);
+    // Before the topic row, so a plan id that is not theirs costs them nothing
+    // and leaves no half-made topic behind.
+    const chosen = await resolveChoices(db, userId, input.planId, input.answers);
     const created = await db.topic.create({
       data: {
         id: newId(),
@@ -203,7 +411,8 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
         status: TopicStatus.Generating,
       },
     });
-    const failure = await buildMap(db, provider(), toTopic(created), input.levels, "");
+    await linkPlan(db, userId, input.planId, created.id, input.answers);
+    const failure = await buildMap(db, provider(), toTopic(created), input.levels, "", chosen);
     if (failure !== null) {
       return c.json({ error: failure, topicSlug: created.slug }, 502);
     }
@@ -221,6 +430,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     const input = c.req.valid("json");
     const levels = input.levels ?? topic.levels;
     await assertWithinBudget(db, userId, false);
+    const chosen = await rebuildChoices(db, userId, topic.id, input.planId, input.answers);
     // Nodes from the previous map would collide with the new ones on the path
     // constraint, and the cascade takes their cards and drills with them.
     await db.learningNode.deleteMany({ where: { topicId: topic.id } });
@@ -228,7 +438,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
       where: { id: topic.id },
       data: { status: TopicStatus.Generating, error: null, levels },
     });
-    const failure = await buildMap(db, provider(), topic, levels, input.instructions);
+    const failure = await buildMap(db, provider(), topic, levels, input.instructions, chosen);
     if (failure !== null) {
       return c.json({ error: failure, topicSlug: topic.slug }, 502);
     }

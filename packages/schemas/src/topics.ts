@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Id } from "./ids";
+import { MapAnswers } from "./mapQuestions";
 import { Slug } from "./slugs";
 
 /**
@@ -143,6 +144,32 @@ export const TopicContentSettings = z.object({
   averageReadTime: ReadTimeSchema,
 });
 
+/**
+ * The answers to the seven questions, and the row they were asked from. Both are
+ * carried by every call that builds a map — creating a topic and rebuilding one
+ * — because the questions are generated per build and a rebuild asks them again.
+ *
+ * Optional and empty-by-default rather than required: the plan is one extra
+ * model call in front of the map, so a build with no plan behind it must still
+ * produce a map. That is also what keeps the server answering the old bundle for
+ * the seconds between the migration and the deploy.
+ */
+export const MapChoicesInput = z.object({
+  planId: Id.optional(),
+  answers: MapAnswers.default([]),
+});
+
+/**
+ * What the seven questions for an existing topic are generated from. The topic
+ * itself is read server-side; this is only what the learner has just typed into
+ * the rebuild sheet, so the questions are about the map they are asking for
+ * rather than the one they already have.
+ */
+export const TopicQuestionsInput = z.object({
+  instructions: z.string().trim().max(600).default(""),
+  levels: MapLevelsSchema.optional(),
+});
+
 export const TopicCreateInput = z.object({
   title: z.string().trim().min(2, "Name the topic").max(120),
   /**
@@ -161,6 +188,7 @@ export const TopicCreateInput = z.object({
   level: z.string().trim().max(600).default(""),
   /** Asked in a sheet on the way to generation, so the choice is never a surprise. */
   levels: MapLevelsSchema.default(MapLevels.Two),
+  ...MapChoicesInput.shape,
 });
 
 /**
@@ -199,13 +227,15 @@ export const TopicContentSettingsInput = z.object({
 
 /**
  * Rebuild the whole map, optionally under new instructions and at a new number
- * of levels. The instructions are free text because the useful ones are
- * corrections ("too much YAML, more on networking") that no set of chips would
- * have anticipated.
+ * of levels, and with the seven choices answered again. The instructions are
+ * free text because the useful ones are corrections ("too much YAML, more on
+ * networking") that no set of chips would have anticipated; the choices are the
+ * other half, and they are asked again on every rebuild because the map they
+ * describe is being thrown away and replaced.
  */
 export const TopicRegenerateInput = z.object({
-  instructions: z.string().trim().max(600).default(""),
-  levels: MapLevelsSchema.optional(),
+  ...TopicQuestionsInput.shape,
+  ...MapChoicesInput.shape,
 });
 
 export const Topic = z.object({
@@ -229,6 +259,8 @@ export const Topic = z.object({
   createdAt: z.coerce.date(),
 });
 
+export type MapChoicesInputT = z.infer<typeof MapChoicesInput>;
+export type TopicQuestionsInputT = z.infer<typeof TopicQuestionsInput>;
 export type TopicCreateInputT = z.infer<typeof TopicCreateInput>;
 export type TopicInfoInputT = z.infer<typeof TopicInfoInput>;
 export type TopicContentSettingsT = z.infer<typeof TopicContentSettings>;

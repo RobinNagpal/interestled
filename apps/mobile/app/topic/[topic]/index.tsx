@@ -107,7 +107,11 @@ export default function TopicScreen(): ReactElement {
         />
         <Button
           label="Try again"
-          onPress={() => regenerate.mutate({ instructions: "" })}
+          // No plan and no answers: the server falls back to the choices the
+          // build that failed was made from, which is what the hint above
+          // promises. Asking the seven questions again here would be asking
+          // someone to redo work that was never lost.
+          onPress={() => regenerate.mutate({ instructions: "", answers: [] })}
           busy={regenerate.isPending}
         />
         {regenerate.isError ? <ErrorState message={messageOf(regenerate.error)} /> : null}

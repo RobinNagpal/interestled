@@ -9,19 +9,28 @@ import {
   DrillKind,
   LearningStyle,
   MapLevels,
+  MapQuestionKind,
   NodeStatus,
   TopicArchetype,
   TimeBudget,
   TopicStatus,
   contentSettingsOf,
 } from "@interestled/schemas";
-import type { CardContentT, LearningNodeT, ProfileT, TopicT } from "@interestled/schemas";
+import type {
+  CardContentT,
+  ChosenOptionT,
+  LearningNodeT,
+  ProfileT,
+  TopicT,
+} from "@interestled/schemas";
 import {
   SYSTEM,
   cardPrompt,
+  choicesBlock,
   defaultCardSettings,
   drillPrompt,
   mapPrompt,
+  mapQuestionsPrompt,
   subtreePrompt,
   verdictPrompt,
 } from "../src/llm/prompts";
@@ -80,6 +89,21 @@ const card: CardContentT = {
   jargon: [],
 };
 
+/** One answered question, as the map prompt receives it. */
+const outlineChoice: ChosenOptionT = {
+  kind: MapQuestionKind.Outline,
+  question: "How should the subject be cut up?",
+  label: "By what breaks",
+  sample: ["Pods that will not start", "Nodes that go away"],
+};
+
+const codeChoice: ChosenOptionT = {
+  kind: MapQuestionKind.Code,
+  question: "How much code do you want to see?",
+  label: "Commands you can run",
+  sample: ["`kubectl describe pod web-7d4`"],
+};
+
 describe("SYSTEM", () => {
   it("bans the failure modes the design documents call out", () => {
     // A5 preambles, A20 effort framing, and inventing facts.
@@ -111,6 +135,7 @@ function mapInput(overrides: Partial<Parameters<typeof mapPrompt>[0]> = {}): Par
     profile,
     content: contentSettingsOf(topic),
     instructions: "",
+    chosen: [],
     ...overrides,
   };
 }
@@ -198,6 +223,106 @@ describe("mapPrompt", () => {
 
   it("says nothing about rebuilding the first time round", () => {
     expect(mapPrompt(mapInput())).not.toContain("asked for this to be rebuilt");
+  });
+
+  it("carries what they picked, and the sample they picked it from", () => {
+    // The label alone is a phrase the model has to interpret; the headings under
+    // it are the thing that was actually chosen.
+    const prompt = mapPrompt(mapInput({ chosen: [outlineChoice] }));
+    expect(prompt).toContain("How should the subject be cut up?");
+    expect(prompt).toContain("They chose: By what breaks");
+    expect(prompt).toContain("Pods that will not start");
+    expect(prompt).toContain("shown four versions of each of these and picked one");
+  });
+
+  it("says nothing at all about choices when every question was skipped", () => {
+    const prompt = mapPrompt(mapInput());
+    expect(prompt).not.toContain("They were shown four versions");
+    expect(prompt).not.toContain("They chose:");
+  });
+
+  it("puts the picks above the instructions, so typed words beat a tapped option", () => {
+    const prompt = mapPrompt(
+      mapInput({ chosen: [outlineChoice], instructions: "Drop the networking entirely" }),
+    );
+    expect(prompt.indexOf("They chose: By what breaks")).toBeLessThan(
+      prompt.indexOf("Drop the networking entirely"),
+    );
+    expect(prompt).toContain("Where it conflicts with anything above, it wins");
+  });
+});
+
+describe("choicesBlock", () => {
+  it("is empty when nothing was chosen, so the block disappears from the prompt", () => {
+    expect(choicesBlock([]).trim()).toBe("");
+  });
+
+  it("keeps the picks in the order the questions were asked", () => {
+    const block = choicesBlock([outlineChoice, codeChoice]);
+    expect(block.indexOf("By what breaks")).toBeLessThan(block.indexOf("Commands you can run"));
+  });
+});
+
+/** Every mapQuestionsPrompt argument, so a test only names what it is about. */
+function questionsInput(
+  overrides: Partial<Parameters<typeof mapQuestionsPrompt>[0]> = {},
+): Parameters<typeof mapQuestionsPrompt>[0] {
+  return {
+    title: topic.title,
+    goal: topic.goal,
+    timeBudget: topic.timeBudget,
+    level: topic.level,
+    levels: MapLevels.Two,
+    profile,
+    content: contentSettingsOf(topic),
+    instructions: "",
+    current: [],
+    ...overrides,
+  };
+}
+
+describe("mapQuestionsPrompt", () => {
+  it("asks for all seven kinds, in the order they are put to the learner", () => {
+    const prompt = mapQuestionsPrompt(questionsInput());
+    const positions = [
+      MapQuestionKind.Outline,
+      MapQuestionKind.Breakdown,
+      MapQuestionKind.Scope,
+      MapQuestionKind.Examples,
+      MapQuestionKind.Code,
+      MapQuestionKind.Numbers,
+      MapQuestionKind.Opening,
+    ].map((kind) => prompt.indexOf(`kind "${kind}"`));
+    expect(positions.every((at) => at >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it("asks for the sample itself rather than a description of it", () => {
+    expect(mapQuestionsPrompt(questionsInput())).toContain(
+      "The sample is the thing itself, not a description of it",
+    );
+  });
+
+  it("says how many levels the map will have, so an outline option fits it", () => {
+    expect(mapQuestionsPrompt(questionsInput({ levels: MapLevels.Three }))).toContain(
+      "will have 3 levels",
+    );
+  });
+
+  it("carries the same learner and the same writing settings as the map itself", () => {
+    const prompt = mapQuestionsPrompt(questionsInput());
+    expect(prompt).toContain("Backend engineer, mostly Python");
+    expect(prompt).toContain("as few words as it takes");
+  });
+
+  it("shows the map being replaced, and bans offering it back", () => {
+    const prompt = mapQuestionsPrompt(questionsInput({ current: [node] }));
+    expect(prompt).toContain("The reconciliation loop");
+    expect(prompt).toContain("Do not offer it back to them unchanged");
+  });
+
+  it("says nothing about a current map when the topic does not exist yet", () => {
+    expect(mapQuestionsPrompt(questionsInput())).not.toContain("The map they have now");
   });
 });
 
