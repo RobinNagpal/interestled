@@ -4,7 +4,7 @@ import {
   MapAnswers,
   MapQuestionKind,
   MapQuestionSet,
-  chosenOptions,
+  answeredQuestions,
 } from "../src/mapQuestions";
 import type { MapQuestionT } from "../src/mapQuestions";
 
@@ -83,48 +83,111 @@ describe("MapQuestionSet", () => {
 
 describe("MapAnswers", () => {
   it("takes fewer than seven, because a question may be skipped", () => {
-    const parsed = MapAnswers.safeParse([{ kind: MapQuestionKind.Outline, optionIndex: 2 }]);
+    const parsed = MapAnswers.safeParse([
+      { kind: MapQuestionKind.Outline, optionIndexes: [2] },
+    ]);
     expect(parsed.success).toBe(true);
+  });
+
+  it("takes all four options at once, because the four are not exclusive", () => {
+    // Two cuts of a subject can both be wanted and blended; two ways code could
+    // appear can both be welcome. Forcing one throws away half of what was meant.
+    const parsed = MapAnswers.safeParse([
+      { kind: MapQuestionKind.Outline, optionIndexes: [0, 1, 2, 3] },
+    ]);
+    expect(parsed.success).toBe(true);
+  });
+
+  it("refuses an answer that picked nothing, because that is a skip", () => {
+    // A skip is the answer being absent. Present-and-empty would be a second way
+    // of saying the same thing, and the two would drift apart.
+    expect(MapAnswers.safeParse([{ kind: MapQuestionKind.Code, optionIndexes: [] }]).success).toBe(
+      false,
+    );
+  });
+
+  it("refuses the same option picked twice", () => {
+    expect(
+      MapAnswers.safeParse([{ kind: MapQuestionKind.Code, optionIndexes: [1, 1] }]).success,
+    ).toBe(false);
   });
 
   it("refuses two answers to the same question", () => {
     const parsed = MapAnswers.safeParse([
-      { kind: MapQuestionKind.Outline, optionIndex: 0 },
-      { kind: MapQuestionKind.Outline, optionIndex: 1 },
+      { kind: MapQuestionKind.Outline, optionIndexes: [0] },
+      { kind: MapQuestionKind.Outline, optionIndexes: [1] },
     ]);
     expect(parsed.success).toBe(false);
   });
 
   it("refuses an option that is not one of the four", () => {
-    expect(MapAnswers.safeParse([{ kind: MapQuestionKind.Code, optionIndex: 4 }]).success).toBe(false);
+    expect(
+      MapAnswers.safeParse([{ kind: MapQuestionKind.Code, optionIndexes: [4] }]).success,
+    ).toBe(false);
   });
 });
 
-describe("chosenOptions", () => {
-  it("resolves each answer against the question it was shown for", () => {
-    const chosen = chosenOptions(sevenQuestions, [
-      { kind: MapQuestionKind.Code, optionIndex: 2 },
-      { kind: MapQuestionKind.Outline, optionIndex: 0 },
+describe("answeredQuestions", () => {
+  it("resolves every pick against the question it was shown for", () => {
+    const answered = answeredQuestions(sevenQuestions, [
+      { kind: MapQuestionKind.Code, optionIndexes: [2, 0] },
+      { kind: MapQuestionKind.Outline, optionIndexes: [0] },
     ]);
     // In the order the questions were asked, not the order they came back in.
-    expect(chosen.map((entry) => entry.kind)).toEqual([MapQuestionKind.Outline, MapQuestionKind.Code]);
-    expect(chosen[1]?.label).toBe("Option 2");
-    expect(chosen[1]?.sample).toEqual(["Sample 2 for code"]);
+    expect(answered.map((entry) => entry.kind)).toEqual([
+      MapQuestionKind.Outline,
+      MapQuestionKind.Code,
+    ]);
+    // And each question's picks in the order they were shown, not the order tapped.
+    expect(answered[1]?.picked.map((option) => option.label)).toEqual([
+      "Option 0",
+      "Option 2",
+    ]);
+  });
+
+  it("carries what was passed over, which is the other half of the answer", () => {
+    // "These five headings rather than those five" says more than the five
+    // alone: without the rejected ones the model is free to build the very cut
+    // the learner just turned down.
+    const answered = answeredQuestions(sevenQuestions, [
+      { kind: MapQuestionKind.Outline, optionIndexes: [1] },
+    ]);
+    expect(answered[0]?.picked.map((option) => option.label)).toEqual(["Option 1"]);
+    expect(answered[0]?.passedOver.map((option) => option.label)).toEqual([
+      "Option 0",
+      "Option 2",
+      "Option 3",
+    ]);
+  });
+
+  it("leaves nothing passed over when all four were picked", () => {
+    const answered = answeredQuestions(sevenQuestions, [
+      { kind: MapQuestionKind.Outline, optionIndexes: [0, 1, 2, 3] },
+    ]);
+    expect(answered[0]?.picked).toHaveLength(4);
+    expect(answered[0]?.passedOver).toEqual([]);
   });
 
   it("leaves a skipped question out entirely rather than filling in a default", () => {
-    expect(chosenOptions(sevenQuestions, [])).toEqual([]);
+    expect(answeredQuestions(sevenQuestions, [])).toEqual([]);
   });
 
   it("drops an answer to a question this set does not contain", () => {
     // The questions were regenerated under the learner. Six of their seven
     // answers still build a map; refusing to build one at all does not.
     const outlineOnly = [sevenQuestions[0]!];
-    const chosen = chosenOptions(outlineOnly, [
-      { kind: MapQuestionKind.Outline, optionIndex: 1 },
-      { kind: MapQuestionKind.Numbers, optionIndex: 1 },
+    const answered = answeredQuestions(outlineOnly, [
+      { kind: MapQuestionKind.Outline, optionIndexes: [1] },
+      { kind: MapQuestionKind.Numbers, optionIndexes: [1] },
     ]);
-    expect(chosen).toHaveLength(1);
-    expect(chosen[0]?.kind).toBe(MapQuestionKind.Outline);
+    expect(answered).toHaveLength(1);
+    expect(answered[0]?.kind).toBe(MapQuestionKind.Outline);
+  });
+
+  it("treats an index past the end of the options as not picked", () => {
+    const answered = answeredQuestions(sevenQuestions, [
+      { kind: MapQuestionKind.Outline, optionIndexes: [0, 9] },
+    ]);
+    expect(answered[0]?.picked.map((option) => option.label)).toEqual(["Option 0"]);
   });
 });

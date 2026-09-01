@@ -15,9 +15,9 @@ import {
   flattenTwoLevelMap,
 } from "@interestled/schemas";
 import type {
+  AnsweredQuestionT,
   CardContentT,
   CardSettingsT,
-  ChosenOptionT,
   DrillKind,
   GeneratedAtomT,
   GeneratedMapNodeT,
@@ -79,8 +79,8 @@ export interface MapInput {
   content: TopicContentSettingsT;
   /** What to change, when the learner asked for the map again. "" the first time. */
   instructions: string;
-  /** The seven choices, resolved. Empty when the learner skipped every one. */
-  chosen: readonly ChosenOptionT[];
+  /** The seven answers, resolved. Empty when the learner skipped every one. */
+  answered: readonly AnsweredQuestionT[];
 }
 
 const QuestionList = z.object({ questions: MapQuestionSet });

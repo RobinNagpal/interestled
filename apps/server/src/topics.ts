@@ -15,13 +15,13 @@ import {
   TopicRegenerateInput,
   TopicStatus,
   TopicSummary,
-  chosenOptions,
+  answeredQuestions,
   contentSettingsOf,
   newId,
   uniqueSlug,
 } from "@interestled/schemas";
 import type {
-  ChosenOptionT,
+  AnsweredQuestionT,
   GeneratedMapT,
   LearningNodeT,
   MapAnswersT,
@@ -197,7 +197,7 @@ async function buildMap(
   topic: TopicT,
   levels: MapLevels,
   instructions: string,
-  chosen: readonly ChosenOptionT[],
+  answered: readonly AnsweredQuestionT[],
 ): Promise<string | null> {
   try {
     const map = await generateMap(provider, {
@@ -208,7 +208,7 @@ async function buildMap(
       levels,
       content: contentSettingsOf(topic),
       instructions,
-      chosen,
+      answered,
       // Read here rather than passed in, so a rebuild picks up a profile edited
       // since the topic was created — which is a common reason to rebuild.
       profile: await loadProfile(db, topic.userId),
@@ -263,7 +263,7 @@ async function resolveChoices(
   userId: string,
   planId: string | undefined,
   answers: MapAnswersT,
-): Promise<ChosenOptionT[]> {
+): Promise<AnsweredQuestionT[]> {
   if (planId === undefined) {
     assertNoOrphanAnswers(answers);
     return [];
@@ -274,7 +274,7 @@ async function resolveChoices(
   }
   // Parsed rather than trusted: the column is Json, which is the one shape
   // Prisma cannot describe, so this is the boundary where it becomes typed.
-  return chosenOptions(MapQuestionSet.parse(row.questions), answers);
+  return answeredQuestions(MapQuestionSet.parse(row.questions), answers);
 }
 
 /**
@@ -308,11 +308,11 @@ async function rebuildChoices(
   topicId: string,
   planId: string | undefined,
   answers: MapAnswersT,
-): Promise<ChosenOptionT[]> {
+): Promise<AnsweredQuestionT[]> {
   if (planId !== undefined) {
-    const chosen = await resolveChoices(db, userId, planId, answers);
+    const answered = await resolveChoices(db, userId, planId, answers);
     await linkPlan(db, userId, planId, topicId, answers);
-    return chosen;
+    return answered;
   }
   assertNoOrphanAnswers(answers);
   // The most recent plan that was actually answered, rather than simply the most
@@ -332,7 +332,7 @@ async function rebuildChoices(
     const questions = MapQuestionSet.safeParse(plan.questions);
     const answered = MapAnswers.safeParse(plan.answers);
     if (questions.success && answered.success && answered.data.length > 0) {
-      return chosenOptions(questions.data, answered.data);
+      return answeredQuestions(questions.data, answered.data);
     }
   }
   return [];
@@ -462,7 +462,7 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
     await assertWithinBudget(db, userId, { newTopic: true, newPlan: false });
     // Before the topic row, so a plan id that is not theirs costs them nothing
     // and leaves no half-made topic behind.
-    const chosen = await resolveChoices(db, userId, input.planId, input.answers);
+    const answered = await resolveChoices(db, userId, input.planId, input.answers);
     const created = await db.topic.create({
       data: {
         id: newId(),
@@ -480,7 +480,7 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
       },
     });
     await linkPlan(db, userId, input.planId, created.id, input.answers);
-    const failure = await buildMap(db, provider(LlmTask.Map), toTopic(created), input.levels, "", chosen);
+    const failure = await buildMap(db, provider(LlmTask.Map), toTopic(created), input.levels, "", answered);
     if (failure !== null) {
       return c.json({ error: failure, topicSlug: created.slug }, 502);
     }
@@ -498,7 +498,7 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
     const input = c.req.valid("json");
     const levels = input.levels ?? topic.levels;
     await assertWithinBudget(db, userId, { newTopic: false, newPlan: false });
-    const chosen = await rebuildChoices(db, userId, topic.id, input.planId, input.answers);
+    const answered = await rebuildChoices(db, userId, topic.id, input.planId, input.answers);
     // Nodes from the previous map would collide with the new ones on the path
     // constraint, and the cascade takes their cards and drills with them.
     await db.learningNode.deleteMany({ where: { topicId: topic.id } });
@@ -506,7 +506,7 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
       where: { id: topic.id },
       data: { status: TopicStatus.Generating, error: null, levels },
     });
-    const failure = await buildMap(db, provider(LlmTask.Map), topic, levels, input.instructions, chosen);
+    const failure = await buildMap(db, provider(LlmTask.Map), topic, levels, input.instructions, answered);
     if (failure !== null) {
       return c.json({ error: failure, topicSlug: topic.slug }, 502);
     }

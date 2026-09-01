@@ -39,25 +39,29 @@ export function MapQuestions({
   // there rather than walking through every question after it a second time.
   const [returning, setReturning] = useState(false);
 
-  const answerFor = (question: MapQuestionT): number | null =>
-    answers.find((answer) => answer.kind === question.kind)?.optionIndex ?? null;
+  const pickedIn = (question: MapQuestionT): readonly number[] =>
+    answers.find((answer) => answer.kind === question.kind)?.optionIndexes ?? [];
 
   const advance = (): void => {
     setStep((current) => (returning ? summary : current + 1));
     setReturning(false);
   };
 
-  const choose = (question: MapQuestionT, optionIndex: number): void => {
-    setAnswers((current) => [
-      ...current.filter((answer) => answer.kind !== question.kind),
-      { kind: question.kind, optionIndex },
-    ]);
-    advance();
-  };
-
-  const skip = (question: MapQuestionT): void => {
-    setAnswers((current) => current.filter((answer) => answer.kind !== question.kind));
-    advance();
+  /**
+   * Add or remove one option. Toggling the last one off drops the answer rather
+   * than leaving it empty, because a question with nothing picked is a skipped
+   * question and the two must not be different things.
+   */
+  const toggle = (question: MapQuestionT, optionIndex: number): void => {
+    setAnswers((current) => {
+      const existing = current.find((answer) => answer.kind === question.kind);
+      const others = current.filter((answer) => answer.kind !== question.kind);
+      const was = existing?.optionIndexes ?? [];
+      const next = was.includes(optionIndex)
+        ? was.filter((index) => index !== optionIndex)
+        : [...was, optionIndex].sort((a, b) => a - b);
+      return next.length === 0 ? others : [...others, { kind: question.kind, optionIndexes: next }];
+    });
   };
 
   const reopen = (at: number): void => {
@@ -78,14 +82,19 @@ export function MapQuestions({
     setStep(summary);
   };
 
+  /** Every option the learner picked, in the order they were shown. */
+  const pickedOptions = (entry: MapQuestionT): MapQuestionOptionT[] => {
+    const picked = new Set(pickedIn(entry));
+    return entry.options.filter((_option, index) => picked.has(index));
+  };
+
   const question = questions[step];
   if (question === undefined) {
     return (
       <View className="gap-4">
         <SectionTitle>What you picked</SectionTitle>
         {questions.map((entry, index) => {
-          const chosen = answerFor(entry);
-          const option = chosen === null ? undefined : entry.options[chosen];
+          const picked = pickedOptions(entry);
           return (
             <Pressable
               key={entry.kind}
@@ -95,12 +104,18 @@ export function MapQuestions({
               onPress={() => reopen(index)}
               className="gap-1 border-b border-line pb-3"
             >
-              {/* Both lines are model-written, so both are Markdown. */}
+              {/* Every line here is model-written, so every line is Markdown. */}
               <InlineMarkdown text={entry.question} className="text-xs text-ink-faint" />
-              {option === undefined ? (
+              {picked.length === 0 ? (
                 <Text className="text-sm text-ink-faint">Skipped</Text>
               ) : (
-                <InlineMarkdown text={option.label} className="text-sm text-ink" />
+                picked.map((option) => (
+                  <InlineMarkdown
+                    key={option.label}
+                    text={option.label}
+                    className="text-sm text-ink"
+                  />
+                ))
               )}
             </Pressable>
           );
@@ -110,12 +125,13 @@ export function MapQuestions({
     );
   }
 
-  const selected = answerFor(question);
+  const picked = pickedIn(question);
   return (
     <View className="gap-4">
       <View className="gap-1">
         <SectionTitle>{`${step + 1} of ${questions.length}`}</SectionTitle>
         <InlineMarkdown text={question.question} className="text-base font-medium text-ink" />
+        <Text className="text-sm text-ink-soft">Pick as many as you want.</Text>
       </View>
 
       <View className="gap-3">
@@ -123,11 +139,22 @@ export function MapQuestions({
           <OptionCard
             key={`${question.kind}-${index}`}
             option={option}
-            selected={selected === index}
-            onPress={() => choose(question, index)}
+            selected={picked.includes(index)}
+            onPress={() => toggle(question, index)}
           />
         ))}
       </View>
+
+      {/*
+       * One button rather than a Next beside a Skip: pressing on with nothing
+       * picked IS skipping, and two controls for one action leave the learner
+       * working out which of them they meant. The label says which it is.
+       */}
+      <Button
+        label={picked.length === 0 ? "Skip this one" : "Next"}
+        tone={picked.length === 0 ? "secondary" : "primary"}
+        onPress={advance}
+      />
 
       <View className="flex-row gap-2">
         {step > 0 || returning ? (
@@ -142,14 +169,12 @@ export function MapQuestions({
             />
           </View>
         ) : null}
-        <View className="flex-1">
-          <Button label="Skip this one" tone="secondary" onPress={() => skip(question)} />
-        </View>
+        {step < summary - 1 && !returning ? (
+          <View className="flex-1">
+            <Button label="Skip the rest" tone="secondary" onPress={skipRest} />
+          </View>
+        ) : null}
       </View>
-
-      {step < summary - 1 && !returning ? (
-        <Button label="Skip the rest" tone="secondary" onPress={skipRest} />
-      ) : null}
     </View>
   );
 }
@@ -174,8 +199,8 @@ function OptionCard({
 }): ReactElement {
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected }}
       accessibilityLabel={option.label}
       onPress={onPress}
       className={`gap-2 rounded-card border p-3 ${

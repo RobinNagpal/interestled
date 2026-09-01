@@ -21,7 +21,7 @@ import {
 } from "@interestled/schemas";
 import type {
   CardContentT,
-  ChosenOptionT,
+  AnsweredQuestionT,
   LearningNodeT,
   ProfileT,
   TopicT,
@@ -97,19 +97,25 @@ const card: CardContentT = {
   jargon: [],
 };
 
-/** One answered question, as the map prompt receives it. */
-const outlineChoice: ChosenOptionT = {
+/** One answered question, as the map prompt receives it: what was picked, and what was left. */
+const outlineChoice: AnsweredQuestionT = {
   kind: MapQuestionKind.Outline,
   question: "How should the subject be cut up?",
-  label: "By what breaks",
-  sample: ["Pods that will not start", "Nodes that go away"],
+  picked: [{ label: "By what breaks", sample: ["Pods that will not start", "Nodes that go away"] }],
+  passedOver: [
+    { label: "By component", sample: ["The scheduler", "The kubelet"] },
+    { label: "By the jobs you do", sample: ["Deploying", "Debugging"] },
+  ],
 };
 
-const codeChoice: ChosenOptionT = {
+const codeChoice: AnsweredQuestionT = {
   kind: MapQuestionKind.Code,
   question: "How much code do you want to see?",
-  label: "Commands you can run",
-  sample: ["`kubectl describe pod web-7d4`"],
+  picked: [
+    { label: "Commands you can run", sample: ["`kubectl describe pod web-7d4`"] },
+    { label: "Short manifests", sample: ["`replicas: 3`"] },
+  ],
+  passedOver: [{ label: "No code at all", sample: ["Described in words instead."] }],
 };
 
 describe("SYSTEM", () => {
@@ -143,7 +149,7 @@ function mapInput(overrides: Partial<Parameters<typeof mapPrompt>[0]> = {}): Par
     profile,
     content: contentSettingsOf(topic),
     instructions: "",
-    chosen: [],
+    answered: [],
     ...overrides,
   };
 }
@@ -266,24 +272,41 @@ describe("mapPrompt", () => {
   it("carries what they picked, and the sample they picked it from", () => {
     // The label alone is a phrase the model has to interpret; the headings under
     // it are the thing that was actually chosen.
-    const prompt = mapPrompt(mapInput({ chosen: [outlineChoice] }));
+    const prompt = mapPrompt(mapInput({ answered: [outlineChoice] }));
     expect(prompt).toContain("How should the subject be cut up?");
-    expect(prompt).toContain("They chose: By what breaks");
+    expect(prompt).toContain("They picked:");
+    expect(prompt).toContain("By what breaks");
     expect(prompt).toContain("Pods that will not start");
-    expect(prompt).toContain("shown four versions of each of these and picked one");
+  });
+
+  it("carries what they passed over, so the rejected cut is not the one built", () => {
+    // The four options were only ever meaningful against each other: "these
+    // headings rather than those" says more than the headings on their own.
+    const prompt = mapPrompt(mapInput({ answered: [outlineChoice] }));
+    expect(prompt).toContain("They passed over:");
+    expect(prompt).toContain("By component");
+    expect(prompt).toContain("The scheduler");
+    expect(prompt).toContain("What they passed over is what they saw and\ndid not want");
+  });
+
+  it("carries every option when more than one was picked, not just the first", () => {
+    const prompt = mapPrompt(mapInput({ answered: [codeChoice] }));
+    expect(prompt).toContain("Commands you can run");
+    expect(prompt).toContain("Short manifests");
+    expect(prompt).toContain("blended into one map");
   });
 
   it("says nothing at all about choices when every question was skipped", () => {
     const prompt = mapPrompt(mapInput());
-    expect(prompt).not.toContain("They were shown four versions");
-    expect(prompt).not.toContain("They chose:");
+    expect(prompt).not.toContain("Build the map they picked");
+    expect(prompt).not.toContain("They picked:");
   });
 
   it("puts the picks above the instructions, so typed words beat a tapped option", () => {
     const prompt = mapPrompt(
-      mapInput({ chosen: [outlineChoice], instructions: "Drop the networking entirely" }),
+      mapInput({ answered: [outlineChoice], instructions: "Drop the networking entirely" }),
     );
-    expect(prompt.indexOf("They chose: By what breaks")).toBeLessThan(
+    expect(prompt.indexOf("By what breaks")).toBeLessThan(
       prompt.indexOf("Drop the networking entirely"),
     );
     expect(prompt).toContain("Where it conflicts with anything above, it wins");
@@ -298,6 +321,11 @@ describe("choicesBlock", () => {
   it("keeps the picks in the order the questions were asked", () => {
     const block = choicesBlock([outlineChoice, codeChoice]);
     expect(block.indexOf("By what breaks")).toBeLessThan(block.indexOf("Commands you can run"));
+  });
+
+  it("puts each question's picks above the options it passed over", () => {
+    const block = choicesBlock([outlineChoice]);
+    expect(block.indexOf("They picked:")).toBeLessThan(block.indexOf("They passed over:"));
   });
 });
 
