@@ -4,6 +4,7 @@ export * from "./components/Sheet";
 export * from "./components/Input";
 export * from "./components/States";
 export * from "./components/Card";
+export * from "./components/GroupCard";
 export * from "./components/NodeStatusDot";
 export * from "./components/VerdictView";
 export * from "./components/Jargon";

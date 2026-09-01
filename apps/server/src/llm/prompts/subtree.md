@@ -6,6 +6,7 @@ What it covers: {{claim}}
 Other parts of this map, which you are NOT rebuilding and must not duplicate: {{siblings}}.
 {{/siblings}}
 {{learner}}
+{{contentRules}}
 {{instructions}}
 Rebuild only what belongs under "{{group}}". Everything else in the map stays as it is.
 

@@ -13,7 +13,10 @@ import type {
   ProfileT,
   ProfileUpdateInputT,
   ReviewInputT,
+  TopicContentSettingsInputT,
+  TopicContentSettingsT,
   TopicCreateInputT,
+  TopicInfoInputT,
   TopicRegenerateInputT,
   TopicT,
 } from "@interestled/schemas";
@@ -85,6 +88,55 @@ export function useRegenerateTopic(
       void client.invalidateQueries({ queryKey: keys.topics });
       void client.invalidateQueries({ queryKey: keys.topic(slug) });
     },
+  });
+}
+
+/**
+ * What the topic is and what the learner wants from it. It regenerates nothing —
+ * the answers change what the next generation reads, and the map already built
+ * keeps every node and every status on it.
+ */
+export function useUpdateTopicInfo(
+  slug: string,
+): UseMutationResult<TopicT, Error, TopicInfoInputT> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TopicInfoInputT) => api.updateTopicInfo(slug, input),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.topics });
+      void client.invalidateQueries({ queryKey: keys.topic(slug) });
+    },
+  });
+}
+
+/**
+ * How the topic is written. The server drops the cards it has already generated
+ * for this topic, so every cached card here is stale the moment this returns —
+ * hence the whole card key, not just this topic's.
+ */
+export function useUpdateTopicContentSettings(
+  slug: string,
+): UseMutationResult<TopicT, Error, TopicContentSettingsInputT> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TopicContentSettingsInputT) => api.updateTopicContentSettings(slug, input),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.topics });
+      void client.invalidateQueries({ queryKey: keys.topic(slug) });
+      void client.invalidateQueries({ queryKey: keys.cards });
+    },
+  });
+}
+
+/** The defaults a topic falls back to. They never change under the app. */
+export function useTopicDefaults(): UseQueryResult<TopicContentSettingsT> {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.topicDefaults,
+    queryFn: () => api.getTopicDefaults(),
+    staleTime: Infinity,
   });
 }
 

@@ -42,10 +42,15 @@ export default function TopicsScreen(): ReactElement {
 
       {topics.data?.map((topic) => (
         <Link key={topic.id} href={topicHref(topic.slug)} asChild>
-          <Pressable className="gap-1 rounded-card bg-surface p-4">
+          <Pressable className="gap-1 rounded-card border border-line bg-surface p-4">
             <Text className="text-lg font-semibold text-ink">{topic.title}</Text>
-            {topic.goal === "" ? null : (
-              <Text className="text-sm text-ink-soft">{topic.goal}</Text>
+            {/* The one line the learner wrote for this list. The goal is the
+                fallback because it is what this line used to show, and a topic
+                created before the summary existed still has one. */}
+            {topic.summary === "" && topic.goal === "" ? null : (
+              <Text className="text-sm text-ink-soft" numberOfLines={2}>
+                {topic.summary === "" ? topic.goal : topic.summary}
+              </Text>
             )}
             {topic.status === TopicStatus.Failed ? (
               <Text className="text-sm text-warn">Map could not be built — open to retry</Text>

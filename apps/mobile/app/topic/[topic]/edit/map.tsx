@@ -9,14 +9,23 @@ import {
   useRegenerateTopic,
   useTopic,
 } from "@interestled/api";
-import { buildTree, topicHref } from "@interestled/domain";
+import { buildTree, editHref } from "@interestled/domain";
 import type { NodeTreeT } from "@interestled/domain";
-import { Button, ErrorState, Input, LoadingContent, SectionTitle, Sheet } from "@interestled/ui";
+import {
+  Button,
+  ErrorState,
+  GroupCard,
+  Input,
+  LoadingContent,
+  MapRow,
+  SectionTitle,
+  Sheet,
+} from "@interestled/ui";
 import { MapLevels, MoveDirection } from "@interestled/schemas";
 import type { LearningNodeT } from "@interestled/schemas";
-import { messageOf } from "../../../lib/errors";
-import { backHeader } from "../../../lib/nav";
-import { ChipRow } from "../../../components/ChipRow";
+import { messageOf } from "../../../../lib/errors";
+import { backHeader } from "../../../../lib/nav";
+import { ChipRow } from "../../../../components/ChipRow";
 
 /** Which rebuild sheet is open: the whole map, one group, or nothing. */
 type Rebuilding = { kind: "map" } | { kind: "node"; node: LearningNodeT } | null;
@@ -47,8 +56,8 @@ export default function EditMapScreen(): ReactElement {
   const header = (
     <Stack.Screen
       options={{
-        title: topic.data === undefined ? "Edit the map" : `Edit: ${topic.data.topic.title}`,
-        headerLeft: backHeader(topicHref(topicSlug)),
+        title: "The map",
+        headerLeft: backHeader(editHref(topicSlug)),
       }}
     />
   );
@@ -97,58 +106,62 @@ export default function EditMapScreen(): ReactElement {
     rebuildNode.mutate({ nodeId: rebuilding.node.id, instructions }, done);
   };
 
-  const renderEntry = (entry: NodeTreeT, siblings: readonly NodeTreeT[]): ReactElement => {
+  const renderEntry = (
+    entry: NodeTreeT,
+    siblings: readonly NodeTreeT[],
+    depth: number,
+  ): ReactElement => {
     const at = siblings.findIndex((candidate) => candidate.node.id === entry.node.id);
-    return (
-      <View key={entry.node.id} className="gap-2">
-        <View
-          className={`gap-2 rounded-card p-3 ${
-            entry.children.length > 0 ? "bg-surface-sunken" : "bg-surface"
-          }`}
-        >
-          <Text className="text-base font-medium text-ink">{entry.node.title}</Text>
-          {/* The slug, because it is what the address bar will say. */}
-          <Text className="text-xs text-ink-faint">/{entry.node.path}</Text>
-          <View className="flex-row flex-wrap items-center gap-2">
+    // The same nesting the map itself draws, so the thing being edited looks like
+    // the thing that was read.
+    const body = (
+      <View className="gap-2">
+        <Text className="text-base font-medium text-ink">{entry.node.title}</Text>
+        {/* The slug, because it is what the address bar will say. */}
+        <Text className="text-xs text-ink-faint">/{entry.node.path}</Text>
+        <View className="flex-row flex-wrap items-center gap-2">
+          <RowAction
+            label="↑"
+            accessibilityLabel={`Move ${entry.node.title} up`}
+            disabled={busy || at <= 0}
+            onPress={() => move.mutate({ nodeId: entry.node.id, direction: MoveDirection.Up })}
+          />
+          <RowAction
+            label="↓"
+            accessibilityLabel={`Move ${entry.node.title} down`}
+            disabled={busy || at === siblings.length - 1}
+            onPress={() => move.mutate({ nodeId: entry.node.id, direction: MoveDirection.Down })}
+          />
+          {entry.children.length > 0 ? (
             <RowAction
-              label="↑"
-              accessibilityLabel={`Move ${entry.node.title} up`}
-              disabled={busy || at <= 0}
-              onPress={() =>
-                move.mutate({ nodeId: entry.node.id, direction: MoveDirection.Up })
-              }
-            />
-            <RowAction
-              label="↓"
-              accessibilityLabel={`Move ${entry.node.title} down`}
-              disabled={busy || at === siblings.length - 1}
-              onPress={() =>
-                move.mutate({ nodeId: entry.node.id, direction: MoveDirection.Down })
-              }
-            />
-            {entry.children.length > 0 ? (
-              <RowAction
-                label="Rebuild"
-                accessibilityLabel={`Rebuild what is under ${entry.node.title}`}
-                disabled={busy}
-                onPress={() => openNodeRebuild(entry.node)}
-              />
-            ) : null}
-            <RowAction
-              label="Delete"
-              accessibilityLabel={`Delete ${entry.node.title}`}
-              tone="danger"
+              label="Rebuild"
+              accessibilityLabel={`Rebuild what is under ${entry.node.title}`}
               disabled={busy}
-              onPress={() => setConfirming(entry.node)}
+              onPress={() => openNodeRebuild(entry.node)}
             />
-          </View>
+          ) : null}
+          <RowAction
+            label="Delete"
+            accessibilityLabel={`Delete ${entry.node.title}`}
+            tone="danger"
+            disabled={busy}
+            onPress={() => setConfirming(entry.node)}
+          />
         </View>
-        {entry.children.length > 0 ? (
-          <View className="gap-2 pl-3">
-            {entry.children.map((child) => renderEntry(child, entry.children))}
-          </View>
-        ) : null}
       </View>
+    );
+
+    if (entry.children.length === 0) {
+      return (
+        <MapRow key={entry.node.id}>
+          <View className="p-3">{body}</View>
+        </MapRow>
+      );
+    }
+    return (
+      <GroupCard key={entry.node.id} depth={depth} band={<View className="flex-1">{body}</View>}>
+        {entry.children.map((child) => renderEntry(child, entry.children, depth + 1))}
+      </GroupCard>
     );
   };
 
@@ -166,7 +179,7 @@ export default function EditMapScreen(): ReactElement {
 
       <View className="gap-3">
         <SectionTitle>Move, rebuild or delete</SectionTitle>
-        {tree.map((entry) => renderEntry(entry, tree))}
+        {tree.map((entry) => renderEntry(entry, tree, 0))}
       </View>
 
       {move.isError ? <ErrorState message={messageOf(move.error)} /> : null}
@@ -263,7 +276,7 @@ function RowAction({
       accessibilityLabel={accessibilityLabel}
       disabled={disabled}
       onPress={onPress}
-      className={`min-h-11 min-w-11 items-center justify-center rounded-card border border-ink-faint/40 px-3 ${
+      className={`min-h-11 min-w-11 items-center justify-center rounded-card border border-line-strong bg-surface px-3 ${
         disabled ? "opacity-40" : ""
       }`}
     >

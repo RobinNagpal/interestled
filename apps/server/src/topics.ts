@@ -3,9 +3,14 @@ import { zValidator } from "@hono/zod-validator";
 import {
   MoveDirection,
   MoveDirectionSchema,
+  SUMMARY_MAX,
+  TopicContentSettingsInput,
   TopicCreateInput,
+  TopicInfoInput,
   TopicRegenerateInput,
   TopicStatus,
+  TopicSummary,
+  contentSettingsOf,
   newId,
   uniqueSlug,
 } from "@interestled/schemas";
@@ -15,7 +20,7 @@ import { z } from "zod";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
-import { generateMap, generateSubtree } from "./llm";
+import { DEFAULT_CONTENT_INSTRUCTIONS, generateMap, generateSubtree } from "./llm";
 import type { LlmProvider } from "./llm";
 import { insertNodes, loadTopicDetail, prepareNodes } from "./maps";
 import { loadProfile } from "./profile";
@@ -76,6 +81,19 @@ async function assertWithinBudget(db: Db, userId: string, isNewTopic: boolean): 
   }
 }
 
+/**
+ * The first line of the goal, as the topic's opening summary. The topics list
+ * has to say something about a topic without opening it, and this is what that
+ * list already showed — so a new topic reads the same as it used to and the
+ * learner edits it from there, rather than being asked for one more answer
+ * before the map they came for (A14).
+ */
+function summaryFromGoal(goal: string): string {
+  // Cut before it is parsed: a first line past the limit is a long goal, not a
+  // bad one, and refusing the whole create over a derived field would be absurd.
+  return TopicSummary.parse((goal.split("\n")[0] ?? "").trim().slice(0, SUMMARY_MAX));
+}
+
 /** A slug that is free for this user. Topic titles repeat, so this is normal. */
 async function freeTopicSlug(db: Db, userId: string, title: string): Promise<string> {
   const rows = await db.topic.findMany({ where: { userId }, select: { slug: true } });
@@ -109,6 +127,7 @@ async function buildMap(
       timeBudget: topic.timeBudget,
       level: topic.level,
       levels,
+      content: contentSettingsOf(topic),
       instructions,
       // Read here rather than passed in, so a rebuild picks up a profile edited
       // since the topic was created — which is a common reason to rebuild.
@@ -140,6 +159,25 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
   });
 
   /**
+   * The default content instructions, so the settings screen can show what is in
+   * force before the learner has written anything. It is a prompt, so it lives
+   * in src/llm/prompts as Markdown and is read from there rather than copied
+   * into the client — one of them would go stale, and it would be this one.
+   *
+   * Registered before "/:slug", and "defaults" is a reserved slug, so no topic
+   * can ever be parked behind this address.
+   */
+  router.get("/defaults", (c) =>
+    // Taken from the input schema rather than restated, so there is one place a
+    // default can be changed and no way for the screen to show a different one
+    // from the one a save would actually apply.
+    c.json({
+      ...TopicContentSettingsInput.parse({}),
+      contentInstructions: DEFAULT_CONTENT_INSTRUCTIONS,
+    }),
+  );
+
+  /**
    * Creating a topic generates its map inline. It is one call and the learner
    * has nothing to do until it lands, so a background job would only add a
    * polling screen — the client shows a skeleton instead.
@@ -154,6 +192,7 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
         userId,
         slug: await freeTopicSlug(db, userId, input.title),
         title: input.title,
+        summary: summaryFromGoal(input.goal),
         goal: input.goal,
         // Overwritten by the generated map; a placeholder keeps the column typed.
         archetype: "tool",
@@ -200,6 +239,57 @@ export function topicsRouter(db: Db, provider: () => LlmProvider): Hono<AuthEnv>
     const userId = c.get("userId");
     const topic = await findTopic(db, userId, c.req.param("slug"));
     return c.json(await loadTopicDetail(db, userId, topic));
+  });
+
+  /**
+   * What the topic is and what the learner wants from it. None of it regenerates
+   * anything: the answers change what the *next* generation reads, and the map
+   * already on screen is left exactly as it was — rebuilding on an edit would
+   * throw away every node already verified, which is the one thing the edit
+   * screen exists to avoid.
+   */
+  router.put("/:slug/info", zValidator("json", TopicInfoInput), async (c) => {
+    const userId = c.get("userId");
+    const topic = await findTopic(db, userId, c.req.param("slug"));
+    const input = c.req.valid("json");
+    const updated = await db.topic.update({
+      where: { id: topic.id },
+      data: {
+        title: input.title,
+        // Kept rather than re-derived: an empty box means the learner cleared it,
+        // and re-seeding from the goal would put back what they just deleted.
+        summary: input.summary,
+        goal: input.goal,
+        level: input.level,
+        timeBudget: input.timeBudget,
+      },
+    });
+    return c.json(toTopic(updated));
+  });
+
+  /**
+   * Standing instructions for everything generated inside this topic. Cards
+   * already written are dropped, because a setting whose effect you cannot see
+   * until you happen to open an unread node is one nobody can tell is working —
+   * and a card costs one call to write again.
+   *
+   * Drills are deliberately kept. Deleting one cascades to the attempts made
+   * against it, and those are the learner's own record of what they answered.
+   */
+  router.put("/:slug/content-settings", zValidator("json", TopicContentSettingsInput), async (c) => {
+    const userId = c.get("userId");
+    const topic = await findTopic(db, userId, c.req.param("slug"));
+    const input = c.req.valid("json");
+    const unchanged =
+      input.style === topic.style &&
+      input.contentInstructions === topic.contentInstructions &&
+      input.averageReadTime === topic.averageReadTime;
+    if (unchanged) {
+      return c.json(topic);
+    }
+    const updated = await db.topic.update({ where: { id: topic.id }, data: input });
+    await db.conceptCard.deleteMany({ where: { node: { topicId: topic.id } } });
+    return c.json(toTopic(updated));
   });
 
   router.delete("/:slug", async (c) => {

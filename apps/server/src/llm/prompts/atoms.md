@@ -4,6 +4,7 @@ Mechanism: {{mechanism}}
 Worked example: {{example}}
 Misconception: {{misconception}}
 
+{{contentRules}}
 Extract 3-5 retrieval items for spaced review. Mix the kinds:
 - "cloze": one sentence with the load-bearing words removed, written as "___".
 - "reverse": a question whose answer is the name of the thing.

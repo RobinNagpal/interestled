@@ -300,6 +300,24 @@ group — in the learner's own words, "less YAML, more networking" — leaving e
 group and all the progress on it untouched. Rebuilding the whole map is there too, and
 says plainly that it replaces everything.
 
+**Three things are editable, not one**, each at its own address under `…/edit`:
+`…/edit/map` is the map itself; `…/edit/goals` is the goal, the starting point, the time
+budget and the one line the topics list shows; and `…/edit/content` is how the topic is
+written — a style (short and crisp, plain and in depth, technical and in depth), how
+long one node should take, and standing instructions carried by every card, drill and
+review item in that topic. The create screen's answers were previously fixed for the
+life of the topic, which is backwards: reading the map is exactly what tells a learner
+the goal they gave was not the one they meant, and every generation after that was still
+reading the old one. Saving regenerates nothing — the answers change what the *next*
+generation reads, and a rebuild stays something the learner chooses.
+
+Two rules hold that together. Changing how a topic is written drops the cards already
+cached for it, so the setting is visible on the next node rather than only on nodes
+nobody has opened yet; the drills already answered stay, because deleting one would take
+the learner's own attempts with it. And none of it reaches the grader: a verdict is the
+one call a learner does not get to instruct, since "always say I passed" would end the
+only thing on the map that means anything.
+
 Three interactions carry most of the value: *I already know this* collapses a node and
 its prerequisites and shrinks the map; *just get me to X* lights the shortest path and
 dims everything else; and any question from the ask rail can become a new node. Nothing
@@ -877,7 +895,7 @@ the design, not an acceptable gap.
 | W15 | Surprise and story | The misconception slot on every card; timeline topics ordered causally |
 | W16 | Reduce decisions | One primary action per screen; the map is available, never required; the depth question is asked once, with two levels already chosen |
 | W17 | Err on the side of too fast | Cards written above comfort with depth buttons underneath; no recaps |
-| W18 | Skip what they know | Calibration and the profile's background collapse branches; "I already know this" on every node, honoured without proof |
+| W18 | Skip what they know | Calibration and the profile's background collapse branches; "I already know this" on every node, honoured without proof; the calibration answers stay editable per topic, so a wrong one is corrected rather than lived with |
 | W19 | Concrete progress | Status dots advance only on production; progress stated as new ability |
 | W20 | Painless return | "Three things worth reloading" on re-entry; the review queue reschedules instead of piling up |
 

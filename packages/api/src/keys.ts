@@ -5,6 +5,10 @@ export const keys = {
   topics: ["topics"] as const,
   /** Keyed by slug: the screens navigate by slug and never hold a topic id. */
   topic: (slug: string) => ["topic", slug] as const,
+  /** The default writing settings a topic falls back to. Constant, so fetched once. */
+  topicDefaults: ["topic-defaults"] as const,
+  /** Every card, at every depth and variant — what changing a topic's settings drops. */
+  cards: ["card"] as const,
   card: (nodeId: string, depth: number | null, variant: string | null) =>
     ["card", nodeId, depth, variant] as const,
   drill: (nodeId: string, kind: string | null) => ["drill", nodeId, kind] as const,

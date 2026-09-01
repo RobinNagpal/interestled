@@ -15,7 +15,9 @@ import type { NodeTreeT } from "@interestled/domain";
 import {
   Button,
   ErrorState,
+  GroupCard,
   HeaderButton,
+  MapRow,
   Minutes,
   NodeStatusDot,
   SectionTitle,
@@ -32,9 +34,11 @@ import { backHeader } from "../../../lib/nav";
  * production — and nothing on it ever locks, because a missing prerequisite is
  * a note you can walk past rather than a gate.
  *
- * Groups are headings and nothing else: they have no card, no drill and no
- * status, and collapsing one is how a three-level map stays a thing you can see
- * the whole of, which is the entire point of having a map (ideal 1).
+ * Groups are headings and nothing else: no concept card, no drill and no status,
+ * and collapsing one is how a three-level map stays a thing you can see the whole
+ * of, which is the entire point of having a map (ideal 1). They are drawn as
+ * cards holding their children rather than as an indented list, because an indent
+ * stops carrying the structure as soon as a title wraps.
  */
 export default function TopicScreen(): ReactElement {
   const { topic: slug } = useLocalSearchParams<{ topic: string }>();
@@ -123,7 +127,7 @@ export default function TopicScreen(): ReactElement {
       return next;
     });
 
-  const renderEntry = (entry: NodeTreeT): ReactElement => {
+  const renderEntry = (entry: NodeTreeT, depth: number): ReactElement => {
     if (entry.children.length === 0) {
       return (
         <NodeRow
@@ -138,25 +142,21 @@ export default function TopicScreen(): ReactElement {
     }
     const open = !collapsed.has(entry.node.id);
     return (
-      <View key={entry.node.id} className="gap-2">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded: open }}
-          onPress={() => toggle(entry.node.id)}
-          className="gap-0.5 rounded-card bg-surface-sunken p-3"
-        >
-          <View className="flex-row items-center justify-between">
-            <Text className="flex-1 text-base font-semibold text-ink">{entry.node.title}</Text>
-            <Text className="text-sm text-ink-faint">{open ? "−" : "+"}</Text>
-          </View>
-          <Text className="text-sm text-ink-soft">{entry.node.claim}</Text>
-          {/* Rolled up, so a collapsed group is still honest about what it costs. */}
-          <Minutes value={rollupMinutes(entry.node, nodes)} />
-        </Pressable>
-        {open ? (
-          <View className="gap-2 pl-3">{entry.children.map((child) => renderEntry(child))}</View>
-        ) : null}
-      </View>
+      <GroupCard
+        key={entry.node.id}
+        depth={depth}
+        toggle={{ expanded: open, label: entry.node.title, onPress: () => toggle(entry.node.id) }}
+        band={
+          <>
+            <Text className="text-base font-semibold text-ink">{entry.node.title}</Text>
+            <Text className="text-sm text-ink-soft">{entry.node.claim}</Text>
+            {/* Rolled up, so a collapsed group is still honest about what it costs. */}
+            <Minutes value={rollupMinutes(entry.node, nodes)} />
+          </>
+        }
+      >
+        {open ? entry.children.map((child) => renderEntry(child, depth + 1)) : undefined}
+      </GroupCard>
     );
   };
 
@@ -190,7 +190,7 @@ export default function TopicScreen(): ReactElement {
 
       <View className="gap-3">
         <SectionTitle>The map</SectionTitle>
-        {tree.map((entry) => renderEntry(entry))}
+        {tree.map((entry) => renderEntry(entry, 0))}
       </View>
 
       {progress.capabilities.length > 0 ? (
@@ -238,7 +238,7 @@ function ResumeCard({
           resume.drillId === null ? nodeHref(topicSlug, node.path) : drillHref(topicSlug, node.path),
         )
       }
-      className="gap-1 rounded-card bg-accent-soft p-4"
+      className="gap-1 rounded-card border border-accent/20 bg-accent-soft p-4"
     >
       <SectionTitle>Pick up where you were</SectionTitle>
       <Text className="text-base text-ink">
@@ -263,28 +263,30 @@ function NodeRow({
   onKnown: () => void;
 }): ReactElement {
   return (
-    <View className="flex-row items-center gap-3 rounded-card bg-surface p-3">
-      <NodeStatusDot status={node.status} />
-      <Pressable
-        className="flex-1 gap-0.5"
-        onPress={() => router.push(nodeHref(topicSlug, node.path))}
-      >
-        <Text className="text-base font-medium text-ink">{node.title}</Text>
-        <Text className="text-sm text-ink-soft" numberOfLines={2}>
-          {node.claim}
-        </Text>
-        <View className="flex-row items-center gap-2">
-          <Minutes value={node.minutes} />
-          <Text className="text-xs text-ink-faint">· {statusLabel(node.status)}</Text>
-        </View>
-      </Pressable>
-      {/* Honoured without proof. Review catches a wrong claim far more cheaply
-          than making everybody prove themselves up front. */}
-      {node.status === NodeStatus.Untouched ? (
-        <Pressable accessibilityRole="button" onPress={onKnown} className="px-2 py-1">
-          <Text className="text-xs text-ink-faint">I know this</Text>
+    <MapRow tone={node.status === NodeStatus.Shaky ? "warn" : "plain"}>
+      <View className="flex-row items-center gap-3 p-3">
+        <NodeStatusDot status={node.status} />
+        <Pressable
+          className="flex-1 gap-0.5"
+          onPress={() => router.push(nodeHref(topicSlug, node.path))}
+        >
+          <Text className="text-base font-medium text-ink">{node.title}</Text>
+          <Text className="text-sm text-ink-soft" numberOfLines={2}>
+            {node.claim}
+          </Text>
+          <View className="flex-row items-center gap-2">
+            <Minutes value={node.minutes} />
+            <Text className="text-xs text-ink-faint">· {statusLabel(node.status)}</Text>
+          </View>
         </Pressable>
-      ) : null}
-    </View>
+        {/* Honoured without proof. Review catches a wrong claim far more cheaply
+            than making everybody prove themselves up front. */}
+        {node.status === NodeStatus.Untouched ? (
+          <Pressable accessibilityRole="button" onPress={onKnown} className="px-2 py-1">
+            <Text className="text-xs text-ink-faint">I know this</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </MapRow>
   );
 }

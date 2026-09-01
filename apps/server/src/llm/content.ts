@@ -21,6 +21,7 @@ import type {
   GeneratedMapT,
   LearningNodeT,
   ProfileT,
+  TopicContentSettingsT,
   TopicT,
   VerdictT,
 } from "@interestled/schemas";
@@ -58,6 +59,8 @@ export interface MapInput {
   level: string;
   levels: MapLevels;
   profile: ProfileT;
+  /** How this topic is written: style, standing instructions, and node length. */
+  content: TopicContentSettingsT;
   /** What to change, when the learner asked for the map again. "" the first time. */
   instructions: string;
 }
@@ -151,7 +154,7 @@ export function generateCard(
 
 export function generateDrill(
   provider: LlmProvider,
-  input: { node: LearningNodeT; kind: DrillKind; card: CardContentT },
+  input: { node: LearningNodeT; kind: DrillKind; card: CardContentT; content: TopicContentSettingsT },
 ): Promise<GeneratedDrillT> {
   return generateJson(provider, {
     system: SYSTEM,
@@ -164,6 +167,9 @@ export function generateDrill(
  * The one call that must be live and good: grading is what turns a written
  * answer into the got/vague/missing/wrong diff, and a cached verdict would be
  * a verdict on somebody else's answer.
+ *
+ * It is also the one call the topic's content instructions do not reach — see
+ * DEFAULT_CONTENT_INSTRUCTIONS in ./prompts.
  */
 export function gradeAttempt(
   provider: LlmProvider,
@@ -180,7 +186,7 @@ export function gradeAttempt(
 
 export async function generateAtoms(
   provider: LlmProvider,
-  input: { node: LearningNodeT; card: CardContentT },
+  input: { node: LearningNodeT; card: CardContentT; content: TopicContentSettingsT },
 ): Promise<GeneratedAtomT[]> {
   const result = await generateJson(provider, {
     system: SYSTEM,
