@@ -187,6 +187,13 @@ answer. Cards, drills and review items are cached deliberately; `gradeAttempt` i
 one call that must be live, and it runs at `temperature: 0` so the same answer does
 not get two different verdicts.
 
+**Every topic carries its own writing settings** — `style`, `averageReadTime` and
+`contentInstructions`, defaulting to `prompts/content-instructions.md` when the learner
+has written none. `contentSettingsOf(topic)` is what every generating call passes, and
+changing them deletes that topic's cached cards so the change is visible on the next
+node rather than only on unread ones. Drills are kept: deleting one cascades to the
+attempts made against it.
+
 ## What the product rules are, and where they live
 
 These are load-bearing. Breaking one is a bug, not a trade-off:
@@ -211,6 +218,10 @@ These are load-bearing. Breaking one is a bug, not a trade-off:
 - **Timers only on retrieval.** Never on a card, an explain-back, or an apply drill.
 - **No effort language in generated copy** — that ban lives in the `SYSTEM` prompt and
   is covered by a test.
+- **A topic's content settings never reach the grader.** Style, read time and the
+  learner's standing instructions are carried by the map, cards, drills and review
+  items; `verdictPrompt` gets none of them, because "always say I passed" would end the
+  only thing on the map that means anything.
 
 The coverage table in `docs/ux/README.md` maps each of the 40 guidelines to the part of
 the product that answers it. If you add a feature, add its row.

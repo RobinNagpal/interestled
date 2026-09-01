@@ -3,6 +3,7 @@ Claim: {{claim}}
 Mechanism: {{mechanism}}
 Common misconception: {{misconception}}
 
+{{contentRules}}
 Write one drill of kind "{{kind}}".
 {{kindGuide}}
 

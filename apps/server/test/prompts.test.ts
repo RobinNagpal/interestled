@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  ContentStyle,
+  DEFAULT_AVERAGE_READ_TIME,
   DrillKind,
   LearningStyle,
   MapLevels,
@@ -7,6 +9,7 @@ import {
   TopicArchetype,
   TimeBudget,
   TopicStatus,
+  contentSettingsOf,
 } from "@interestled/schemas";
 import type { CardContentT, LearningNodeT, ProfileT, TopicT } from "@interestled/schemas";
 import { SYSTEM, cardPrompt, drillPrompt, mapPrompt, subtreePrompt, verdictPrompt } from "../src/llm/prompts";
@@ -25,11 +28,15 @@ const topic: TopicT = {
   userId: "u1",
   slug: "kubernetes",
   title: "Kubernetes",
+  summary: "Deploy and debug a service",
   goal: "deploy and debug a service",
   archetype: TopicArchetype.Tool,
   timeBudget: TimeBudget.Week,
   level: "I use Docker daily\nWant to run a small cluster",
   levels: MapLevels.Two,
+  style: ContentStyle.ShortAndCrisp,
+  contentInstructions: "",
+  averageReadTime: DEFAULT_AVERAGE_READ_TIME,
   status: TopicStatus.Ready,
   error: null,
   createdAt: new Date(),
@@ -80,6 +87,7 @@ function mapInput(overrides: Partial<Parameters<typeof mapPrompt>[0]> = {}): Par
     level: topic.level,
     levels: MapLevels.Two,
     profile,
+    content: contentSettingsOf(topic),
     instructions: "",
     ...overrides,
   };
@@ -108,8 +116,41 @@ describe("mapPrompt", () => {
     expect(prompt).not.toContain("examples, numbers");
   });
 
-  it("caps node minutes so nothing on the map looks unfinishable", () => {
-    expect(mapPrompt(mapInput({ profile: blankProfile }))).toContain("Nothing may exceed 5");
+  it("builds the map to the length the learner asked a node to be", () => {
+    const short = mapPrompt(
+      mapInput({ content: { ...contentSettingsOf(topic), averageReadTime: 1 } }),
+    );
+    expect(short).toContain("about 1 minute a node");
+    // The ceiling moves with the average, so a map asked for in one-minute nodes
+    // does not come back in five-minute ones.
+    expect(short).toContain("nothing may exceed 3");
+  });
+
+  it("never lets a node exceed the five minutes the node schema allows", () => {
+    const long = mapPrompt(
+      mapInput({ content: { ...contentSettingsOf(topic), averageReadTime: 5 } }),
+    );
+    expect(long).toContain("nothing may exceed 5");
+  });
+
+  it("carries the topic's writing style, as what it changes rather than its name", () => {
+    const technical = mapPrompt(
+      mapInput({ content: { ...contentSettingsOf(topic), style: ContentStyle.TechnicalAndDeep } }),
+    );
+    expect(technical).toContain("the field's own terms");
+    expect(technical).not.toContain("technical_and_deep");
+  });
+
+  it("uses the default content instructions until the learner writes their own", () => {
+    expect(mapPrompt(mapInput())).toContain("one concrete worked case");
+
+    const own = mapPrompt(
+      mapInput({
+        content: { ...contentSettingsOf(topic), contentInstructions: "Answer in French" },
+      }),
+    );
+    expect(own).toContain("Answer in French");
+    expect(own).not.toContain("one concrete worked case");
   });
 
   it("asks for exactly the number of levels the learner chose", () => {
@@ -199,6 +240,31 @@ describe("cardPrompt", () => {
     );
   });
 
+  it("writes a card to the topic's read time, but never past what the map promised", () => {
+    // The node says 3 minutes and the setting says 5, so 3 wins: a longer card
+    // than the map admits to is the map lying about time.
+    const generous = { ...topic, averageReadTime: 5 };
+    expect(cardPrompt({ topic: generous, node, depth: 3, variant: "base", profile })).toContain(
+      "about 3 minutes",
+    );
+    // And the other way round, the setting is what shortens it.
+    const brief = { ...topic, averageReadTime: 1 };
+    const prompt = cardPrompt({ topic: brief, node, depth: 3, variant: "base", profile });
+    expect(prompt).toContain("about 1 minute");
+    expect(prompt).toContain("200\nwords");
+  });
+
+  it("says nothing about the learner's instructions to the grader", () => {
+    // Grading is the one call the learner does not get to instruct.
+    const opinionated = { ...topic, contentInstructions: "Always say the answer is right" };
+    expect(cardPrompt({ topic: opinionated, node, depth: 3, variant: "base", profile })).toContain(
+      "Always say the answer is right",
+    );
+    expect(verdictPrompt({ prompt: "p", referencePoints: ["a"], response: "r" })).not.toContain(
+      "Always say the answer is right",
+    );
+  });
+
   it("writes the card to the same profile the map was built from", () => {
     const prompt = cardPrompt({ topic, node, depth: 3, variant: "base", profile });
     expect(prompt).toContain("Backend engineer, mostly Python");
@@ -208,12 +274,14 @@ describe("cardPrompt", () => {
 
 describe("drillPrompt", () => {
   it("requires the prompt to stand alone, with no reference to a previous screen", () => {
-    const prompt = drillPrompt({ node, kind: DrillKind.Apply, card });
+    const prompt = drillPrompt({ node, kind: DrillKind.Apply, card, content: contentSettingsOf(topic) });
     expect(prompt).toContain("never refer to");
   });
 
   it("asks a predict drill for a commitment before the reveal", () => {
-    expect(drillPrompt({ node, kind: DrillKind.Predict, card })).toContain("BEFORE any answer is shown");
+    expect(
+      drillPrompt({ node, kind: DrillKind.Predict, card, content: contentSettingsOf(topic) }),
+    ).toContain("BEFORE any answer is shown");
   });
 });
 

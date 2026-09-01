@@ -6,8 +6,13 @@ Its claim: {{claim}}
 {{variantGuide}}
 
 {{learner}}
+{{contentRules}}
 
-Write the card. Six slots, all required:
+Write the card to be read in about {{readTime}} — roughly {{readWords}}
+words across all the slots together. Never pad to reach it: if the idea is done
+in half of that, stop there.
+
+Six slots, all required:
 - "claim": one sentence. The answer, first, before any context.
 - "mechanism": 1-5 short items explaining WHY it behaves this way. Not a definition,
   not a list of features. Each item under 40 words.

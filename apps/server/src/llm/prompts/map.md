@@ -7,6 +7,7 @@ Time available: {{timeBudget}}
 Do not create nodes for what they already have, and stop the map at the level they asked for.{{/level}}
 
 {{learner}}
+{{contentRules}}
 {{instructions}}
 {{archetypes}}
 

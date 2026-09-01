@@ -11,6 +11,7 @@ import {
   DrillKindSchema,
   NodeStatus,
   NodeStatusSchema,
+  contentSettingsOf,
   newId,
 } from "@interestled/schemas";
 import type { CardContentT, LearningNodeT, TopicT } from "@interestled/schemas";
@@ -167,7 +168,12 @@ export function learningRouter(db: Db, provider: () => LlmProvider): Hono<AuthEn
     }
     const depth = CardDepth.parse(c.get("defaultDepth"));
     const card = await cardFor(db, provider(), userId, topic, node, depth, BASE_VARIANT);
-    const generated = await generateDrill(provider(), { node, kind, card });
+    const generated = await generateDrill(provider(), {
+      node,
+      kind,
+      card,
+      content: contentSettingsOf(topic),
+    });
     const created = await db.drill.create({
       data: { id: newId(), nodeId: node.id, kind, ...generated },
     });
@@ -263,7 +269,11 @@ async function createAtoms(
 ): Promise<void> {
   // cardFor already reads the cache, so this is a hit in the normal case.
   const content = await cardFor(db, provider, userId, topic, node, 2, BASE_VARIANT);
-  const atoms = await generateAtoms(provider, { node, card: content });
+  const atoms = await generateAtoms(provider, {
+    node,
+    card: content,
+    content: contentSettingsOf(topic),
+  });
   const now = new Date();
   await db.atom.createMany({
     data: atoms.map((atom) => ({

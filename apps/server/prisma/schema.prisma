@@ -59,33 +59,46 @@ model AuthSession {
 }
 
 model Topic {
-  id           String         @id
-  userId       String         @map("user_id")
+  id                  String         @id
+  userId              String         @map("user_id")
   // Every URL for this topic is built from the slug, not the id. Unique per
   // user, which is as far as it has to go: nothing is shared between accounts.
   // The default exists only for the seconds between the migration running and
   // the new bundle shipping, where the old code inserts without one; drop it in
   // the next schema change. Random rather than '' because an empty slug would
   // fail the Slug schema on the very next read.
-  slug         String         @default(dbgenerated("md5((random())::text)"))
-  title        String
-  goal         String         @default("")
+  slug                String         @default(dbgenerated("md5((random())::text)"))
+  title               String
+  // One line for the topics list. Seeded from the first line of the goal when
+  // the topic is created, and edited on the topic's own edit screen after that.
+  summary             String         @default("")
+  goal                String         @default("")
   // TopicArchetype, stored as a plain string — the enum lives in
   // packages/schemas, so a new archetype needs no migration.
-  archetype    String
-  timeBudget   String         @map("time_budget")
+  archetype           String
+  timeBudget          String         @map("time_budget")
   // Where they are now and where they want to get to, in their own words.
-  level        String         @default("")
+  level               String         @default("")
   // MapLevels: 2 or 3. Stored as an int rather than an enum for the same reason
   // every other fixed set here is — the enum lives in packages/schemas.
-  levels       Int            @default(2)
-  status       String         @default("generating")
-  error        String?
-  createdAt    DateTime       @default(now()) @map("created_at")
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  nodes        LearningNode[]
-  studies      StudySession[]
-  resumePoints ResumePoint[]
+  levels              Int            @default(2)
+  // ContentStyle, as a plain string — the enum lives in packages/schemas, so
+  // another style is a code change with no migration behind it.
+  style               String         @default("short_and_crisp")
+  // Standing instructions for everything generated in this topic. Empty means
+  // the default in src/llm/prompts/content-instructions.md applies — storing a
+  // copy of the default instead would freeze it at the value it had that day.
+  contentInstructions String         @default("") @map("content_instructions")
+  // Minutes: what a node on this map is built to cost, and what a card is
+  // written to. 1-5, the same band LearningNode.minutes is capped to.
+  averageReadTime     Int            @default(3) @map("average_read_time")
+  status              String         @default("generating")
+  error               String?
+  createdAt           DateTime       @default(now()) @map("created_at")
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodes               LearningNode[]
+  studies             StudySession[]
+  resumePoints        ResumePoint[]
 
   @@unique([userId, slug])
   @@index([userId])

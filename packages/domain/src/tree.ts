@@ -142,6 +142,24 @@ export function drillHref(topicSlug: string, nodePath: string): string {
   return `/topic/${topicSlug}/${nodePath}/drill`;
 }
 
+/**
+ * Editing a topic is three separate screens under one address, because they are
+ * three different questions: what the map contains, what the topic is for, and
+ * how it is written. Each has its own URL so a link lands on the one being
+ * talked about rather than on a hub with three buttons on it.
+ */
 export function editHref(topicSlug: string): string {
   return `/topic/${topicSlug}/edit`;
+}
+
+export function editMapHref(topicSlug: string): string {
+  return `/topic/${topicSlug}/edit/map`;
+}
+
+export function editGoalsHref(topicSlug: string): string {
+  return `/topic/${topicSlug}/edit/goals`;
+}
+
+export function editContentHref(topicSlug: string): string {
+  return `/topic/${topicSlug}/edit/content`;
 }

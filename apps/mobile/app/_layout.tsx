@@ -52,9 +52,20 @@ export default function RootLayout(): ReactElement {
               name="topic/new"
               options={{ title: "New topic", presentation: "modal", headerLeft: backHeader("/") }}
             />
-            {/* Titles for these three come from the topic they load. */}
+            {/* Titles for these come from the topic they load. */}
             <Stack.Screen name="topic/[topic]/index" options={{ title: "Map" }} />
-            <Stack.Screen name="topic/[topic]/edit" options={{ title: "Edit the map" }} />
+            {/* Editing is three screens under one address: what the map holds,
+                what the topic is for, and how it is written. */}
+            <Stack.Screen name="topic/[topic]/edit/index" options={{ title: "Edit" }} />
+            <Stack.Screen name="topic/[topic]/edit/map" options={{ title: "The map" }} />
+            <Stack.Screen
+              name="topic/[topic]/edit/goals"
+              options={{ title: "Goal and starting point" }}
+            />
+            <Stack.Screen
+              name="topic/[topic]/edit/content"
+              options={{ title: "How it is written" }}
+            />
             <Stack.Screen name="topic/[topic]/[...path]" options={{ title: "" }} />
             <Stack.Screen name="review" options={{ title: "Review", headerLeft: backHeader("/") }} />
           </Stack>

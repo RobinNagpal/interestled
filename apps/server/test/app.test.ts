@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { LearningStyle, LlmProviderId } from "@interestled/schemas";
+import {
+  ContentStyle,
+  DEFAULT_AVERAGE_READ_TIME,
+  LearningStyle,
+  LlmProviderId,
+  TimeBudget,
+  TopicArchetype,
+  TopicStatus,
+} from "@interestled/schemas";
 import { createApp } from "../src/app";
 import type { Db } from "../src/db";
 import type { LlmProvider } from "../src/llm/types";
@@ -125,6 +133,134 @@ describe("auth boundary", () => {
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([]);
+  });
+});
+
+/** A ready topic, as the row the writes below are made against. */
+function topicRow(): Record<string, unknown> {
+  return {
+    id: "t1",
+    userId: "u1",
+    slug: "kubernetes",
+    title: "Kubernetes",
+    summary: "Run a small cluster",
+    goal: "deploy a service",
+    archetype: TopicArchetype.Tool,
+    timeBudget: TimeBudget.Week,
+    level: "",
+    levels: 2,
+    style: ContentStyle.ShortAndCrisp,
+    contentInstructions: "",
+    averageReadTime: DEFAULT_AVERAGE_READ_TIME,
+    status: TopicStatus.Ready,
+    error: null,
+    createdAt: new Date(),
+  };
+}
+
+/**
+ * The two writes that change what future generations read without touching what
+ * has already been built. Both are ownership-scoped like everything else, and
+ * neither may reach the map: an edit that regenerated would throw away the nodes
+ * the learner has already verified, which is the thing the edit screen exists to
+ * avoid.
+ */
+describe("topic settings writes", () => {
+  function settingsDb(row = topicRow()): {
+    db: Db;
+    updates: object[];
+    deletedCards: object[];
+    deletedNodes: object[];
+  } {
+    const updates: object[] = [];
+    const deletedCards: object[] = [];
+    const deletedNodes: object[] = [];
+    const db = {
+      authSession: {
+        findUnique: vi.fn(async () => ({
+          token: "good",
+          userId: "u1",
+          expiresAt: new Date(Date.now() + 60_000),
+          user: { id: "u1", defaultDepth: 2 },
+        })),
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+      },
+      topic: {
+        findFirst: vi.fn(async () => row),
+        update: vi.fn(async ({ data }: { data: object }) => {
+          updates.push(data);
+          Object.assign(row, data);
+          return row;
+        }),
+      },
+      conceptCard: { deleteMany: vi.fn(async (args: object) => { deletedCards.push(args); return { count: 1 }; }) },
+      learningNode: { deleteMany: vi.fn(async (args: object) => { deletedNodes.push(args); return { count: 0 }; }) },
+    };
+    return { db: db as unknown as Db, updates, deletedCards, deletedNodes };
+  }
+
+  const send = async (db: Db, path: string, body: object): Promise<Response> =>
+    createApp(db, { provider }).request(path, {
+      method: "PUT",
+      headers: { "content-type": "application/json", Authorization: "Bearer good" },
+      body: JSON.stringify(body),
+    });
+
+  it("saves the goal and summary without touching the map", async () => {
+    const { db, updates, deletedNodes } = settingsDb();
+    const response = await send(db, "/api/topics/kubernetes/info", {
+      title: "Kubernetes",
+      summary: "Run and debug a small cluster",
+      goal: "deploy a service\nread the logs",
+      level: "I use Docker daily",
+      timeBudget: TimeBudget.Ongoing,
+    });
+
+    expect(response.status).toBe(200);
+    expect(updates).toEqual([
+      expect.objectContaining({ summary: "Run and debug a small cluster", timeBudget: TimeBudget.Ongoing }),
+    ]);
+    // No regeneration, and above all no nodes deleted.
+    expect(deletedNodes).toEqual([]);
+  });
+
+  it("drops the cached cards when the writing settings change", async () => {
+    const { db, updates, deletedCards } = settingsDb();
+    const response = await send(db, "/api/topics/kubernetes/content-settings", {
+      style: ContentStyle.TechnicalAndDeep,
+      contentInstructions: "No YAML in the examples",
+      averageReadTime: 5,
+    });
+
+    expect(response.status).toBe(200);
+    expect(updates).toEqual([
+      { style: ContentStyle.TechnicalAndDeep, contentInstructions: "No YAML in the examples", averageReadTime: 5 },
+    ]);
+    // Every card in the topic, so the next open is written to the new settings.
+    expect(deletedCards).toEqual([{ where: { node: { topicId: "t1" } } }]);
+  });
+
+  it("writes nothing, and keeps the cards, when the settings come back unchanged", async () => {
+    const { db, updates, deletedCards } = settingsDb();
+    const response = await send(db, "/api/topics/kubernetes/content-settings", {
+      style: ContentStyle.ShortAndCrisp,
+      contentInstructions: "",
+      averageReadTime: DEFAULT_AVERAGE_READ_TIME,
+    });
+
+    expect(response.status).toBe(200);
+    expect(updates).toEqual([]);
+    expect(deletedCards).toEqual([]);
+  });
+
+  it("refuses a read time outside the band a node is allowed to be", async () => {
+    const { db } = settingsDb();
+    const response = await send(db, "/api/topics/kubernetes/content-settings", {
+      style: ContentStyle.ShortAndCrisp,
+      contentInstructions: "",
+      averageReadTime: 45,
+    });
+    expect(response.status).toBe(400);
   });
 });
 

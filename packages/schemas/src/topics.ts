@@ -51,6 +51,65 @@ export enum MapLevels {
 
 export const MapLevelsSchema = z.nativeEnum(MapLevels);
 
+/** Shared with the server, which cuts a derived summary to fit rather than refusing it. */
+export const SUMMARY_MAX = 160;
+
+/**
+ * One line under the title on the topics list, in the learner's own words. It is
+ * the only thing the list can say about a topic without opening it, so it is a
+ * length the eye takes in whole rather than a second paragraph of goal.
+ */
+export const TopicSummary = z.string().trim().max(SUMMARY_MAX);
+
+/**
+ * How long one piece of content should take to get through, in minutes. It is
+ * the length the map is built to and the length a card is written to, so it is
+ * the one number that decides whether this topic is made of five-minute sittings
+ * or of one-minute ones.
+ *
+ * Capped at 5 because LearningNode.minutes is: a node has to stay a thing you
+ * can start and finish, and the cap is what keeps the map's estimates honest
+ * rather than a wall of half-hours.
+ */
+export const AverageReadTime = z.number().int().min(1).max(5);
+
+/** Long enough to say something, short enough to finish standing up. */
+export const DEFAULT_AVERAGE_READ_TIME = 3;
+
+/**
+ * How a topic is written. Two axes and nothing else: how many words, and whose
+ * words — which is what people actually mean when they say a subject was
+ * explained badly, and it applies to French verbs as squarely as to Kubernetes.
+ *
+ * It is not the depth control. Depth (1-5, on the card itself) decides how far
+ * down the mechanism the explanation goes and follows the learner across every
+ * topic; this decides the register and the length it is written at, and stays
+ * with the topic. A learner can want the full mechanism in plain words, or a
+ * crisp technical note — the two questions do not answer each other.
+ */
+export enum ContentStyle {
+  /** The shortest thing that answers it. */
+  ShortAndCrisp = "short_and_crisp",
+  /** All the way to the mechanism, in everyday words. */
+  PlainAndDeep = "plain_and_deep",
+  /** All the way to the mechanism, in the field's own terms. */
+  TechnicalAndDeep = "technical_and_deep",
+}
+
+export const ContentStyleSchema = z.nativeEnum(ContentStyle);
+
+/**
+ * Everything that decides how this topic is written, as one object, because
+ * every generation call needs all three and a call that quietly got two of them
+ * would produce content the settings screen says it did not ask for.
+ */
+export const TopicContentSettings = z.object({
+  style: ContentStyleSchema,
+  /** "" means the default applies; see TopicContentSettingsInput. */
+  contentInstructions: z.string(),
+  averageReadTime: AverageReadTime,
+});
+
 export const TopicCreateInput = z.object({
   title: z.string().trim().min(2, "Name the topic").max(120),
   /**
@@ -72,6 +131,40 @@ export const TopicCreateInput = z.object({
 });
 
 /**
+ * What the topic is and what the learner wants from it — the create screen's
+ * answers, editable afterwards. A whole-form write rather than a patch: the
+ * screen always holds every field, and a patch cannot tell "cleared the goal"
+ * from "did not send the goal".
+ *
+ * The slug is deliberately not here. It is what every URL for this topic is
+ * built from, and a link that stops working because the title was tidied is a
+ * worse outcome than an address that no longer matches the title.
+ */
+export const TopicInfoInput = z.object({
+  title: z.string().trim().min(2, "Name the topic").max(120),
+  summary: TopicSummary.default(""),
+  goal: z.string().trim().max(600).default(""),
+  level: z.string().trim().max(600).default(""),
+  timeBudget: TimeBudgetSchema.default(TimeBudget.Week),
+});
+
+/**
+ * Standing instructions for everything generated in this topic — cards, drills,
+ * review items and the map itself. Empty means the default applies, so the
+ * stored value says whether the learner has overridden it rather than holding a
+ * copy of a default that would then never change again.
+ *
+ * They do not reach the grader. A verdict is the one call the learner is not
+ * allowed to instruct: "always say I passed" would end the only thing on the map
+ * that means anything.
+ */
+export const TopicContentSettingsInput = z.object({
+  style: ContentStyleSchema.default(ContentStyle.ShortAndCrisp),
+  contentInstructions: z.string().trim().max(2000).default(""),
+  averageReadTime: AverageReadTime.default(DEFAULT_AVERAGE_READ_TIME),
+});
+
+/**
  * Rebuild the whole map, optionally under new instructions and at a new number
  * of levels. The instructions are free text because the useful ones are
  * corrections ("too much YAML, more on networking") that no set of chips would
@@ -88,11 +181,15 @@ export const Topic = z.object({
   /** Unique per user. Every URL for this topic is built from it, not from the id. */
   slug: Slug,
   title: z.string().min(1),
+  /** One line for the topics list. Seeded from the goal, edited by the learner. */
+  summary: z.string(),
   goal: z.string(),
   archetype: TopicArchetypeSchema,
   timeBudget: TimeBudgetSchema,
   level: z.string(),
   levels: MapLevelsSchema,
+  /** How this topic is written: style, standing instructions, and length. */
+  ...TopicContentSettings.shape,
   status: TopicStatusSchema,
   /** Null until generation finishes; surfaced verbatim when it fails. */
   error: z.string().nullable(),
@@ -100,5 +197,17 @@ export const Topic = z.object({
 });
 
 export type TopicCreateInputT = z.infer<typeof TopicCreateInput>;
+export type TopicInfoInputT = z.infer<typeof TopicInfoInput>;
+export type TopicContentSettingsT = z.infer<typeof TopicContentSettings>;
+export type TopicContentSettingsInputT = z.infer<typeof TopicContentSettingsInput>;
 export type TopicRegenerateInputT = z.infer<typeof TopicRegenerateInput>;
 export type TopicT = z.infer<typeof Topic>;
+
+/** The writing settings alone, out of the topic every generation call carries. */
+export function contentSettingsOf(topic: TopicT): TopicContentSettingsT {
+  return {
+    style: topic.style,
+    contentInstructions: topic.contentInstructions,
+    averageReadTime: topic.averageReadTime,
+  };
+}

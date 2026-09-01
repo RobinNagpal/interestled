@@ -9,7 +9,7 @@ import {
   useRegenerateTopic,
   useTopic,
 } from "@interestled/api";
-import { buildTree, topicHref } from "@interestled/domain";
+import { buildTree, editHref } from "@interestled/domain";
 import type { NodeTreeT } from "@interestled/domain";
 import {
   Button,
@@ -23,9 +23,9 @@ import {
 } from "@interestled/ui";
 import { MapLevels, MoveDirection } from "@interestled/schemas";
 import type { LearningNodeT } from "@interestled/schemas";
-import { messageOf } from "../../../lib/errors";
-import { backHeader } from "../../../lib/nav";
-import { ChipRow } from "../../../components/ChipRow";
+import { messageOf } from "../../../../lib/errors";
+import { backHeader } from "../../../../lib/nav";
+import { ChipRow } from "../../../../components/ChipRow";
 
 /** Which rebuild sheet is open: the whole map, one group, or nothing. */
 type Rebuilding = { kind: "map" } | { kind: "node"; node: LearningNodeT } | null;
@@ -56,8 +56,8 @@ export default function EditMapScreen(): ReactElement {
   const header = (
     <Stack.Screen
       options={{
-        title: topic.data === undefined ? "Edit the map" : `Edit: ${topic.data.topic.title}`,
-        headerLeft: backHeader(topicHref(topicSlug)),
+        title: "The map",
+        headerLeft: backHeader(editHref(topicSlug)),
       }}
     />
   );

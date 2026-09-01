@@ -37,7 +37,17 @@ export type NodePathT = z.infer<typeof NodePath>;
  * already taken everywhere rather than only where they would actually collide —
  * one rule is easier to keep true than four.
  */
-export const RESERVED_SLUGS: readonly string[] = ["new", "edit", "drill", "api", "topic", "node"];
+export const RESERVED_SLUGS: readonly string[] = [
+  "new",
+  "edit",
+  "drill",
+  "api",
+  "topic",
+  "node",
+  // GET /api/topics/defaults answers with the default content instructions, so a
+  // topic that took this slug would be unreachable behind it.
+  "defaults",
+];
 
 /** The slug for one title, before any collision is resolved. */
 export function slugify(text: string, fallback = "item"): SlugT {

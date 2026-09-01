@@ -11,6 +11,7 @@ import {
   ResumePoint,
   StudySession,
   Topic,
+  TopicContentSettings,
   User,
   Verdict,
 } from "@interestled/schemas";
@@ -29,7 +30,10 @@ import type {
   ProfileUpdateInputT,
   RegisterInputT,
   ReviewInputT,
+  TopicContentSettingsInputT,
+  TopicContentSettingsT,
   TopicCreateInputT,
+  TopicInfoInputT,
   TopicRegenerateInputT,
   TopicT,
 } from "@interestled/schemas";
@@ -179,6 +183,16 @@ export interface ApiClient {
   regenerateTopic(slug: string, input: TopicRegenerateInputT): Promise<TopicT>;
   deleteTopic(slug: string): Promise<void>;
 
+  /** What the topic is and what the learner wants from it. Generates nothing. */
+  updateTopicInfo(slug: string, input: TopicInfoInputT): Promise<TopicT>;
+  /**
+   * How the topic is written. The server drops the cards already generated for
+   * it, so the next open of a node writes it under the new settings.
+   */
+  updateTopicContentSettings(slug: string, input: TopicContentSettingsInputT): Promise<TopicT>;
+  /** The defaults a topic falls back to, so the settings screen can show them. */
+  getTopicDefaults(): Promise<TopicContentSettingsT>;
+
   /** The three map edits. Each answers with the whole map, already rebuilt. */
   regenerateNode(slug: string, nodeId: string, instructions: string): Promise<TopicDetailT>;
   moveNode(slug: string, nodeId: string, direction: MoveDirection): Promise<TopicDetailT>;
@@ -227,6 +241,18 @@ export function createApiClient(config: ClientConfig): ApiClient {
     regenerateTopic: (slug, input) =>
       post(`/api/topics/${encodeURIComponent(slug)}/regenerate`, Topic, input),
     deleteTopic: (slug) => requestVoid(config, `/api/topics/${encodeURIComponent(slug)}`, "DELETE"),
+
+    updateTopicInfo: (slug, input) =>
+      request(config, `/api/topics/${encodeURIComponent(slug)}/info`, "PUT", Topic, input),
+    updateTopicContentSettings: (slug, input) =>
+      request(
+        config,
+        `/api/topics/${encodeURIComponent(slug)}/content-settings`,
+        "PUT",
+        Topic,
+        input,
+      ),
+    getTopicDefaults: () => get("/api/topics/defaults", TopicContentSettings),
 
     regenerateNode: (slug, nodeId, instructions) =>
       post(`/api/topics/${encodeURIComponent(slug)}/nodes/${nodeId}/regenerate`, TopicDetail, {
