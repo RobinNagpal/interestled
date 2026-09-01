@@ -5,7 +5,7 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import { useTopic, useTopicDefaults, useUpdateTopicContentSettings } from "@interestled/api";
 import { editHref } from "@interestled/domain";
 import { Button, ErrorState, Input, LoadingContent, SectionTitle } from "@interestled/ui";
-import { AverageReadTime, ContentStyle } from "@interestled/schemas";
+import { ContentStyle, READ_TIMES, ReadTimeSchema } from "@interestled/schemas";
 import type { TopicContentSettingsT, TopicT } from "@interestled/schemas";
 import { messageOf } from "../../../../lib/errors";
 import { backHeader, goBack } from "../../../../lib/nav";
@@ -21,6 +21,10 @@ const STYLE_COPY: Record<ContentStyle, { label: string; body: string }> = {
     label: "Short and crisp",
     body: "The shortest thing that answers it. One example, nothing said twice.",
   },
+  [ContentStyle.ShortAndTechnical]: {
+    label: "Short, technical",
+    body: "As short, but assuming you know the words. The answer without the introduction.",
+  },
   [ContentStyle.PlainAndDeep]: {
     label: "Plain, in depth",
     body: "All the way down to how it works, in everyday words. Jargon replaced or explained where it first appears.",
@@ -28,6 +32,10 @@ const STYLE_COPY: Record<ContentStyle, { label: string; body: string }> = {
   [ContentStyle.TechnicalAndDeep]: {
     label: "Technical, in depth",
     body: "All the way down, in the field's own terms, used precisely.",
+  },
+  [ContentStyle.ReferenceNotes]: {
+    label: "Reference notes",
+    body: "Written to be looked up rather than read through: the rule, when it holds, and the real values, each on its own.",
   },
 };
 
@@ -37,8 +45,8 @@ const STYLE_OPTIONS = Object.values(ContentStyle).map((value) => ({
   label: STYLE_COPY[value].label,
 }));
 
-/** 1-5, the band a node is allowed to be — see AverageReadTime in the schemas. */
-const READ_TIMES: { value: string; label: string }[] = [1, 2, 3, 4, 5].map((minutes) => ({
+/** The ladder itself, so the chips and what a node may claim cannot drift apart. */
+const READ_TIME_OPTIONS = READ_TIMES.map((minutes) => ({
   value: String(minutes),
   label: `${minutes} min`,
 }));
@@ -129,13 +137,13 @@ function ContentForm({
       <View className="gap-2">
         <SectionTitle>How long one node should take</SectionTitle>
         <ChipRow
-          options={READ_TIMES}
+          options={READ_TIME_OPTIONS}
           selected={String(averageReadTime)}
-          onSelect={(value) => setAverageReadTime(AverageReadTime.parse(Number(value)))}
+          onSelect={(value) => setAverageReadTime(ReadTimeSchema.parse(Number(value)))}
         />
         <Text className="text-sm text-ink-soft">
-          The map is built to nodes about this long, and a card is written to be read in about this
-          long — never longer than the minutes the map already shows for it.
+          The map is built to nodes about this long. A card is written to match, up to about four
+          minutes of reading — past that the extra time is the drill and the doing, not more card.
         </Text>
       </View>
 

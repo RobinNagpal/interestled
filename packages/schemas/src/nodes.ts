@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Id } from "./ids";
 import { NodePath, Slug } from "./slugs";
-import { MapLevels, TopicArchetypeSchema } from "./topics";
+import { MAX_NODE_MINUTES, MapLevels, TopicArchetypeSchema } from "./topics";
 
 /**
  * A node's state on the map. The order here is the order of advancement, and
@@ -42,11 +42,15 @@ export const LearningNode = z.object({
   /** One sentence answering "what is this, really?". Shown on the map. */
   claim: z.string().min(1).max(300),
   /**
-   * Honest estimate. Capped at 5 so nothing on the map looks unfinishable, and
-   * 0 on a branch, whose time is the sum of the leaves underneath it — a group
-   * is not something you sit down and read.
+   * Honest estimate, and 0 on a branch, whose time is the sum of the leaves
+   * underneath it — a group is not something you sit down and read.
+   *
+   * The ceiling is the longest sitting the read-time ladder offers. What keeps a
+   * particular map's nodes short is the band in the prompt, set from that
+   * topic's own averageReadTime; this is only the outer bound that stops a
+   * generated map claiming a node takes an afternoon.
    */
-  minutes: z.number().int().min(0).max(5),
+  minutes: z.number().int().min(0).max(MAX_NODE_MINUTES),
   archetype: TopicArchetypeSchema,
   /** Position among its siblings, not within the topic. Edits swap two of these. */
   orderIndex: z.number().int().min(0),
@@ -68,7 +72,7 @@ export const GeneratedLeaf = z.object({
   key: Key,
   title: z.string().min(1).max(120),
   claim: z.string().min(1).max(300),
-  minutes: z.number().int().min(1).max(5),
+  minutes: z.number().int().min(1).max(MAX_NODE_MINUTES),
   capability: z.string().min(1).max(200),
   prerequisiteKeys: z.array(Key).max(6),
 });
@@ -169,7 +173,7 @@ export const GeneratedMapNode = z.object({
   title: z.string().min(1).max(120),
   claim: z.string().min(1).max(300),
   /** 0 on a branch — see LearningNode.minutes. */
-  minutes: z.number().int().min(0).max(5),
+  minutes: z.number().int().min(0).max(MAX_NODE_MINUTES),
   capability: z.string().min(1).max(200),
   prerequisiteKeys: z.array(Key),
 });

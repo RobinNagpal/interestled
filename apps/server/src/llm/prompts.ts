@@ -3,6 +3,7 @@ import {
   DepthAction,
   DrillKind,
   LearningStyle,
+  MAX_NODE_MINUTES,
   MapLevels,
   contentSettingsOf,
 } from "@interestled/schemas";
@@ -81,10 +82,14 @@ function instructionBlock(instructions: string): string {
 const CONTENT_STYLE_GUIDE: Record<ContentStyle, string> = {
   [ContentStyle.ShortAndCrisp]:
     "as few words as it takes. One example, no second pass over the same idea, nothing restated.",
+  [ContentStyle.ShortAndTechnical]:
+    "as few words as it takes, in the field's own terms and without stopping to gloss them. They have the vocabulary and want the answer, not the introduction.",
   [ContentStyle.PlainAndDeep]:
     "all the way to the mechanism, in everyday words. Every technical term either replaced with a plain one or glossed the first time it appears.",
   [ContentStyle.TechnicalAndDeep]:
     "all the way to the mechanism, in the field's own terms, used precisely. They want the real thing rather than a simplification.",
+  [ContentStyle.ReferenceNotes]:
+    "as something to look up rather than read through: the rule, the exact conditions it holds under, and the real values, each stated flat on its own. No linking sentences between them.",
 };
 
 /** What a topic is written to before the learner has written anything of their own. */
@@ -118,15 +123,15 @@ function minutesText(minutes: number): string {
 }
 
 /**
- * The minutes band the map is built to. The ceiling is the learner's average
- * plus two rather than a flat 5: a map asked for in one-minute nodes and
- * answered in five-minute ones is not the map they asked for, and 5 is still the
- * hard cap because LearningNode.minutes refuses anything above it.
+ * The minutes band the map is built to. The ceiling follows the learner's
+ * average rather than sitting at a constant: a map asked for in one-minute nodes
+ * and answered in fifteen-minute ones is not the map they asked for. The top of
+ * the ladder is the hard stop, because LearningNode.minutes refuses more.
  */
 function minutesBand(averageReadTime: number): { averageMinutes: string; maxMinutes: string } {
   return {
     averageMinutes: minutesText(averageReadTime),
-    maxMinutes: String(Math.min(5, averageReadTime + 2)),
+    maxMinutes: String(Math.min(MAX_NODE_MINUTES, averageReadTime + 2)),
   };
 }
 
@@ -228,6 +233,15 @@ const VARIANT_GUIDE: Record<string, string> = {
 /** Ordinary adult prose. Only used to turn the minutes into a length the model can aim at. */
 const WORDS_PER_MINUTE = 200;
 
+/**
+ * The most card there can be, whatever the topic's read time says. The six slots
+ * hold about a thousand words between them before CardContent's own limits
+ * refuse the card, so asking for a fifteen-minute one produces either padding or
+ * a response the schema throws away. The rest of a long node is the drill and
+ * the doing, which is where the minutes past this actually go.
+ */
+const CARD_MINUTES_MAX = 4;
+
 export function cardPrompt(input: {
   topic: TopicT;
   node: LearningNodeT;
@@ -236,10 +250,13 @@ export function cardPrompt(input: {
   profile: ProfileT;
 }): string {
   // The setting says how long a card should take; the node's own estimate is
-  // what the map has already promised this one costs. Taking the smaller keeps
+  // what the map has already promised this one costs. Taking the smallest keeps
   // both true — a longer card than the map admits to is the map lying about
   // time, which is the one thing it is not allowed to do.
-  const minutes = Math.max(1, Math.min(input.node.minutes, input.topic.averageReadTime));
+  const minutes = Math.max(
+    1,
+    Math.min(input.node.minutes, input.topic.averageReadTime, CARD_MINUTES_MAX),
+  );
   return render(promptFile("card"), {
     topic: input.topic.title,
     node: input.node.title,

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   ContentStyle,
   DEFAULT_AVERAGE_READ_TIME,
+  MAX_NODE_MINUTES,
+  ReadTime,
   DrillKind,
   LearningStyle,
   MapLevels,
@@ -118,7 +120,7 @@ describe("mapPrompt", () => {
 
   it("builds the map to the length the learner asked a node to be", () => {
     const short = mapPrompt(
-      mapInput({ content: { ...contentSettingsOf(topic), averageReadTime: 1 } }),
+      mapInput({ content: { ...contentSettingsOf(topic), averageReadTime: ReadTime.One } }),
     );
     expect(short).toContain("about 1 minute a node");
     // The ceiling moves with the average, so a map asked for in one-minute nodes
@@ -126,11 +128,11 @@ describe("mapPrompt", () => {
     expect(short).toContain("nothing may exceed 3");
   });
 
-  it("never lets a node exceed the five minutes the node schema allows", () => {
+  it("never asks for a node longer than the top of the read-time ladder", () => {
     const long = mapPrompt(
-      mapInput({ content: { ...contentSettingsOf(topic), averageReadTime: 5 } }),
+      mapInput({ content: { ...contentSettingsOf(topic), averageReadTime: ReadTime.Fifteen } }),
     );
-    expect(long).toContain("nothing may exceed 5");
+    expect(long).toContain(`nothing may exceed ${MAX_NODE_MINUTES}`);
   });
 
   it("carries the topic's writing style, as what it changes rather than its name", () => {
@@ -243,15 +245,24 @@ describe("cardPrompt", () => {
   it("writes a card to the topic's read time, but never past what the map promised", () => {
     // The node says 3 minutes and the setting says 5, so 3 wins: a longer card
     // than the map admits to is the map lying about time.
-    const generous = { ...topic, averageReadTime: 5 };
+    const generous = { ...topic, averageReadTime: ReadTime.Five };
     expect(cardPrompt({ topic: generous, node, depth: 3, variant: "base", profile })).toContain(
       "about 3 minutes",
     );
     // And the other way round, the setting is what shortens it.
-    const brief = { ...topic, averageReadTime: 1 };
+    const brief = { ...topic, averageReadTime: ReadTime.One };
     const prompt = cardPrompt({ topic: brief, node, depth: 3, variant: "base", profile });
     expect(prompt).toContain("about 1 minute");
     expect(prompt).toContain("200\nwords");
+  });
+
+  it("stops asking for more card than the six slots can hold", () => {
+    // A quarter-hour node is a long drill and a long sitting, not a 3000-word
+    // card — CardContent would refuse that, and the retry would refuse it twice.
+    const long = { ...topic, averageReadTime: ReadTime.Fifteen };
+    const bigNode = { ...node, minutes: 15 };
+    const prompt = cardPrompt({ topic: long, node: bigNode, depth: 3, variant: "base", profile });
+    expect(prompt).toContain("about 4 minutes");
   });
 
   it("says nothing about the learner's instructions to the grader", () => {

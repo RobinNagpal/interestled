@@ -4,6 +4,7 @@ import {
   DEFAULT_AVERAGE_READ_TIME,
   LearningStyle,
   LlmProviderId,
+  ReadTime,
   TimeBudget,
   TopicArchetype,
   TopicStatus,
@@ -229,12 +230,16 @@ describe("topic settings writes", () => {
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
       style: ContentStyle.TechnicalAndDeep,
       contentInstructions: "No YAML in the examples",
-      averageReadTime: 5,
+      averageReadTime: ReadTime.Ten,
     });
 
     expect(response.status).toBe(200);
     expect(updates).toEqual([
-      { style: ContentStyle.TechnicalAndDeep, contentInstructions: "No YAML in the examples", averageReadTime: 5 },
+      {
+        style: ContentStyle.TechnicalAndDeep,
+        contentInstructions: "No YAML in the examples",
+        averageReadTime: ReadTime.Ten,
+      },
     ]);
     // Every card in the topic, so the next open is written to the new settings.
     expect(deletedCards).toEqual([{ where: { node: { topicId: "t1" } } }]);
@@ -253,12 +258,14 @@ describe("topic settings writes", () => {
     expect(deletedCards).toEqual([]);
   });
 
-  it("refuses a read time outside the band a node is allowed to be", async () => {
+  it("refuses a read time that is not a rung on the ladder", async () => {
     const { db } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
       style: ContentStyle.ShortAndCrisp,
       contentInstructions: "",
-      averageReadTime: 45,
+      // Between two rungs rather than off the end: both have to be refused, or
+      // the map is built to a length no screen ever offered.
+      averageReadTime: 6,
     });
     expect(response.status).toBe(400);
   });

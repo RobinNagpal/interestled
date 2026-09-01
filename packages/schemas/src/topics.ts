@@ -62,38 +62,71 @@ export const SUMMARY_MAX = 160;
 export const TopicSummary = z.string().trim().max(SUMMARY_MAX);
 
 /**
- * How long one piece of content should take to get through, in minutes. It is
- * the length the map is built to and the length a card is written to, so it is
- * the one number that decides whether this topic is made of five-minute sittings
- * or of one-minute ones.
+ * How long one node should take, in minutes. It is the length the map is built
+ * to and the length a card is written to, so it is the one number deciding
+ * whether a topic is made of one-minute sittings or quarter-hour ones.
  *
- * Capped at 5 because LearningNode.minutes is: a node has to stay a thing you
- * can start and finish, and the cap is what keeps the map's estimates honest
- * rather than a wall of half-hours.
+ * A ladder rather than any number: the useful answers are coarse, and eight
+ * chips a learner picks from beat a number box that can say 13. It is also the
+ * cap on LearningNode.minutes — the largest sitting anyone chose here is the
+ * largest a node may claim.
  */
-export const AverageReadTime = z.number().int().min(1).max(5);
+export enum ReadTime {
+  One = 1,
+  Two = 2,
+  Three = 3,
+  Four = 4,
+  Five = 5,
+  Seven = 7,
+  Ten = 10,
+  Fifteen = 15,
+}
 
-/** Long enough to say something, short enough to finish standing up. */
-export const DEFAULT_AVERAGE_READ_TIME = 3;
+export const ReadTimeSchema = z.nativeEnum(ReadTime);
 
 /**
- * How a topic is written. Two axes and nothing else: how many words, and whose
- * words — which is what people actually mean when they say a subject was
- * explained badly, and it applies to French verbs as squarely as to Kubernetes.
+ * The ladder in order, for the screen that offers it. A numeric enum carries a
+ * reverse mapping, so Object.values gives the names back as well as the numbers.
+ */
+export const READ_TIMES: readonly ReadTime[] = Object.values(ReadTime)
+  .filter((value): value is ReadTime => typeof value === "number")
+  .sort((a, b) => a - b);
+
+/** Nothing on the map may claim more than the longest sitting on the ladder. */
+export const MAX_NODE_MINUTES = ReadTime.Fifteen;
+
+/** Long enough to say something, short enough to finish standing up. */
+export const DEFAULT_AVERAGE_READ_TIME = ReadTime.Three;
+
+/**
+ * How a topic is written: how many words, whose words, and — for the last one —
+ * whether it is prose at all. That is what people mean when they say a subject
+ * was explained badly, and it applies to French verbs as squarely as to
+ * Kubernetes, which is why the choice is the same on every topic.
  *
  * It is not the depth control. Depth (1-5, on the card itself) decides how far
  * down the mechanism the explanation goes and follows the learner across every
  * topic; this decides the register and the length it is written at, and stays
  * with the topic. A learner can want the full mechanism in plain words, or a
  * crisp technical note — the two questions do not answer each other.
+ *
+ * Nor is it the profile's learning styles, which shape what the explanation is
+ * built out of — examples, analogies, a story. Those stay account-wide, because
+ * they are true of the learner rather than of the subject.
+ *
+ * The order here is the order of the chips.
  */
 export enum ContentStyle {
   /** The shortest thing that answers it. */
   ShortAndCrisp = "short_and_crisp",
+  /** As short, but assuming the vocabulary. */
+  ShortAndTechnical = "short_and_technical",
   /** All the way to the mechanism, in everyday words. */
   PlainAndDeep = "plain_and_deep",
   /** All the way to the mechanism, in the field's own terms. */
   TechnicalAndDeep = "technical_and_deep",
+  /** Written to be looked up rather than read through. */
+  ReferenceNotes = "reference_notes",
 }
 
 export const ContentStyleSchema = z.nativeEnum(ContentStyle);
@@ -107,7 +140,7 @@ export const TopicContentSettings = z.object({
   style: ContentStyleSchema,
   /** "" means the default applies; see TopicContentSettingsInput. */
   contentInstructions: z.string(),
-  averageReadTime: AverageReadTime,
+  averageReadTime: ReadTimeSchema,
 });
 
 export const TopicCreateInput = z.object({
@@ -161,7 +194,7 @@ export const TopicInfoInput = z.object({
 export const TopicContentSettingsInput = z.object({
   style: ContentStyleSchema.default(ContentStyle.ShortAndCrisp),
   contentInstructions: z.string().trim().max(2000).default(""),
-  averageReadTime: AverageReadTime.default(DEFAULT_AVERAGE_READ_TIME),
+  averageReadTime: ReadTimeSchema.default(DEFAULT_AVERAGE_READ_TIME),
 });
 
 /**
