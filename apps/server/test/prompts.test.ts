@@ -88,6 +88,16 @@ describe("SYSTEM", () => {
     expect(SYSTEM).toContain("effort language");
     expect(SYSTEM).toContain("JSON only");
   });
+
+  it("cuts recaps without cutting the words that join two sentences", () => {
+    // A17 is about recap paragraphs — "last time we covered" — and reading it as
+    // "cut every transition" is what produced cards written as disconnected
+    // fragments. Both halves have to be here, or one of them comes back.
+    expect(SYSTEM).toContain("Cut recaps and throat-clearing");
+    expect(SYSTEM).toContain("last time we\n  covered");
+    expect(SYSTEM).toContain("Write connected prose, not notes");
+    expect(SYSTEM).not.toContain("Cut every recap, transition");
+  });
 });
 
 /** Every mapPrompt argument, so a test only has to name what it is about. */
@@ -399,6 +409,31 @@ describe("cardPrompt", () => {
     expect(prompt).toContain("it belongs on neither");
     // And the misconception slot, which is where it lands most often.
     expect(prompt).toContain("what people actually get wrong HERE");
+  });
+
+  it("asks for one continuous explanation rather than six separate notes", () => {
+    // What the live cards actually read like: five mechanism items each opening
+    // with its own heading ("Central bank monetization: ..."), an example that
+    // starts over in its own terms, and a misconception bolted on the end.
+    const prompt = cardPrompt(cardInput({}));
+    expect(prompt).toContain("one continuous explanation");
+    expect(prompt).toContain("starts from what the one before it established");
+    expect(prompt).toContain("shuffled without a reader noticing");
+    expect(prompt).toContain("Never label an item");
+    expect(prompt).toContain("No\n  term followed by a colon");
+    // Each of the three sections is joined to the one above it, not just the
+    // items inside one of them.
+    expect(prompt).toContain("that same mechanism happening");
+    expect(prompt).toContain("names the step above that rules it out");
+  });
+
+  it("lets reference notes stay flat, because that is what was asked for", () => {
+    // The one register that wants no linking sentences at all. Without the
+    // carve-out the card asks for a chain and the style asks for entries, and
+    // the model picks one.
+    const prompt = cardPrompt(withSettings({ style: ContentStyle.ReferenceNotes }));
+    expect(prompt).toContain("No linking sentences between them");
+    expect(prompt).toContain("it overrides this paragraph");
   });
 
   it("places the node in the whole map, so a card is written into a sequence", () => {

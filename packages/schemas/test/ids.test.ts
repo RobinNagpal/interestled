@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Id, newId } from "../src/ids";
 import { Email, Password } from "../src/auth";
-import { CardAngle, CardContent, cardVariant } from "../src/cards";
+import { CARD_PROMPT_REVISION, CardAngle, CardContent, cardVariant } from "../src/cards";
 import {
   GeneratedThreeLevelMap,
   GeneratedTwoLevelMap,
@@ -94,6 +94,9 @@ describe("CardContent", () => {
     expect(cardVariant({ ...base, minutes: 10 })).not.toBe(cardVariant(base));
     expect(cardVariant({ ...base, style: ContentStyle.ReferenceNotes })).not.toBe(cardVariant(base));
     expect(cardVariant({ ...base, angle: CardAngle.WhyItMatters })).not.toBe(cardVariant(base));
+    // And the prompt generation, so rewriting card.md is not a change that
+    // reaches only the nodes nobody has opened yet.
+    expect(cardVariant(base)).toContain(`r${CARD_PROMPT_REVISION}`);
   });
 
   it("requires the misconception — the slot exists to force it to be written", () => {

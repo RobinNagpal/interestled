@@ -99,7 +99,10 @@ export function NodeCard({
         </View>
       ) : null}
 
-      <View className="gap-3 rounded-card bg-surface p-4">
+      {/* Paragraph spacing, not list spacing: the items are one argument in
+          order, each starting from what the one above it established, and the
+          airier gap the other sections use reads them as separate notes. */}
+      <View className="gap-2 rounded-card bg-surface p-4">
         <SectionTitle>Why it behaves this way</SectionTitle>
         {content.mechanism.map((line, index) => (
           <Markdown key={index} text={line} />

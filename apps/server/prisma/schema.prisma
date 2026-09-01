@@ -158,9 +158,9 @@ model NodePrerequisite {
 
 /**
  * Cards are cached per (node, depth, variant) and shared across learners, which
- * is what lets a depth button respond instantly. "variant" is "base" or a
- * DepthAction that does not change the depth number (more_concrete, why_it_matters,
- * where_this_breaks).
+ * is what lets the controls under a card respond instantly. "variant" is built by
+ * cardVariant in packages/schemas: the prompt revision, the angle, the minutes and
+ * the register — everything that changes the writing without changing the depth.
  */
 model ConceptCard {
   id        String       @id
