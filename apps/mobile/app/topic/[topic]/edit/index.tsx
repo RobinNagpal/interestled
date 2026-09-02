@@ -1,9 +1,9 @@
-import { ScrollView, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useTopic } from "@interestled/api";
 import { editContentHref, editGoalsHref, editMapHref, topicHref } from "@interestled/domain";
-import { Button, ErrorState, LoadingContent, SectionTitle } from "@interestled/ui";
+import { Button, ErrorState, LoadingContent, Screen, SectionTitle } from "@interestled/ui";
 import { messageOf } from "../../../../lib/errors";
 import { backHeader } from "../../../../lib/nav";
 
@@ -50,7 +50,7 @@ export default function EditTopicScreen(): ReactElement {
   }
 
   return (
-    <ScrollView contentContainerClassName="gap-5 p-4">
+    <Screen contentContainerClassName="gap-5 p-4">
       {header}
 
       <Choice
@@ -71,7 +71,7 @@ export default function EditTopicScreen(): ReactElement {
         label="Edit how it is written"
         onPress={() => router.push(editContentHref(topicSlug))}
       />
-    </ScrollView>
+    </Screen>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 import { router } from "expo-router";
 import { useCard, useRewriteCard } from "@interestled/api";
@@ -16,20 +16,21 @@ import {
   Card,
   DEPTH_COPY,
   Disclosure,
-  ErrorState,
-  InlineMarkdown,
   ENGLISH_COPY,
   ENGLISH_OPTIONS,
+  ErrorState,
   FORMAT_COPY,
   FORMAT_OPTIONS,
-  PARAGRAPH_OPTIONS,
+  InlineMarkdown,
   JargonList,
   LoadingContent,
   Markdown,
+  PARAGRAPH_OPTIONS,
+  Screen,
   SectionTitle,
+  settingsSummary,
   TECHNICAL_COPY,
   TECHNICAL_OPTIONS,
-  settingsSummary,
 } from "@interestled/ui";
 import { CARD_MINUTES_MAX, DEFAULT_CARD_DEPTH, Step } from "@interestled/schemas";
 import type { CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
@@ -94,7 +95,7 @@ export function NodeCard({
   const byId = new Map(nodes.map((candidate) => [candidate.id, candidate]));
 
   return (
-    <ScrollView contentContainerClassName="gap-5 p-4">
+    <Screen contentContainerClassName="gap-5 p-4">
       <View className="gap-1">
         {/* The claim first: the answer arrives before any context. */}
         <InlineMarkdown text={content.claim} className="text-xl font-semibold text-ink" />
@@ -181,7 +182,7 @@ export function NodeCard({
       />
 
       <Button label="Now prove it" onPress={() => router.push(drillHref(topicSlug, node.path))} />
-    </ScrollView>
+    </Screen>
   );
 }
 

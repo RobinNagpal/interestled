@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useGradeReview, useReview } from "@interestled/api";
@@ -10,6 +10,7 @@ import {
   ErrorState,
   LoadingContent,
   Markdown,
+  Screen,
   SectionTitle,
 } from "@interestled/ui";
 import { ReviewGrade } from "@interestled/schemas";
@@ -76,7 +77,7 @@ export default function ReviewScreen(): ReactElement {
   };
 
   return (
-    <ScrollView contentContainerClassName="gap-6 p-4">
+    <Screen contentContainerClassName="gap-6 p-4">
       <SectionTitle>{`${index + 1} of ${atoms.length}`}</SectionTitle>
       <Markdown text={atom.prompt} className="text-xl leading-7 text-ink" />
 
@@ -93,6 +94,6 @@ export default function ReviewScreen(): ReactElement {
       ) : (
         <Button label="Show the answer" onPress={() => setRevealed(true)} />
       )}
-    </ScrollView>
+    </Screen>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
 import {
@@ -19,6 +19,7 @@ import {
   Input,
   LoadingContent,
   MapRow,
+  Screen,
   SectionTitle,
   Sheet,
 } from "@interestled/ui";
@@ -212,7 +213,7 @@ export default function EditMapScreen(): ReactElement {
   };
 
   return (
-    <ScrollView contentContainerClassName="gap-5 p-4">
+    <Screen contentContainerClassName="gap-5 p-4">
       {header}
 
       {/* What it was built to, before anything that changes it: a map that is
@@ -307,7 +308,7 @@ export default function EditMapScreen(): ReactElement {
         />
         <Button label="Keep it" tone="secondary" onPress={() => setConfirming(null)} />
       </Sheet>
-    </ScrollView>
+    </Screen>
   );
 }
 

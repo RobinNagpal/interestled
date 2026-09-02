@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useTopic } from "@interestled/api";
@@ -13,10 +13,11 @@ import {
   EmptyState,
   ErrorState,
   InlineMarkdown,
+  LoadingContent,
   Minutes,
   NodeStatusDot,
+  Screen,
   SectionTitle,
-  LoadingContent,
   statusLabel,
 } from "@interestled/ui";
 import type { LearningNodeT } from "@interestled/schemas";
@@ -140,7 +141,7 @@ function GroupScreen({
     .filter((candidate) => candidate.parentId === node.id)
     .sort((a, b) => a.orderIndex - b.orderIndex);
   return (
-    <ScrollView contentContainerClassName="gap-4 p-4">
+    <Screen contentContainerClassName="gap-4 p-4">
       <View className="gap-1">
         <InlineMarkdown text={node.claim} className="text-lg text-ink" />
         <InlineMarkdown
@@ -173,6 +174,6 @@ function GroupScreen({
           </View>
         </Pressable>
       ))}
-    </ScrollView>
+    </Screen>
   );
 }
