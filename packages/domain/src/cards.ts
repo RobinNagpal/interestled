@@ -32,3 +32,25 @@ export function defaultCardSettings(
     angle: CardAngle.Base,
   };
 }
+
+/**
+ * Whether two sets of card settings would produce the same card.
+ *
+ * The panel under a card holds what the reader has moved the chips to, and the
+ * card on screen was written to something else until they press the button. The
+ * difference between the two is the whole state of that panel — what the button
+ * is for, whether the summary line is describing the card or a card nobody has
+ * asked for yet — so it is asked once here rather than compared field by field
+ * at three call sites that would each forget a different field.
+ */
+export function sameCardSettings(a: CardSettingsT, b: CardSettingsT): boolean {
+  return (
+    a.depth === b.depth &&
+    a.minutes === b.minutes &&
+    a.englishLevel === b.englishLevel &&
+    a.technicalDetail === b.technicalDetail &&
+    a.format === b.format &&
+    a.paragraphLength === b.paragraphLength &&
+    a.angle === b.angle
+  );
+}

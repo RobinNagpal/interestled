@@ -455,8 +455,9 @@ the screen, which is the app showing its working.
 
 Everything that decides how a card comes out sits under it: how deep it goes, how long
 it takes to read, how hard the English is, how much terminology it carries, whether it
-is prose or notes, and which angle it is written from. Six rows of chips is a second
-screen under the first, and most readers want none of it most of the time — so it is
+is prose or notes, how long a paragraph runs, and which angle it is written from. Seven
+rows of chips is a second screen under the first, and most readers want none of it most
+of the time — so it is
 folded away, and the closed row says what the card in front of them was written to:
 *How this card is written — depth 3 of 5 — the mechanism · about 5 min · medium
 English · some detail*. That is the difference between a panel and a drawer labelled
@@ -464,29 +465,33 @@ English · some detail*. That is the difference between a panel and a drawer lab
 and this one answers the question from outside. It is also the only place the settings
 a card was actually written to are stated once the card has arrived.
 
-Opened, each one is a setting the generator actually reads, and the panel states where
-the card stands on each — *Depth 3 of 5 · the mechanism*, *about 5 min*. A control that
-cannot say what it changed is one the reader concludes is broken, which is what a row of
-five
-identical-looking buttons became: two of them did nothing at the ends of the scale, and
-a press that refetches an identical card is indistinguishable from a press that does
-nothing at all. A step that has nowhere left to go is now drawn as spent rather than
-offered.
+Opened, it is the topic's own settings screen again — the same rows of chips, in the
+same order, out of the same copy, with the one that is in force on this card filled in.
+Depth and angle are the two a card has and a topic does not. The rows were a mix before:
+*simpler* and *deeper* beside *shorter* and *longer*, four buttons that could move a
+setting but never say where it stood, so half of each scale was somewhere the reader had
+to press twice to find out about, and the two ends did nothing at all. A chip row says
+what the card was written to and what else it could have been in the same glance, and it
+says it in the shape the settings screen already taught.
 
-*Simpler* and *deeper* move one rung of the mechanism. *Shorter* and *longer* move one
-rung of the read-time ladder for this card alone — the topic's setting is the default,
-not a ceiling. The register chips are the same ones the topic is written in. *More
-concrete*, *why it matters* and *where this breaks* ask the same depth a different way,
-and *plain* is the way back to the card as written, which the old panel had no version
-of.
+Moving a chip writes nothing. It used to write a card on the spot, which made a second
+change a second wait and a second model call, and meant nobody could set the depth and
+the length together without paying for the card in between — the one nobody asked for.
+So the chips move the panel and the panel alone, and one button under them asks for the
+card: *Regenerate*. What is on screen stays on screen until it lands, and the closed row
+says *not written yet* while the two disagree.
 
-One more control changes nothing at all: *write it again*, at the settings the card
-already has. Generation is not deterministic, so the same request twice is a different
-explanation, and the only way to ask for one used to be moving a setting somewhere you
-did not want it and back. It is the one press here that always costs a model call, so
-the cards written in an hour are capped per learner — every other generating call either
-creates nodes or is answered from the cache the second time round, and this one has no
-ceiling of its own.
+At settings the card was not written to, that press asks for that card — which the cache
+may already hold, in which case it costs nothing. At the settings it already has, the
+same button reads *write it again* and always costs a model call: generation is not
+deterministic, so the same request twice is a different explanation, and the only way to
+ask for one used to be moving a setting somewhere you did not want it and back. That is
+why the cards written in an hour are capped per learner — every other generating call
+either creates nodes or is answered from the cache the second time round, and this one
+has no ceiling of its own.
+
+*Back to how the topic is written* moves every chip back to the topic's own settings,
+and like every other control here it is a request until the button is pressed.
 
 The wait now says what is being written — *depth 3 of 5 — the mechanism · about 3 min ·
 medium English · some detail*. Ten to thirty seconds against a label saying only that
@@ -496,12 +501,12 @@ topic and a node into those settings is shared between the server and the app ra
 than written twice, because a wait describing a card other than the one that arrives is
 worse than a wait describing nothing.
 
-Depth is sticky: three presses of *deeper* and later cards start deeper, so the learner
-sets their level by using the product rather than by declaring it. Cards are cached per
-setting, so returning to one is instant — and while a new one is being written the old
-one stays on screen with *rewriting…* beside the controls, because blanking the screen
-to a skeleton for twenty seconds is the other way a working control reads as a broken
-one.
+Depth is sticky: ask a few cards for a deeper one and later cards start deeper, so the
+learner sets their level by using the product rather than by declaring it. Cards are
+cached per setting, so returning to one is instant — and while a new one is being written
+the old one stays on screen with *writing it…* beside the controls, because blanking the
+screen to a skeleton for twenty seconds is the other way a working control reads as a
+broken one.
 
 - *The ideal:* pitch slightly above comfort and make the depth available on demand.
   Writing for the least-prepared reader holds everyone at the slowest pace in the room

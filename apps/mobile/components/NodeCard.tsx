@@ -3,18 +3,13 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 import { router } from "expo-router";
 import { useCard, useRewriteCard } from "@interestled/api";
-import {
-  defaultCardSettings,
-  depthAfter,
-  drillHref,
-  nodeHref,
-  readTimeAfter,
-} from "@interestled/domain";
+import { defaultCardSettings, drillHref, nodeHref, sameCardSettings } from "@interestled/domain";
 import {
   ANGLE_OPTIONS,
   Button,
   Card,
-  DEPTH_COPY,
+  cardMinuteOptions,
+  DEPTH_OPTIONS,
   Disclosure,
   ENGLISH_COPY,
   ENGLISH_OPTIONS,
@@ -25,6 +20,7 @@ import {
   JargonList,
   LoadingContent,
   Markdown,
+  PARAGRAPH_NOTE,
   PARAGRAPH_OPTIONS,
   Screen,
   SectionTitle,
@@ -32,7 +28,7 @@ import {
   TECHNICAL_COPY,
   TECHNICAL_OPTIONS,
 } from "@interestled/ui";
-import { CARD_MINUTES_MAX, DEFAULT_CARD_DEPTH, Step } from "@interestled/schemas";
+import { CardDepth, CardMinutes, DEFAULT_CARD_DEPTH } from "@interestled/schemas";
 import type { CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
 import { ChipRow } from "./ChipRow";
 import { useAuth } from "../lib/auth";
@@ -54,11 +50,16 @@ export function NodeCard({
   node: LearningNodeT;
   nodes: readonly LearningNodeT[];
 }): ReactElement {
-  // What the learner has changed for this node, and nothing else: an empty
-  // object is the card as the topic is written, which is what a fresh arrival
-  // must get.
-  const [overrides, setOverrides] = useState<Partial<CardSettingsT>>({});
-  const card = useCard(node.id, overrides);
+  // Two states, not one. `applied` is what the card on screen was asked for —
+  // an empty object is the card as the topic is written, which is what a fresh
+  // arrival must get. `draft` is where the chips stand, which is only a request
+  // until the button under them is pressed: writing a card takes ten to thirty
+  // seconds and a model call, so a panel that wrote one per chip could not be
+  // adjusted twice, and the second half of a change was always paid for as a
+  // card nobody wanted.
+  const [applied, setApplied] = useState<Partial<CardSettingsT>>({});
+  const [draft, setDraft] = useState<Partial<CardSettingsT>>({});
+  const card = useCard(node.id, applied);
   const rewrite = useRewriteCard(node.id);
   const { user } = useAuth();
 
@@ -67,7 +68,7 @@ export function NodeCard({
     // actually arrives rather than a guess at it.
     const asking = {
       ...defaultCardSettings(topic, node, user?.defaultDepth ?? DEFAULT_CARD_DEPTH),
-      ...overrides,
+      ...applied,
     };
     return (
       <LoadingContent
@@ -87,11 +88,16 @@ export function NodeCard({
   }
 
   const { content, missingPrerequisites, settings } = card.data;
-  // What the controls stand at: what the card in front of them was written to,
-  // with anything just asked for on top. Stepping from the response alone would
-  // make a second press during a rewrite land on the value already requested —
-  // the same key, no request, and a button that looks dead again.
-  const asked: CardSettingsT = { ...settings, ...overrides };
+  // Where the chips stand: what the card in front of them was written to, with
+  // anything moved since on top. Reading them off the response alone would put
+  // a chip back the moment it was pressed, since nothing has been written yet.
+  const chosen: CardSettingsT = { ...settings, ...draft };
+  // The card as the topic is written, which is what "back to how the topic is
+  // written" moves the chips to — and the same rule the server resolves an
+  // unanswered setting by, so the two cannot describe different cards.
+  const asWritten = defaultCardSettings(topic, node, user?.defaultDepth ?? DEFAULT_CARD_DEPTH);
+  // The chips are ahead of the card on screen: there is something to write.
+  const unwritten = !sameCardSettings(chosen, settings);
   const byId = new Map(nodes.map((candidate) => [candidate.id, candidate]));
 
   return (
@@ -169,16 +175,30 @@ export function NodeCard({
       <JargonList terms={content.jargon} />
 
       <CardControls
-        settings={asked}
+        settings={chosen}
+        unwritten={unwritten}
         rewriting={card.isPlaceholderData || card.isFetching || rewrite.isPending}
-        onRewrite={() => rewrite.mutate(overrides)}
+        // The one press that reaches the model, and only when it has to: at
+        // settings the card was not written to it asks for that card, which the
+        // cache may already hold; at the settings it already has there is
+        // nothing to fetch, so it asks for the same card to be written again.
+        onRegenerate={() => {
+          rewrite.reset();
+          if (unwritten) {
+            setApplied(draft);
+          } else {
+            rewrite.mutate(applied);
+          }
+        }}
         rewriteError={rewrite.error === null ? undefined : messageOf(rewrite.error)}
-        changed={Object.keys(overrides).length > 0}
+        changed={!sameCardSettings(chosen, asWritten)}
         onChange={(change) => {
           rewrite.reset();
-          setOverrides((current) => ({ ...current, ...change }));
+          setDraft((current) => ({ ...current, ...change }));
         }}
-        onReset={() => setOverrides({})}
+        // Moves the chips back, like every other control here. The card on
+        // screen is still the one that was written until the button is pressed.
+        onReset={() => setDraft(asWritten)}
       />
 
       <Button label="Now prove it" onPress={() => router.push(drillHref(topicSlug, node.path))} />
@@ -187,87 +207,62 @@ export function NodeCard({
 }
 
 
-/**
- * A step along one scale, with the end of it visible. The old control offered
- * five buttons that all looked live and two of which did nothing at depth 1 or
- * 5 — a press that refetches an identical card is indistinguishable from a
- * broken button, and the reader concludes the whole panel is broken.
- */
-function StepButton({
-  label,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled: boolean;
-}): ReactElement {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      className={`rounded-full border px-3 py-2 ${
-        disabled ? "border-line bg-surface-sunken" : "border-ink-faint/40 bg-surface"
-      }`}
-    >
-      <Text className={`text-sm ${disabled ? "text-ink-faint" : "text-ink-soft"}`}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function ControlRow({
   title,
-  value,
+  note,
   children,
 }: {
   title: string;
-  value?: string;
+  note?: string;
   children: ReactNode;
 }): ReactElement {
   return (
     <View className="gap-2">
-      <View className="flex-row items-baseline gap-2">
-        <SectionTitle>{title}</SectionTitle>
-        {value === undefined ? null : <Text className="text-xs text-ink-soft">{value}</Text>}
-      </View>
+      <SectionTitle>{title}</SectionTitle>
       {children}
+      {note === undefined ? null : <Text className="text-sm text-ink-soft">{note}</Text>}
     </View>
   );
 }
 
 /**
- * The four things that decide how this card came out, each of them a setting the
- * generator actually reads: how deep, how long, in whose words, and from which
- * angle. They are the topic's settings until the learner changes one here, and
- * the panel states what the card in front of them was written to — a control
- * that cannot say what it changed is one that looks like it changed nothing.
+ * Everything that decides how this card came out, as the same rows of chips the
+ * topic's own settings screen offers, in the same order and out of the same
+ * copy. Depth and angle are the two a card has and a topic does not.
+ *
+ * Chips rather than the pair of step buttons this used to be: "Simpler" and
+ * "Deeper" could move the depth but never say where it stood, so the only
+ * statement of what the card was written to was the summary line on the closed
+ * row — and half of the scale was somewhere the reader had to press twice to
+ * find out about. A chip row says both at once, and it says it in the shape
+ * the settings screen already taught.
+ *
+ * Nothing here writes a card. Every chip moves the panel and the panel alone;
+ * the button at the bottom is what asks for one.
  */
 function CardControls({
   settings,
+  unwritten,
   rewriting,
   changed,
   onChange,
   onReset,
-  onRewrite,
+  onRegenerate,
   rewriteError,
 }: {
+  /** Where the chips stand, which is not what is on screen until it is written. */
   settings: CardSettingsT;
+  /** The chips are ahead of the card: pressing the button writes a different one. */
+  unwritten: boolean;
   /** The card on screen is the previous one; the next is being written. */
   rewriting: boolean;
+  /** The chips are somewhere other than how the topic is written. */
   changed: boolean;
   onChange: (change: Partial<CardSettingsT>) => void;
   onReset: () => void;
-  /** Write it again at these same settings. */
-  onRewrite: () => void;
+  onRegenerate: () => void;
   rewriteError?: string;
 }): ReactElement {
-  const simpler = depthAfter(settings.depth, Step.Down);
-  const deeper = depthAfter(settings.depth, Step.Up);
-  const shorter = readTimeAfter(settings.minutes, Step.Down, CARD_MINUTES_MAX);
-  const longer = readTimeAfter(settings.minutes, Step.Up, CARD_MINUTES_MAX);
-
   return (
     <Disclosure
       title="How this card is written"
@@ -275,7 +270,13 @@ function CardControls({
       // behind a title alone would make it something the reader has to open to
       // find out whether it holds anything they want — and this is also the one
       // place the settings the card was actually written to are ever stated.
-      summary={rewriting ? "Rewriting…" : settingsSummary(settings)}
+      summary={
+        rewriting
+          ? "Writing it…"
+          : unwritten
+            ? `${settingsSummary(settings)} — not written yet`
+            : settingsSummary(settings)
+      }
     >
       {rewriting ? (
         <View className="flex-row items-center gap-2">
@@ -286,58 +287,40 @@ function CardControls({
 
       <ControlRow
         title="Depth"
-        value={`${settings.depth} of 5 · ${DEPTH_COPY[settings.depth] ?? ""}`}
+        note="How far one explanation digs. It follows you through the topic, so the next card starts nearer where this one left you."
       >
-        <View className="flex-row flex-wrap gap-2">
-          <StepButton
-            label="Simpler"
-            disabled={simpler === settings.depth}
-            onPress={() => onChange({ depth: simpler })}
-          />
-          <StepButton
-            label="Deeper"
-            disabled={deeper === settings.depth}
-            onPress={() => onChange({ depth: deeper })}
-          />
-        </View>
+        <ChipRow
+          options={DEPTH_OPTIONS}
+          selected={String(settings.depth)}
+          onSelect={(value) => onChange({ depth: CardDepth.parse(Number(value)) })}
+        />
       </ControlRow>
 
-      <ControlRow title="Length" value={`about ${settings.minutes} min`}>
-        <View className="flex-row flex-wrap gap-2">
-          <StepButton
-            label="Shorter"
-            disabled={shorter === settings.minutes}
-            onPress={() => onChange({ minutes: shorter })}
-          />
-          <StepButton
-            label="Longer"
-            disabled={longer === settings.minutes}
-            onPress={() => onChange({ minutes: longer })}
-          />
-        </View>
-      </ControlRow>
-
-      <ControlRow title="English">
+      <ControlRow title="English" note={ENGLISH_COPY[settings.englishLevel].body}>
         <ChipRow
           options={ENGLISH_OPTIONS}
           selected={settings.englishLevel}
           onSelect={(englishLevel) => onChange({ englishLevel })}
         />
-        <Text className="text-sm text-ink-soft">{ENGLISH_COPY[settings.englishLevel].body}</Text>
       </ControlRow>
 
-      <ControlRow title="Technical detail">
+      <ControlRow title="Technical detail" note={TECHNICAL_COPY[settings.technicalDetail].body}>
         <ChipRow
           options={TECHNICAL_OPTIONS}
           selected={settings.technicalDetail}
           onSelect={(technicalDetail) => onChange({ technicalDetail })}
         />
-        <Text className="text-sm text-ink-soft">
-          {TECHNICAL_COPY[settings.technicalDetail].body}
-        </Text>
       </ControlRow>
 
-      <ControlRow title="Paragraph length">
+      <ControlRow title="Shape" note={FORMAT_COPY[settings.format].body}>
+        <ChipRow
+          options={FORMAT_OPTIONS}
+          selected={settings.format}
+          onSelect={(format) => onChange({ format })}
+        />
+      </ControlRow>
+
+      <ControlRow title="How long a paragraph runs" note={PARAGRAPH_NOTE}>
         <ChipRow
           options={PARAGRAPH_OPTIONS}
           selected={settings.paragraphLength}
@@ -345,16 +328,20 @@ function CardControls({
         />
       </ControlRow>
 
-      <ControlRow title="Shape">
+      {/* The ladder cut to what one card may be written to. Past that the extra
+          time is the drill and the doing, not more card. */}
+      <ControlRow
+        title="How long this card should take"
+        note="Longer arrives as more of the explanation, never as longer paragraphs."
+      >
         <ChipRow
-          options={FORMAT_OPTIONS}
-          selected={settings.format}
-          onSelect={(format) => onChange({ format })}
+          options={cardMinuteOptions(settings.minutes)}
+          selected={String(settings.minutes)}
+          onSelect={(value) => onChange({ minutes: CardMinutes.parse(Number(value)) })}
         />
-        <Text className="text-sm text-ink-soft">{FORMAT_COPY[settings.format].body}</Text>
       </ControlRow>
 
-      <ControlRow title="Angle">
+      <ControlRow title="Angle" note="The same depth, asked a different way.">
         <ChipRow
           options={ANGLE_OPTIONS}
           selected={settings.angle}
@@ -362,25 +349,33 @@ function CardControls({
         />
       </ControlRow>
 
-      {/* Every control above changes what the card is. This one changes nothing
-          and asks for it again — generation is not deterministic, so the same
-          settings twice is a different explanation, and the only way to ask for
-          one used to be moving a setting somewhere the reader did not want it
-          and back. What it stands at is the four rows above, so it does not
-          repeat them. */}
-      <ControlRow title="Same settings, again">
+      {/* The only control here that costs anything. Moving a chip used to write
+          a card on the spot, which made a second change a second wait and a
+          second model call — and gave nobody a way to ask for the same card
+          again, which generation being non-deterministic is the whole reason to
+          want. One button answers both. */}
+      <View className="gap-2">
+        <SectionTitle>Write it</SectionTitle>
+        {/* Said above the button rather than under it: it is what the press is
+            about to do, which is no use read afterwards. */}
+        <Text className="text-sm text-ink-soft">
+          {unwritten
+            ? "Nothing is written until you press this, so move as many of these as you want first."
+            : "The card you are reading is already written to these. Pressing this asks for it again, and it comes back written differently."}
+        </Text>
         <Button
-          label={rewriting ? "Writing it again…" : "Write it again"}
-          tone="quiet"
+          label={rewriting ? "Writing it…" : unwritten ? "Regenerate" : "Write it again"}
           busy={rewriting}
-          onPress={onRewrite}
+          onPress={onRegenerate}
         />
         {rewriteError === undefined ? null : <ErrorState message={rewriteError} />}
-      </ControlRow>
+      </View>
 
       {/* The way back, which the old panel had no version of: once a card had
           been asked for a different way there was no returning to the plain one. */}
-      {changed ? <Button label="Back to how the topic is written" tone="quiet" onPress={onReset} /> : null}
+      {changed ? (
+        <Button label="Back to how the topic is written" tone="quiet" onPress={onReset} />
+      ) : null}
     </Disclosure>
   );
 }

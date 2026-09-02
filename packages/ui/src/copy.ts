@@ -1,4 +1,6 @@
 import {
+  CARD_DEPTHS,
+  CARD_MINUTES_MAX,
   CardAngle,
   ContentFormat,
   EnglishLevel,
@@ -7,6 +9,7 @@ import {
   MapDepth,
   PARAGRAPH_SENTENCES,
   ParagraphLength,
+  READ_TIMES,
   STUDY_DAYS,
   StudyDays,
   TechnicalDetail,
@@ -202,6 +205,36 @@ export const PARAGRAPH_OPTIONS = Object.values(ParagraphLength).map((value) => (
   label: PARAGRAPH_SENTENCES[value],
 }));
 
+/** What that chip changes, said once for both of the screens that offer it. */
+export const PARAGRAPH_NOTE =
+  "Each section is written in paragraphs this long, with a heading over each. It is the one thing about the shape of a card you feel immediately.";
+
+/**
+ * The read-time ladder as chips, for the topic's own setting.
+ *
+ * The ladder itself, so the chips and what a node may claim cannot drift apart.
+ */
+export const READ_TIME_OPTIONS = READ_TIMES.map((minutes) => ({
+  value: String(minutes),
+  label: `${minutes} min`,
+}));
+
+/**
+ * The same ladder cut to what one card may be written to, with `current` added
+ * when it is not a rung.
+ *
+ * A node's own estimate is any whole number of minutes, so the card in front of
+ * the reader can stand at 6 while the ladder goes 5, 7 — and a row of chips with
+ * none of them on is a row that cannot say what it is describing.
+ */
+export function cardMinuteOptions(current: number): { value: string; label: string }[] {
+  const rungs: number[] = READ_TIMES.filter((minutes) => minutes <= CARD_MINUTES_MAX);
+  const ladder = rungs.some((minutes) => minutes === current)
+    ? rungs
+    : [...rungs, current].sort((a, b) => a - b);
+  return ladder.map((minutes) => ({ value: String(minutes), label: `${minutes} min` }));
+}
+
 /** The same depth, asked a different way. "Plain" is the way back to the card as written. */
 export const ANGLE_COPY: Record<CardAngle, string> = {
   [CardAngle.Base]: "Plain",
@@ -223,6 +256,16 @@ export const DEPTH_COPY: Record<number, string> = {
   4: "the layer under it",
   5: "expert",
 };
+
+/**
+ * The depth scale as chips. The number stays on the label because depth is a
+ * scale before it is five names: "4 - the layer under it" says which way is
+ * deeper, and "the layer under it" on its own does not.
+ */
+export const DEPTH_OPTIONS = CARD_DEPTHS.map((value) => ({
+  value: String(value),
+  label: `${value} · ${DEPTH_COPY[value] ?? ""}`,
+}));
 
 /**
  * The settings a card is being, or has been, written to — as one line.

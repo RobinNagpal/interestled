@@ -8,18 +8,20 @@ import {
   Button,
   ErrorState,
   ENGLISH_COPY,
-  Screen,
   ENGLISH_OPTIONS,
   FORMAT_COPY,
   FORMAT_OPTIONS,
   Input,
   LoadingContent,
+  PARAGRAPH_NOTE,
+  READ_TIME_OPTIONS,
+  Screen,
   SectionTitle,
   TECHNICAL_COPY,
   PARAGRAPH_OPTIONS,
   TECHNICAL_OPTIONS,
 } from "@interestled/ui";
-import { READ_TIMES, ReadTimeSchema } from "@interestled/schemas";
+import { ReadTimeSchema } from "@interestled/schemas";
 import type { ParagraphLength } from "@interestled/schemas";
 import type {
   ContentFormat,
@@ -33,12 +35,6 @@ import { messageOf } from "../../../../lib/errors";
 import { useSeededText } from "../../../../components/SeededInstructions";
 import { backHeader, goBack } from "../../../../lib/nav";
 import { ChipRow } from "../../../../components/ChipRow";
-
-/** The ladder itself, so the chips and what a node may claim cannot drift apart. */
-const READ_TIME_OPTIONS = READ_TIMES.map((minutes) => ({
-  value: String(minutes),
-  label: `${minutes} min`,
-}));
 
 /**
  * How this topic is written. All three settings are read by every generation
@@ -169,10 +165,7 @@ function ContentForm({
           selected={paragraphLength}
           onSelect={(value) => setParagraphLength(value)}
         />
-        <Text className="text-sm text-ink-soft">
-          Each section is written in paragraphs this long, with a heading over each. It is the one
-          thing about the shape of a card you feel immediately.
-        </Text>
+        <Text className="text-sm text-ink-soft">{PARAGRAPH_NOTE}</Text>
       </View>
 
       <View className="gap-2">
