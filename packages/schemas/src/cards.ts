@@ -8,8 +8,12 @@ import {
   TechnicalDetailSchema,
 } from "./topics";
 
+/** The ends of the depth scale, named once: the schema, the clamp and the chips all read them. */
+export const MIN_CARD_DEPTH = 1;
+export const MAX_CARD_DEPTH = 5;
+
 /** 1 is intuition, 5 is expert. Sticky per learner, changeable per card. */
-export const CardDepth = z.number().int().min(1).max(5);
+export const CardDepth = z.number().int().min(MIN_CARD_DEPTH).max(MAX_CARD_DEPTH);
 
 /**
  * Where a learner starts before any card has moved them. It is also the default
@@ -22,6 +26,17 @@ export const DEFAULT_CARD_DEPTH = 2;
 export type CardDepthT = z.infer<typeof CardDepth>;
 
 /**
+ * The scale in order, for the row of chips that offers it. Derived from the
+ * bounds above rather than written out again: a scale stated twice is a scale
+ * that can be widened in one place and not the other, and the chip nobody can
+ * press is the half of it that stayed behind.
+ */
+export const CARD_DEPTHS: readonly CardDepthT[] = Array.from(
+  { length: MAX_CARD_DEPTH - MIN_CARD_DEPTH + 1 },
+  (_, index) => MIN_CARD_DEPTH + index,
+);
+
+/**
  * The most a card may be written to, whatever the topic's read time says.
  * Past ten minutes the card would have to become a different shape — a
  * fifteen-minute node spends the rest on the drill and the doing.
@@ -30,14 +45,6 @@ export const CARD_MINUTES_MAX = 10;
 
 /** How long one card should take to read. Not the ladder: a node may say 6. */
 export const CardMinutes = z.number().int().min(1).max(MAX_NODE_MINUTES);
-
-/** Which way a step control moves: one rung down the ladder, or one up. */
-export enum Step {
-  Down = "down",
-  Up = "up",
-}
-
-export const StepSchema = z.nativeEnum(Step);
 
 /**
  * The angle a card is written from at a given depth. `Base` is the plain card;
