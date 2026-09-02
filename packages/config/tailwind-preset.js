@@ -17,12 +17,7 @@
  * always meant the blue, where shadcn means a faint hover wash by it, so the
  * vendored files say `accent-tint` in the two places that wanted the wash.
  */
-const ink = { DEFAULT: "#111827", soft: "#4b5563", faint: "#9ca3af" };
-const surface = { DEFAULT: "#ffffff", raised: "#fafbfc", sunken: "#f3f4f6" };
-const line = { DEFAULT: "#e5e7eb", strong: "#d1d5db" };
-const accent = { DEFAULT: "#2563eb", soft: "#dbeafe", tint: "#eef4ff" };
-const good = "#059669";
-const warn = "#d97706";
+const { ink, surface, line, accent, good, warn, bad } = require("./palette");
 
 module.exports = {
   theme: {
@@ -35,6 +30,7 @@ module.exports = {
         accent,
         good,
         warn,
+        bad,
 
         background: surface.DEFAULT,
         foreground: ink.DEFAULT,
@@ -43,7 +39,11 @@ module.exports = {
         primary: { DEFAULT: accent.DEFAULT, foreground: "#ffffff" },
         secondary: { DEFAULT: surface.sunken, foreground: ink.DEFAULT },
         muted: { DEFAULT: surface.sunken, foreground: ink.soft },
-        destructive: { DEFAULT: warn, foreground: "#ffffff" },
+        // shadcn's "destructive" means danger, which is what `bad` is. It pointed
+        // at the amber while there was no red to point at; nothing in the app
+        // renders the variant (Button deliberately does not expose it), so this
+        // only ever affected a vendored component nobody had reached for yet.
+        destructive: { DEFAULT: bad, foreground: "#ffffff" },
         border: line.DEFAULT,
         input: line.DEFAULT,
         ring: accent.DEFAULT,

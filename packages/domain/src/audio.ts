@@ -1,3 +1,4 @@
+import { NarrationStatus } from "@interestled/schemas";
 import type { NodeAudioT } from "@interestled/schemas";
 
 /** What a player is holding: which recording, and how long its link is good for. */
@@ -26,19 +27,24 @@ export interface LoadedRecording {
  *   that has passed its hour stops the playback at the next range request,
  *   which reaches the learner as a silence nobody can explain.
  *
- * Both mean the same thing: reload rather than resume. It is a rule rather than
- * three comparisons inline in the player because getting it wrong plays the
- * wrong card at somebody, which is the one failure this feature must not have.
+ * Both mean the same thing: reload rather than resume. So does the server
+ * having nothing ready — a recording that is being made again, or that failed,
+ * is not one to resume the old bytes of.
+ *
+ * It is a rule rather than three comparisons inline in the player because
+ * getting it wrong plays the wrong card at somebody, which is the one failure
+ * this feature must not have.
  */
 export function isLoadedRecordingCurrent(
   loaded: LoadedRecording | null,
-  /** What the server says the card's recording is now, or null for none. */
+  /** Where the card's recording has got to on the server, or null for none. */
   recorded: NodeAudioT | null,
   now: number = Date.now(),
 ): boolean {
   return (
     loaded !== null &&
     recorded !== null &&
+    recorded.status === NarrationStatus.Ready &&
     recorded.madeAt.getTime() === loaded.madeAt &&
     now < loaded.expiresAt
   );

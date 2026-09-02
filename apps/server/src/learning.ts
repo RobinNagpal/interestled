@@ -15,6 +15,7 @@ import {
   DrillKindSchema,
   EnglishLevelSchema,
   LlmTask,
+  NarrationStatus,
   NodeStatus,
   NodeStatusSchema,
   ParagraphLengthSchema,
@@ -40,8 +41,8 @@ import { generateAnswer, generateAtoms, generateCard, generateDrill, gradeAttemp
 import { EARLIER_QUESTIONS } from "./llm/prompts";
 import type { LlmProvider, SpeechProvider } from "./llm";
 import { loadProfile } from "./profile";
-import { readNarration, writeNarration } from "./narration";
-import type { NarrationTarget } from "./narration";
+import { readNarration, startNarration } from "./narration";
+import type { Background, NarrationTarget } from "./narration";
 import type { ObjectStore } from "./storage";
 import { assertQuestionBudget, assertRewriteBudget } from "./topics";
 import { toCardQuestion, toDrill, toNode, toTopic } from "./rows";
@@ -352,6 +353,8 @@ export function learningRouter(
    */
   speech: () => SpeechProvider,
   objects: () => ObjectStore,
+  /** Where a recording's generation goes once the press has been answered. */
+  background: Background,
 ): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
 
@@ -512,18 +515,32 @@ export function learningRouter(
   });
 
   /**
-   * Read this card out and keep the recording.
+   * Start reading this card out.
    *
-   * The most expensive press in the product — a model call for the script and
-   * then minutes of synthesis — so it is inside its own hourly ceiling, which
-   * writeNarration applies after deciding there is actually something to make.
-   * It is a POST because it writes: the recording outlives the press, and a GET
-   * that costs money is a GET something will eventually retry.
+   * The press is not the recording: a script and minutes of synthesis take far
+   * longer than the sixty seconds CloudFront gives an origin, so this claims the
+   * run, answers `202` with `pending`, and the app polls the route above until
+   * the row settles. A recording already made comes back `200` and is the one
+   * case that costs nothing.
+   *
+   * It is the most expensive press in the product, so it is inside its own
+   * hourly ceiling — applied by startNarration only once it has decided there is
+   * actually something to make.
    */
   router.post("/:id/audio", zValidator("query", AudioQuery), async (c) => {
     const target = await audioTarget(db, c, c.req.param("id"), c.req.valid("query"));
-    const audio = await writeNarration(db, provider(LlmTask.Content), speech(), objects, target);
-    return c.json({ audio }, 201);
+    const audio = await startNarration(
+      db,
+      provider(LlmTask.Content),
+      speech(),
+      objects,
+      background,
+      target,
+    );
+    // 202 says "accepted, still working", which is true of exactly one of the
+    // three. A recording already made and a run that has already failed are
+    // both the current state of the resource rather than something accepted.
+    return c.json({ audio }, audio.status === NarrationStatus.Pending ? 202 : 200);
   });
 
   /** A drill of the requested kind, generated once per node and then reused. */

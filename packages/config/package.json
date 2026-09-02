@@ -5,7 +5,11 @@
   "exports": {
     "./tsconfig.base.json": "./tsconfig.base.json",
     "./tailwind-preset": "./tailwind-preset.js",
-    "./eslint": "./eslint.config.mjs"
+    "./eslint": "./eslint.config.mjs",
+    "./palette": {
+      "types": "./palette.d.ts",
+      "default": "./palette.js"
+    }
   },
   "dependencies": {
     "@eslint/js": "^9.34.0",

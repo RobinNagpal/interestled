@@ -53,6 +53,7 @@ Two kinds of thing live in one cache:
 | Kind | Keys | Policy | Why |
 |---|---|---|---|
 | Learner state | topics, the map, review, profile, questions, audio | `staleTime: 0`, refetch on mount and on focus | It is whatever the last device to touch it left. A node drilled on the website has to be right on the phone the moment it comes out of a pocket. |
+| | `keys.audio` again | plus `refetchInterval` while pending | Making a recording outlives the press that asked for it, so this is how the app finds out it finished. It stops the moment the row settles. |
 | Generated content | `keys.cards` | `CONTENT_STALE_MS` (5 min), no focus refetch | A card must not swap under the reader when the phone unlocks. |
 | | `keys.drills` | `staleTime: Infinity`, no focus refetch | A drill must never change under a half-typed answer. |
 
@@ -106,7 +107,9 @@ product composes on top.
 - **Theming is the token names, not the components.**
   `packages/config/tailwind-preset.js` names the palette a second time under
   shadcn's semantic names — `primary` is `accent`, `muted-foreground` is
-  `ink-soft`, `border` is `line`. Editing colours into a vendored component is
+  `ink-soft`, `border` is `line`, `destructive` is `bad`. The three state colours are
+  `good` (earned, and a recording ready to play), `warn` (caution — a shaky node)
+  and `bad` (something failed and will not fix itself). Editing colours into a vendored component is
   what makes the set impossible to update; add the mapping instead.
 - **No `dark:` classes.** The app is `userInterfaceStyle: "light"`, and a dark
   variant with no dark palette behind it is a claim the app cannot honour.

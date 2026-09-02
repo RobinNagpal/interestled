@@ -439,8 +439,9 @@ answers folded behind their questions. It is a model call per press, so it is in
 the same words twice is the learner asking again.
 
 **A card can be played, and what plays is not the card read out.** `POST
-/nodes/:id/audio` writes a script with the content model and says it with the speech
-one; `GET` answers whether there is one already and costs a signature. The point of the
+/nodes/:id/audio` claims the run and answers `202`; a script written with the content
+model and said with the speech one happens behind it, and `GET` answers where it has
+got to and costs a signature only once there is something to sign. The point of the
 script is the half a card cannot survive being spoken: `narration.md` says never to
 read a symbol out and never to read a line of code out, and to point at them instead —
 *the formula under 'How the rate compounds'*, *the second line of the snippet*. It is
@@ -486,21 +487,50 @@ by tests.
   there is no encoder on the shared host and shipping one would be a third application
   on it — the cost is size, about 48 KB a second, which is why the object is made once
   and played from the bucket after that.
+- **The press is not the recording.** A script and minutes of synthesis take far
+  longer than the sixty seconds CloudFront gives an origin, so the press claims a row
+  and answers, and the app polls until `card_narrations.status` settles on `ready` or
+  `failed`. Four things hold it up: `claimRun` is atomic (an insert with
+  `skipDuplicates`, then an update guarded on the states it may take over from), so two
+  presses a moment apart can never both pay; every write a run makes names the
+  `createdAt` it claimed, so a run that was declared abandoned and taken over cannot
+  land on the row that replaced it; a `pending` row older than `NARRATION_TIMEOUT_MS` is
+  *read* as failed, because the run happens in this process and a deploy mid-synthesis
+  would otherwise leave a spinner nobody can clear; and `runNarration` catches
+  everything onto the row, because there is no longer a request to fail. Building the
+  object store stays synchronous, so a deployment with no `AUDIO_BUCKET` still fails the
+  press at once and names the variable.
+- **Both routes agree that a run under way is a run under way**, whatever writing of the
+  card it was claimed for. A card rewritten mid-run leaves a recording being made of
+  replaced text: nothing can claim the row until it finishes, and the press cannot take
+  it over — so answering "nothing here" on the read while the press answers "pending" is
+  a button that flicks between a spinner and an offer and does nothing at all.
+- **The ceiling counts runs, not rows.** One row per card means a card that fails every
+  time would be retryable without limit; `attempts` is incremented on every claim and
+  summed by `assertNarrationBudget`.
 - **It is the most expensive press in the product**, so it has the tightest ceiling
-  (`assertNarrationBudget`) and the POST is idempotent: a row already current is
+  (`assertNarrationBudget`) and both routes are idempotent: a row already current is
   answered rather than remade. The ceiling is checked *after* that, so a press that
-  would have cost nothing is never the one refused — which is also what makes the retry
-  work after a slow first press was cut off at CloudFront's 60s origin timeout with the
-  work already done and the row already written. That timeout is the known limit here:
-  a ten-minute card is a script plus minutes of synthesis in one request, and the app's
-  answer to a failed press is to go and look rather than to pay again.
+  would have cost nothing is never the one refused.
+- **`background` on `AppOptions` is where work that outlives its request goes.** The
+  default drops the promise on the event loop with a catch — an unhandled rejection on
+  a host shared with another application is a two-application outage — and it is a seam
+  rather than a bare `void` because a test has to await the run it just started.
 - **`GET` must not build the object store until it has something to sign.** It runs on
   every card mount and every return to the foreground, so building it eagerly would make
   a deployment with no `AUDIO_BUCKET` answer 502 on every card open — which is the
   opposite of what optional is supposed to mean. It takes the factory, not the store.
 - **The signed URL is never cached and never persisted.** It expires in an hour, so the
   query takes the default policy and `shouldPersistQuery` keeps it off disk — a launch
-  that painted a restored link would paint a dead one.
+  that painted a restored link would paint a dead one. It is also the query that polls:
+  `refetchInterval` runs at `NARRATION_POLL_MS` while the status is `pending` and stops
+  the moment it is not.
+- **No player library, and that is a decision rather than an omission.** `expo-audio`
+  already carries the whole playback side — `seekTo`, `setPlaybackRate`, position and
+  duration — and works on the web, which is the gate, since the same codebase is the
+  website. `react-native-track-player` solves queues and lock-screen playback, which
+  this does not have, at the cost of replacing expo-audio. The only piece missing was a
+  slider, and that is `@react-native-community/slider`.
 - **Everything about it is optional in `env.ts`.** A deployment with no `AUDIO_BUCKET`
   serves every other route and fails only the press, with a sentence naming the variable
   that is missing.

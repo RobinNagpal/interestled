@@ -93,7 +93,7 @@ ceiling.
 | `MAX_MAP_PLANS_PER_HOUR` 30 | `map_plans` rows in the last hour | The seven questions only |
 | `MAX_CARDS_WRITTEN_PER_HOUR` 60 | `concept_cards` written in the last hour | `?rewrite=1` |
 | `MAX_QUESTIONS_PER_HOUR` 60 | `card_questions` rows in the last hour | A question asked on a card |
-| `MAX_NARRATIONS_PER_HOUR` 20 | `card_narrations` rows in the last hour | Reading a card aloud |
+| `MAX_NARRATIONS_PER_HOUR` 20 | `card_narrations.attempts` summed over rows claimed in the last hour | Reading a card aloud |
 
 Three things about *what* each one counts are load-bearing:
 
@@ -106,6 +106,11 @@ Three things about *what* each one counts are load-bearing:
 - **A counter another endpoint can empty is a counter a learner can empty.** This
   is why a card rewrite marks a recording stale instead of deleting its row (doc
   4).
+- **A counter that cannot grow is not a ceiling.** `card_narrations` holds one
+  row per card, and a failed recording is retried by taking that row over — so
+  counting rows, a learner holding down retry on a broken card would never reach
+  the limit while spending two model calls a press. The column that is summed is
+  `attempts`, incremented on every claim.
 
 Ceilings that guard an idempotent call are checked **after** the idempotency
 decision, so a press that would have cost nothing is never the one refused.

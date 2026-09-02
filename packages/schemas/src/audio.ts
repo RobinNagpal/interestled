@@ -106,6 +106,49 @@ export function narrationKey(input: {
 }
 
 /**
+ * Where a recording has got to.
+ *
+ * Making one is two model calls and minutes of synthesis, which is far too long
+ * to hold a request open — CloudFront gives an origin 60 seconds. So the press
+ * starts the work and answers, the row carries the state, and the app asks again
+ * until it settles. A TS enum with a plain TEXT column behind it, like every
+ * other status in the product.
+ */
+export enum NarrationStatus {
+  /** Claimed, and being made. Nothing to play yet. */
+  Pending = "pending",
+  /** There is an object in the bucket and it is of the words on the card. */
+  Ready = "ready",
+  /** It stopped, and `error` says what the learner should be told. */
+  Failed = "failed",
+}
+
+export const NarrationStatusSchema = z.nativeEnum(NarrationStatus);
+
+/**
+ * The most of a failure's message that is kept and shown. Long enough for a
+ * provider's own sentence, short enough that a stack trace leaking into one
+ * cannot fill the screen under the button.
+ */
+export const NARRATION_ERROR_MAX = 500;
+
+/**
+ * How long a claimed recording may go without finishing before it is read as a
+ * failure.
+ *
+ * The work runs in the API process, so a deploy or a crash mid-synthesis leaves
+ * a row that says `pending` with nothing coming. Without this the app polls that
+ * row until the learner gives up. Generously above the slowest real generation —
+ * a ten-minute card is a script plus minutes of speech — because cutting a run
+ * short costs the model call that was already paid for.
+ */
+export const NARRATION_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** What a learner is told about a run whose process went away mid-generation. */
+export const NARRATION_TIMED_OUT =
+  "That recording stopped before it finished. Press play to try again.";
+
+/**
  * What the app is given: somewhere to play from, and how long it runs.
  *
  * The URL is signed and short-lived rather than public, because a recording is
@@ -113,13 +156,14 @@ export function narrationKey(input: {
  * expiry is why every read of this route mints a new one instead of the app
  * keeping the last.
  */
-export const NodeAudio = z.object({
+export const NodeAudioReady = z.object({
+  status: z.literal(NarrationStatus.Ready),
   url: z.string().min(1),
   expiresAt: z.coerce.date(),
   seconds: z.number().int().min(0),
   voice: z.string().min(1).max(64),
   /**
-   * When this recording was made, which is what identifies it.
+   * When this recording was started, which is what identifies it.
    *
    * Neither the URL nor the object key can do that job: the URL is signed fresh
    * on every read, and the key is stable across a re-recording on purpose, so
@@ -130,16 +174,43 @@ export const NodeAudio = z.object({
   madeAt: z.coerce.date(),
 });
 
-/** Null before anything has been recorded for the card on screen. */
+const NodeAudioPending = z.object({
+  status: z.literal(NarrationStatus.Pending),
+  /** When the press that started it landed, so the screen can say it is working. */
+  startedAt: z.coerce.date(),
+});
+
+const NodeAudioFailed = z.object({
+  status: z.literal(NarrationStatus.Failed),
+  /** Written to be shown to the learner, the same way a failed map build is. */
+  error: z.string().min(1).max(NARRATION_ERROR_MAX),
+});
+
+/**
+ * The three states, as a union rather than one object with optional fields.
+ *
+ * It is what stops a player reading a URL off a failure: there is no `url` on
+ * the pending or failed member to read, so the mistake is a build error rather
+ * than a request for `undefined.wav`.
+ */
+export const NodeAudio = z.discriminatedUnion("status", [
+  NodeAudioPending,
+  NodeAudioReady,
+  NodeAudioFailed,
+]);
+
+/** Null before anything has been asked for on the card on screen. */
 export const NodeAudioView = z.object({ audio: NodeAudio.nullable() });
 
 /**
- * What the press answers with. Not nullable, unlike the view above: asking for
- * a recording either produces one or fails, so a schema that allowed null would
- * make every call site handle a case the route cannot produce.
+ * What the press answers with. Not nullable, unlike the view above: the press
+ * either starts a recording, finds one already running, or finds one already
+ * made — so a schema allowing null would make every call site handle a case the
+ * route cannot produce.
  */
 export const NodeAudioResult = z.object({ audio: NodeAudio });
 
 export type NodeAudioT = z.infer<typeof NodeAudio>;
+export type NodeAudioReadyT = z.infer<typeof NodeAudioReady>;
 export type NodeAudioViewT = z.infer<typeof NodeAudioView>;
 export type NodeAudioResultT = z.infer<typeof NodeAudioResult>;

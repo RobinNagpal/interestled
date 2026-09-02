@@ -25,8 +25,10 @@ import type {
   TopicRegenerateInputT,
   TopicT,
 } from "@interestled/schemas";
+import { NarrationStatus } from "@interestled/schemas";
 import { useApi } from "./context";
 import { keys } from "./keys";
+import { NARRATION_POLL_MS } from "./queryClient";
 import type {
   AttemptResultT,
   CardViewT,
@@ -348,23 +350,26 @@ export function useNodeAudio(
     queryKey: keys.audio(nodeId, settings),
     queryFn: () => api.getNodeAudio(nodeId, settings),
     enabled: nodeId !== "",
+    // A press starts a run that outlives it, so this is how the app finds out it
+    // finished. Only while it is running: an entry that has settled polls
+    // nothing, which is every card the learner is not currently waiting on.
+    refetchInterval: (query) =>
+      query.state.data?.status === NarrationStatus.Pending ? NARRATION_POLL_MS : false,
   });
 }
 
 /**
- * Read this card out.
+ * Start reading this card out.
  *
  * A mutation because it is the most expensive press in the product and nothing
  * should be able to make it happen twice: a query would refetch on focus, and
- * every return to the app would be another script and another synthesis. The
- * result is written straight into the query above, so the player has something
- * to play the moment it lands rather than after a second round trip.
+ * every return to the app would be another attempt. What it answers with is
+ * where the run has got to — `pending` almost always — and writing that into
+ * the query above is what starts the polling.
  *
- * A failure marks that query stale rather than being only an error. Making a
- * recording is the one call long enough to be cut off at the edge with the work
- * already done — the server finishes it and writes the row either way — so the
- * honest thing after a failed press is to go and look, and the recording is
- * usually there.
+ * A failure marks that query stale rather than being only an error, because the
+ * press and the run are now separate: a request that did not arrive may still
+ * have claimed a run, and the honest thing is to go and look.
  */
 export function useReadCardAloud(
   nodeId: string,

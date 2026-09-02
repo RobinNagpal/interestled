@@ -7,6 +7,7 @@ import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, GenerationError, NotFoundError, UniqueViolation } from "./errors";
 import { learningRouter } from "./learning";
+import type { Background } from "./narration";
 import { createProvider, createSpeechProvider } from "./llm";
 import type { LlmProvider, SpeechProvider } from "./llm";
 import { profileRouter } from "./profile";
@@ -53,6 +54,19 @@ export interface AppOptions {
    */
   speech?: () => SpeechProvider;
   objects?: () => ObjectStore;
+  /**
+   * Where work that outlives its request goes.
+   *
+   * Reading a card out is minutes of synthesis, and the edge gives an origin
+   * sixty seconds — so the press claims the run and answers, and the run carries
+   * on here. The default drops the promise on the event loop, with a catch,
+   * because an unhandled rejection on a host shared with another application is
+   * a two-application outage.
+   *
+   * It is a seam rather than a bare `void`: a test needs to await the run it
+   * just started, and one day a graceful shutdown will want to as well.
+   */
+  background?: Background;
 }
 
 /** Built on the first call that needs it, and kept for the rest of the process. */
@@ -77,6 +91,13 @@ export function createApp(db: Db, options: AppOptions = {}): Hono {
     });
   const speech = options.speech ?? once(createSpeechProvider);
   const objects = options.objects ?? once(createObjectStore);
+  const background =
+    options.background ??
+    ((task: Promise<void>) => {
+      // runNarration writes its own failures to the row it claimed; this is the
+      // net under that, for the case where even that write fails.
+      void task.catch((error: unknown) => console.error("background task failed", error));
+    });
 
   const origins = allowedOrigins();
   app.use("*", cors({ origin: (origin) => (origins.includes(origin) ? origin : null) }));
@@ -89,7 +110,7 @@ export function createApp(db: Db, options: AppOptions = {}): Hono {
   authed.route("/auth/session", sessionRouter(db));
   authed.route("/profile", profileRouter(db));
   authed.route("/topics", topicsRouter(db, provider));
-  authed.route("/nodes", learningRouter(db, provider, speech, objects));
+  authed.route("/nodes", learningRouter(db, provider, speech, objects, background));
   authed.route("/review", reviewRouter(db));
   authed.route("/sessions", sessionsRouter(db));
   app.route("/api", authed);

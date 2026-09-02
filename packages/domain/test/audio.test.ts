@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { isLoadedRecordingCurrent } from "../src/audio";
 import type { LoadedRecording } from "../src/audio";
-import type { NodeAudioT } from "@interestled/schemas";
+import { NarrationStatus } from "@interestled/schemas";
+import type { NodeAudioReadyT, NodeAudioT } from "@interestled/schemas";
 
 const NOW = Date.UTC(2026, 8, 2, 12, 0, 0);
 const MADE_AT = new Date(Date.UTC(2026, 8, 2, 11, 55, 0));
 
-function recording(overrides: Partial<NodeAudioT> = {}): NodeAudioT {
+function recording(overrides: Partial<NodeAudioReadyT> = {}): NodeAudioT {
   return {
+    status: NarrationStatus.Ready,
     url: "https://bucket.example/robin/k8s/pods/n1-d2.wav?sig=x",
     expiresAt: new Date(NOW + 60 * 60 * 1000),
     seconds: 91,
@@ -45,6 +47,18 @@ describe("isLoadedRecordingCurrent", () => {
     // it stops partway through, which is a silence with no explanation.
     expect(isLoadedRecordingCurrent(loaded, recording(), loaded.expiresAt + 1)).toBe(false);
     expect(isLoadedRecordingCurrent(loaded, recording(), loaded.expiresAt - 1)).toBe(true);
+  });
+
+  it("refuses to resume while the server is making one again", () => {
+    // Pressing "write it again" and then play leaves the row pending. The bytes
+    // in the player are of the text that is being replaced.
+    const pending: NodeAudioT = { status: NarrationStatus.Pending, startedAt: new Date(NOW) };
+    expect(isLoadedRecordingCurrent(loaded, pending, NOW)).toBe(false);
+  });
+
+  it("refuses to resume when the last attempt failed", () => {
+    const failed: NodeAudioT = { status: NarrationStatus.Failed, error: "The model gave up." };
+    expect(isLoadedRecordingCurrent(loaded, failed, NOW)).toBe(false);
   });
 
   it("has nothing to resume before anything is loaded", () => {
