@@ -67,8 +67,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "audio" {
 # runs on a host shared with another application, so the blast radius of the
 # key on that box is worth keeping this small.
 resource "aws_iam_user" "api" {
-  name = "${var.app_name}-api"
-  path = "/${var.app_name}/"
+  name                 = "${var.app_name}-api"
+  path                 = "/${var.app_name}/"
+  permissions_boundary = local.permissions_boundary
 }
 
 data "aws_iam_policy_document" "api" {

@@ -12,7 +12,9 @@ apps/mobile/ios/
 
 # Secrets and local config
 .env
-.env.local
+# Every variant, not just .local: a .env.bak or .env.prod written in a hurry is
+# the one that carries a real credential and is not covered by a named rule.
+.env.*
 apps/*/.env
 
 # Terraform
