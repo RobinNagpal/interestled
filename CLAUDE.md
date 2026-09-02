@@ -6,6 +6,47 @@ The design that this code implements is in [docs/ux/README.md](docs/ux/README.md
 and the constraints it must satisfy are in
 [docs/ux/adhd-learning-guidelines.md](docs/ux/adhd-learning-guidelines.md).
 
+## Start here: the knowledge base
+
+**[docs/knowledge/](docs/knowledge/README.md) describes every feature of the
+product and how it is built.** One document per area, each saying what the
+learner sees, what happens when they use it, and which files to open.
+
+| Document | Covers |
+|---|---|
+| [1. Topics and the map](docs/knowledge/01-topics-and-the-map.md) | Creating a topic, the seven questions, the node tree, editing and rebuilding a map |
+| [2. Cards and writing settings](docs/knowledge/02-cards-and-writing-settings.md) | The concept card, its slots, the cache, the controls under it, questions asked on it |
+| [3. Drills, progress and review](docs/knowledge/03-drills-progress-and-review.md) | The status ladder, grading, spaced review, study sessions |
+| [4. Reading a card aloud](docs/knowledge/04-reading-a-card-aloud.md) | The play button, narration scripts, speech synthesis, the audio bucket |
+| [5. Accounts, ownership and budgets](docs/knowledge/05-accounts-ownership-and-budgets.md) | Registration, sessions, the authorisation model, every generation ceiling |
+| [6. LLM providers and prompts](docs/knowledge/06-llm-providers-and-prompts.md) | Which model answers which call, structured generation, the prompt files |
+| [7. The app shell and caching](docs/knowledge/07-the-app-shell-and-caching.md) | Routing, the query cache and what is persisted, the component set |
+
+### Two rules about it, and they matter more than most of what follows
+
+**Read the relevant document before starting any task.** Not after getting
+stuck, and not instead of reading the code — before opening the first file.
+Almost everything in this codebase that looks like it could be simplified is
+load-bearing, and the knowledge base is where the shape of each feature is
+written down in one place. Ten minutes there is what stops a change that
+compiles, passes the tests, and quietly breaks a rule the product rests on. If
+the area you are about to touch has no document, read the nearest one and the
+rest of this file.
+
+**Update it in the same change that makes it wrong.** A knowledge base nobody
+trusts is worse than none, because it is read as current and is not. So:
+
+- Adding a feature means adding its document, and its row both in the table above
+  and in [docs/knowledge/README.md](docs/knowledge/README.md).
+- Changing how something works means editing the document that describes it, in
+  the same commit — not a follow-up.
+- Removing something means removing what says it exists.
+- The documents name files, routes, columns and constants. When you rename one,
+  `grep docs/knowledge` for the old name before you finish.
+
+The same applies to this file and to the coverage table in
+[docs/ux/README.md](docs/ux/README.md): if you add a feature, add its row.
+
 ## Git identity
 
 Always commit as the **robinnagpal.tiet@gmail.com** GitHub account
@@ -157,9 +198,8 @@ schema through `generateJson`, which validates and retries once with the validat
 errors named, and logs both attempts when it gives up — the 502 is a sentence for the
 learner, so without that log a failed generation leaves nothing on the box to read.
 
-**Two models, chosen by what the call is for, never by where it is called from.**
-`LlmTask` has two members and `createProvider(task)` is the only place a model name is
-resolved:
+**Three models, chosen by what the call is for, never by where it is called from.**
+`LlmTask` has three members and `modelFor` is the only place a model name is resolved:
 
 - `LlmTask.Map` — the map, the seven choices in front of it, and one group rebuilt.
   `LLM_MODEL`, a reasoning model. A map is generated once and everything hangs off it:
@@ -169,8 +209,18 @@ resolved:
   fast one. These are written many times per map, each already scoped by the map above
   it, and each cheap to write again — the controls under a card do exactly that.
 
+- `LlmTask.Speech` — a card read out. `LLM_AUDIO_MODEL`, a TTS model. It is in the same
+  enum because it answers the same question — which model runs this call — and behind a
+  different interface, because a TTS name does not answer `:generateContent` with prose
+  and a text name does not answer with audio. `TextTask` is the union of the other two,
+  and it is what `createProvider` takes: `createProvider(LlmTask.Speech)` does not
+  compile, and `createSpeechProvider()` is the way to the third.
+
 An unset `LLM_CONTENT_MODEL` falls back to its own default rather than to `LLM_MODEL`,
-so a deployment that names only the map model still gets the cheap one for content.
+so a deployment that names only the map model still gets the cheap one for content. The
+audio model has no fallback at all worth having, which is why it is its own variable:
+falling back to the content model would produce a call that fails at runtime with a
+message about the wrong thing.
 
 **A reasoning model spends its thinking from `maxOutputTokens`.** Gemini 3 Pro cannot be
 told not to think, and a budget sized for the reply alone is eaten by the reasoning:
@@ -388,6 +438,73 @@ answers folded behind their questions. It is a model call per press, so it is in
 `assertQuestionBudget`, which counts those rows by the hour. The answer is never cached:
 the same words twice is the learner asking again.
 
+**A card can be played, and what plays is not the card read out.** `POST
+/nodes/:id/audio` writes a script with the content model and says it with the speech
+one; `GET` answers whether there is one already and costs a signature. The point of the
+script is the half a card cannot survive being spoken: `narration.md` says never to
+read a symbol out and never to read a line of code out, and to point at them instead —
+*the formula under 'How the rate compounds'*, *the second line of the snippet*. It is
+also the one prompt that turns off a `SYSTEM` rule, because "every string you write is
+rendered as Markdown" read aloud is a machine saying "asterisk". Both halves are covered
+by tests.
+
+- **The recording is of a card, not of a node**, and the app says which. The audio
+  routes take the seven settings the card route answered, and resolve the card at
+  exactly them. "The newest card this node has" is not the same card: moving a chip
+  writes a second one and moving it back serves the first again, so the newest row is
+  the one the reader just navigated away from.
+- **A rewrite retires the recording without deleting the row.** `card_narrations`
+  stores `card_written_at`, the card's own `createdAt` at the moment it recorded, and a
+  row that no longer matches is never served — so pressing *write it again* is not
+  asking to be read to. Marked stale rather than deleted because those rows in the last
+  hour are the ceiling below: a counter another endpoint empties is a counter a learner
+  empties, and rewrite-then-play in a loop would cost nothing against the tightest
+  budget in the product.
+- **The bucket is laid out by slug, and the key is the card's identity.**
+  `narrationKey` builds `<user>/<topic>/<node path>/n<rev>-d<depth>-<variant>.wav`, so a
+  card rewritten at the same settings overwrites its own object and one written at other
+  settings gets its own. `users.slug` is allocated at registration from the address —
+  `emailSlug` then `uniqueSlug`, because two accounts at two providers can hold the same
+  local part and their folders must not be the same folder — and never changed, because
+  changing it orphans everything already recorded. It rides on the session beside
+  `defaultDepth`, so the audio routes do not re-read it. Anything searching for the
+  slugs that could collide with a base must search on `slugStem(base)`: `uniqueSlug`
+  cuts a long base short before numbering it, so the variants of a 58-character base do
+  not start with those 58 characters, and searching on the base proposes a taken slug
+  forever.
+- **Nothing deletes an object.** A re-recording overwrites its own key, but a deleted
+  node, a rebuilt map and a bumped revision all leave objects with no row pointing at
+  them. There is no lifecycle rule, because expiring a learner's recording silently
+  costs a model call to get back. It is a known cost, not an oversight — the fix is a
+  sweep by prefix, and it needs `s3:DeleteObject` the API user deliberately lacks.
+- **`NARRATION_PROMPT_REVISION` retires every recording**, the same way
+  `CARD_PROMPT_REVISION` retires every card. It travels in the key, and the row stores
+  the key it was written to, so a bump makes every stored row miss its own lookup. No
+  migration, nothing to delete.
+- **Gemini answers with raw PCM and no container**, so `pcmToWav` puts a 44-byte RIFF
+  header in front of it. Nothing plays headerless samples. WAV rather than MP3 because
+  there is no encoder on the shared host and shipping one would be a third application
+  on it — the cost is size, about 48 KB a second, which is why the object is made once
+  and played from the bucket after that.
+- **It is the most expensive press in the product**, so it has the tightest ceiling
+  (`assertNarrationBudget`) and the POST is idempotent: a row already current is
+  answered rather than remade. The ceiling is checked *after* that, so a press that
+  would have cost nothing is never the one refused — which is also what makes the retry
+  work after a slow first press was cut off at CloudFront's 60s origin timeout with the
+  work already done and the row already written. That timeout is the known limit here:
+  a ten-minute card is a script plus minutes of synthesis in one request, and the app's
+  answer to a failed press is to go and look rather than to pay again.
+- **`GET` must not build the object store until it has something to sign.** It runs on
+  every card mount and every return to the foreground, so building it eagerly would make
+  a deployment with no `AUDIO_BUCKET` answer 502 on every card open — which is the
+  opposite of what optional is supposed to mean. It takes the factory, not the store.
+- **The signed URL is never cached and never persisted.** It expires in an hour, so the
+  query takes the default policy and `shouldPersistQuery` keeps it off disk — a launch
+  that painted a restored link would paint a dead one.
+- **Everything about it is optional in `env.ts`.** A deployment with no `AUDIO_BUCKET`
+  serves every other route and fails only the press, with a sentence naming the variable
+  that is missing.
+
 **A card is written to the learner's read time, not to a constant.** `CARD_MINUTES_MAX`
 is the ceiling one card can hold, and `CardContent`'s limits are the outer bound of a
 card that long — not the size of an ordinary one, which is the minutes in the settings.
@@ -459,6 +576,11 @@ of one query cache with one policy, in `createAppQueryClient` in `packages/api`,
   them right. The signed-in user is stored beside the token for the same reason: with
   both on disk the app opens on the app, and the `me()` round trip confirms them behind
   the first screen rather than in front of it.
+- **One key is deliberately never written to disk.** A card's recording is answered as a
+  signed URL with an hour on it, so `shouldPersistQuery` drops `keys.audio` out of what
+  is persisted: restoring it on the next launch paints a button pointing at a link the
+  bucket has stopped honouring, which is exactly the press the persisted cache existed
+  to make instant.
 - **Bump `PERSISTED_CACHE_VERSION` when a response shape changes.** A restore does not
   parse what it reads back, so a field added to `TopicDetail` is `undefined` off a
   cache written by the previous build until the refetch lands. Moving the version
@@ -557,6 +679,8 @@ These are load-bearing. Breaking one is a bug, not a trade-off:
   right" is the normal case after reading it, and an edit mode whose only answer is
   regenerating everything throws away every node already verified.
 - **Timers only on retrieval.** Never on a card, an explain-back, or an apply drill.
+- **A card read aloud is somebody explaining it, never the text spoken.** A machine
+  reading a formula or a snippet out says every symbol, which is worse than silence.
 - **No effort language in generated copy** — that ban lives in the `SYSTEM` prompt and
   is covered by a test.
 - **A topic's content settings never reach the grader.** Style, read time and the
@@ -592,6 +716,14 @@ That the host is shared is the thing to remember when changing anything runtime-
 - The bundle stays **CommonJS** and ships the `debian-openssl-3.0.x` Prisma engine
   beside it, because the generated client requires its engine at runtime from its own
   directory. A top-level `await` in `src/index.ts` would force ESM and break that.
+
+**The API has AWS credentials of its own, and they are not the deployer's.** The audio
+bucket is the only thing in the account the running process touches, so
+`interestled-api` is a second IAM user with put and get on that bucket and nothing else
+— the box is shared with courtpot, and the blast radius of a key on it is worth keeping
+small. Both keys reach the env file through `API_AWS_ACCESS_KEY_ID` and
+`API_AWS_SECRET_ACCESS_KEY`, which are different secrets from the ones
+`configure-aws-credentials` uses for the web sync.
 
 **`/etc/interestled-api.env` is rewritten whole on every deploy** from repository
 secrets and variables. Nothing set by hand on the box survives, which is the point —

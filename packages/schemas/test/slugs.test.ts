@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   NodePath,
+  emailSlug,
   RESERVED_SLUGS,
   SLUG_MAX_LENGTH,
   Slug,
@@ -8,6 +9,7 @@ import {
   joinPath,
   parentPath,
   slugOfPath,
+  slugStem,
   slugify,
   uniqueSlug,
 } from "../src/slugs";
@@ -89,5 +91,56 @@ describe("paths", () => {
   it("refuses a path that is not slugs joined by slashes", () => {
     expect(NodePath.safeParse("Scheduling/Taints").success).toBe(false);
     expect(NodePath.safeParse("scheduling//taints").success).toBe(false);
+  });
+});
+
+describe("emailSlug", () => {
+  it("takes the part before the @, which is the closest thing to a username", () => {
+    expect(emailSlug("robin@gmail.com")).toBe("robin");
+    expect(emailSlug("Robin.Nagpal+news@gmail.com")).toBe("robin-nagpal-news");
+  });
+
+  it("falls back rather than producing a folder with no name", () => {
+    // Not a hypothetical: the local part only has to be non-empty, so "..@x.com"
+    // is a valid address that slugifies to nothing.
+    expect(emailSlug("..@weird.example")).toBe("learner");
+  });
+
+  it("does not decide uniqueness, which is uniqueSlug's job", () => {
+    // Two providers, one local part. The folders must not be the same folder,
+    // and this function is not what stops that happening.
+    expect(emailSlug("robin@gmail.com")).toBe(emailSlug("robin@outlook.com"));
+    expect(uniqueSlug(emailSlug("robin@outlook.com"), new Set(["robin"]))).toBe("robin-2");
+  });
+
+  it("stays inside what the Slug schema accepts, however long the address", () => {
+    const slug = emailSlug(`${"a".repeat(120)}@example.com`);
+    expect(slug.length).toBeLessThanOrEqual(SLUG_MAX_LENGTH);
+    expect(Slug.safeParse(slug).success).toBe(true);
+  });
+});
+
+describe("slugStem", () => {
+  it("is what every numbered variant of a slug starts with", () => {
+    // The reason this is exported at all: uniqueSlug cuts a long base short
+    // before numbering it, so the variants of a 58-character base do not start
+    // with those 58 characters. Anything searching for "slugs that could
+    // collide with this one" has to search on the stem, or it misses exactly
+    // the ones it allocated last time and proposes them again forever.
+    const base = "a".repeat(58);
+    const numbered = uniqueSlug(base, new Set([base]));
+    expect(numbered.startsWith(base)).toBe(false);
+    expect(numbered.startsWith(slugStem(base))).toBe(true);
+  });
+
+  it("leaves a short slug exactly as it is", () => {
+    expect(slugStem("robin")).toBe("robin");
+  });
+
+  it("never leaves a trailing hyphen for the suffix to double", () => {
+    // "foo--2" is not a slug the schema accepts.
+    const stem = slugStem(`${"a".repeat(54)}-b`);
+    expect(stem.endsWith("-")).toBe(false);
+    expect(Slug.safeParse(`${stem}-2`).success).toBe(true);
   });
 });

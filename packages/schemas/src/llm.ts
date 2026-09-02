@@ -31,7 +31,27 @@ export enum LlmTask {
   Map = "map",
   /** Everything written inside a map: cards, drills, review items, verdicts. */
   Content = "content",
+  /**
+   * Saying a card out loud. A third member rather than a flag on Content,
+   * because it is answered by a different family of models — the text models
+   * do not speak and the speech ones do not write JSON — and because
+   * `modelFor` is the one place a model name is resolved.
+   *
+   * It is deliberately not usable with createProvider: see TextTask below.
+   */
+  Speech = "speech",
 }
+
+/**
+ * The two jobs that come back as text.
+ *
+ * Speech shares the enum because it shares the question the enum answers —
+ * which model runs this call — but it does not share the interface: an
+ * LlmProvider returns a string and a SpeechProvider returns audio. Naming the
+ * two text jobs here is what stops `createProvider(LlmTask.Speech)` compiling,
+ * which is the mistake the third member otherwise invites.
+ */
+export type TextTask = LlmTask.Map | LlmTask.Content;
 
 export const LlmTaskSchema = z.nativeEnum(LlmTask);
 

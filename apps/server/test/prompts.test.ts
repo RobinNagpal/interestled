@@ -42,6 +42,7 @@ import {
   effectiveMapInstructions,
   mapPrompt,
   mapQuestionsPrompt,
+  narrationPrompt,
   questionPrompt,
   seedContentInstructions,
   seedMapInstructions,
@@ -907,6 +908,95 @@ describe("cardPrompt", () => {
     expect(cardPrompt(cardInput({ nodes: twoLevel }))).toContain(
       `- ${node.title}  ← WRITE THIS ONE`,
     );
+  });
+});
+
+describe("narrationPrompt", () => {
+  function narrationInput(
+    overrides: Partial<Parameters<typeof narrationPrompt>[0]> = {},
+  ): Parameters<typeof narrationPrompt>[0] {
+    return { topic, node, card, settings: defaultCardSettings(topic, node, 3), ...overrides };
+  }
+
+  it("is given the card and nothing else of the map", () => {
+    const prompt = unwrapped(narrationPrompt(narrationInput()));
+    expect(prompt).toContain(card.claim);
+    expect(prompt).toContain("The loop: The API server holds desired state.");
+    expect(prompt).toContain("Concretely: 3 replicas, one node dies");
+    expect(prompt).toContain('Return JSON: {"script"}');
+  });
+
+  it("says what to do with the parts of a card that cannot be read out", () => {
+    // The whole point of the feature: a formula or a snippet said character by
+    // character is worse than silence, and pointing at it is what a person
+    // reading a card to somebody actually does.
+    const prompt = unwrapped(narrationPrompt(narrationInput()));
+    expect(prompt).toContain("Never say a symbol");
+    expect(prompt).toContain("Never read a line out");
+    expect(prompt).toContain("Point at the card by what is written on it");
+  });
+
+  it("turns off the one system rule that would be spoken aloud", () => {
+    // SYSTEM says every string is rendered as Markdown and to write Markdown.
+    // Left standing, the asterisks and backticks are read out as words.
+    const prompt = unwrapped(narrationPrompt(narrationInput()));
+    expect(prompt).toContain("The hard rule about writing Markdown is the one rule that does not hold here");
+    expect(prompt).toContain("Every other hard rule stands");
+  });
+
+  it("asks for as long spoken as the card takes to read", () => {
+    const prompt = unwrapped(narrationPrompt(narrationInput()));
+    expect(prompt).toContain("About 450 words, which is roughly 3 minutes spoken");
+  });
+
+  it("scales with the card's own length rather than the topic's", () => {
+    const longer = narrationPrompt(
+      narrationInput({ settings: { ...defaultCardSettings(topic, node, 3), minutes: 6 } }),
+    );
+    expect(unwrapped(longer)).toContain("About 900 words, which is roughly 6 minutes spoken");
+  });
+
+  it("speaks it in the register the card was written in", () => {
+    const simple = narrationPrompt(
+      narrationInput({
+        settings: { ...defaultCardSettings(topic, node, 3), englishLevel: EnglishLevel.Simple },
+      }),
+    );
+    expect(unwrapped(simple)).toContain("everyday words and short sentences");
+  });
+
+  it("says it as prose whatever shape the topic is written in", () => {
+    // Reference notes are a thing you scan. Read aloud, "each rule stated flat
+    // with no linking sentences" is a list nobody can follow without the page.
+    const notes = narrationPrompt(
+      narrationInput({
+        topic: { ...topic, format: ContentFormat.ReferenceNotes },
+        settings: {
+          ...defaultCardSettings(topic, node, 3),
+          format: ContentFormat.ReferenceNotes,
+        },
+      }),
+    );
+    expect(unwrapped(notes)).not.toContain("No linking sentences between them");
+  });
+
+  it("carries the learner's standing instructions, which do not stop at audio", () => {
+    const prompt = narrationPrompt(
+      narrationInput({ topic: { ...topic, contentInstructions: "Answer in French." } }),
+    );
+    expect(prompt).toContain("Answer in French.");
+  });
+
+  it("carries what they asked for this card in particular", () => {
+    const prompt = narrationPrompt(
+      narrationInput({
+        settings: {
+          ...defaultCardSettings(topic, node, 3),
+          instructions: "Compare it with Nomad",
+        },
+      }),
+    );
+    expect(prompt).toContain("Compare it with Nomad");
   });
 });
 

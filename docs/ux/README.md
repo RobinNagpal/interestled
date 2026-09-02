@@ -510,6 +510,35 @@ the node now asks for — and the same button writes it again. The same holds wh
 reader's own depth has moved on, and when the box above was edited: the card on screen
 is always the card they have, and the panel is always honest about what it is.
 
+### Listening to a card
+
+A play button sits under the claim, above everything else on the card, because
+listening instead of reading is a decision somebody makes before they start rather than
+after they have given up. What it plays is not the card read out. A card is written to
+be looked at — it has formulas in it, snippets, exact figures — and a machine reading
+those aloud says every backtick and spells out every symbol, which is worse than
+silence. So the first press writes a script first: what a person would say if they were
+reading the card with the learner in front of them, pointing at it as they went. *The
+formula under 'How the rate compounds' — the balance times one plus r, all to the power
+n.* *The second line of the snippet is where the lock is taken.* The card stays on
+screen, and the words point at it.
+
+That costs two model calls, so it happens once. The script and the audio are kept
+together, keyed on the card they were made from — not on the node, because a node has a
+card per setting and the recording is of the one being read, which is why the play
+button says which card it is on rather than letting the server guess. The file goes into
+a bucket under a path built from the same slugs the URLs are built from:
+`robin/kubernetes/scheduling/taints/…`. The second press is a download.
+
+Pressing *write it again* on the card below retires the recording along with the text it
+was of, and nothing is made in its place: asking for a card to be written again is not
+asking to be read to. The button goes back to offering one, and a player part-way
+through the old recording stops offering to resume it — reading out words that are no
+longer on the screen is the one thing this feature must never do.
+
+- *Covers:* W5 (a different channel for the same content), W8 (hands free while it
+  plays), A1 (a card that reads as a wall can be listened to instead).
+
 ### Asking about a card
 
 *Ask*, in the bar over every card, opens a sheet with one box in it. The answer comes
@@ -1054,10 +1083,10 @@ the design, not an acceptable gap.
 | W2 | Units small enough to finish | 3-minute node cap, each with a stated outcome and a completion state |
 | W3 | Say how long before they start | Measured minute estimates on every node, path and session; the session contract |
 | W4 | Tiny physical first action | Sessions and resumes open on one keystroke or drag, never on a page of reading |
-| W5 | Change format often | Format rotation in the session composer; forced switch after three of a kind |
+| W5 | Change format often | Format rotation in the session composer; forced switch after three of a kind; any card can be listened to instead of read, as somebody explaining it rather than as the text spoken |
 | W6 | Fast feedback | Drill grading is the one always-live backend call; playgrounds respond on the drag |
 | W7 | Move around freely | The map never locks; search enters at any node; every node has its own URL, so a link opens straight into it; *Ask* answers a tangent on the card the reader is on, and keeps the answer there |
-| W8 | Hands and mouth busy | Every node completes by production; voice input on explain-back |
+| W8 | Hands and mouth busy | Every node completes by production; voice input on explain-back; a card played aloud leaves both free |
 | W9 | Everything needed in view | Drill prompts embed their own values; the goal line stays framed; compare tables put both things side by side |
 | W10 | Mild urgency | Timed speed reps in the review deck; high event rate in fluency topics |
 | W11 | Protect hyperfocus | No break nags, no session-length limits; pre-generation so momentum never waits on a load |
@@ -1075,7 +1104,7 @@ the design, not an acceptable gap.
 
 | # | Requirement | Where it is met |
 |---|---|---|
-| A1 | No long unbroken text | Mechanism section capped at ~5 lines; one required visual; anything longer goes behind *deeper* |
+| A1 | No long unbroken text | Mechanism section capped at ~5 lines; one required visual; anything longer goes behind *deeper*; and a card that still reads as a wall can be played instead |
 | A2 | No payoff only at the end | Every node resolves something inside itself — a prediction, a working command, a status change |
 | A3 | No undefined finish | Every drill states its completion test; open verbs are banned from generated task text |
 | A4 | No locked steps | Prerequisites are inline notes; the same node exists at several depths |

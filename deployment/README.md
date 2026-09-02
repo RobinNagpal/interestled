@@ -216,7 +216,24 @@ Then wire up GitHub Actions (**Settings → Secrets and variables → Actions**)
 | Variable | `LLM_PROVIDER` | `gemini` |
 | Variable | `LLM_MODEL` | `gemini-3.1-pro-preview` — the model that builds maps |
 | Variable | `LLM_CONTENT_MODEL` | `gemini-3.7-flash` — the model that writes cards, drills and verdicts |
+| Variable | `LLM_AUDIO_MODEL` | `gemini-3.1-flash-tts-preview` — the model that reads a card out |
+| Variable | `AUDIO_BUCKET` | `terraform output -raw audio_bucket` |
+| Secret | `API_AWS_ACCESS_KEY_ID` | `terraform output api_access_key_id` |
+| Secret | `API_AWS_SECRET_ACCESS_KEY` | `terraform output -raw api_secret_access_key` |
 | Secret | `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com/apikey) |
+
+The last four are the play button on a card, and they are the only optional rows
+here: leave them unset and every route still serves, with the press failing on
+that one card and saying which variable is missing. `API_AWS_*` are a **second**
+IAM user, not the deployer above — the deployer syncs the web bucket and
+invalidates the distribution, and this one can put and get objects in the audio
+bucket and nothing else in the account. They are separate secrets because
+`configure-aws-credentials` claims the unprefixed names for the web sync.
+
+Reading a card out is the most expensive thing the product does: a model call to
+write the script, then minutes of synthesised speech billed by the second. It is
+capped per learner per hour, and a recording is made once and played from the
+bucket after that — but it is the number to watch on the bill.
 
 `DATABASE_URL` is a secret because the workflow runs `prisma migrate deploy`
 with it before shipping new code, so a deploy that adds a migration applies it.
@@ -228,7 +245,7 @@ changes it — re-run `ssh-keyscan` and update the variable when that happens, o
 every deploy will fail at the SSH step.
 
 The workflow writes `/etc/interestled-api.env` **whole** on every deploy, from
-those four values. A key that is not in the workflow is a key the service does
+those values. A key that is not in the workflow is a key the service does
 not get: adding a provider means adding its secret here *and* the line that
 writes it, or generation fails at runtime with a missing key rather than at
 deploy time.

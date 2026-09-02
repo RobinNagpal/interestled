@@ -1,4 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, defaultShouldDehydrateQuery } from "@tanstack/react-query";
+import type { Query } from "@tanstack/react-query";
 import { keys } from "./keys";
 
 /**
@@ -66,4 +67,18 @@ export function createAppQueryClient(): QueryClient {
     refetchOnWindowFocus: false,
   });
   return client;
+}
+
+/**
+ * What is allowed onto disk.
+ *
+ * Everything the default allows, minus the recordings. What that key holds is a
+ * signed link with an hour on it, so a restore on the next launch paints a
+ * button pointing at a URL the bucket has stopped honouring — and the press
+ * that finds out is the one the persisted cache existed to make instant. It is
+ * re-asked on mount like every other piece of learner state, and the answer is
+ * a fresh link, so there is nothing to gain by keeping the stale one.
+ */
+export function shouldPersistQuery(query: Query): boolean {
+  return defaultShouldDehydrateQuery(query) && query.queryKey[0] !== keys.audioOf("")[0];
 }

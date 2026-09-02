@@ -2,6 +2,7 @@ import { LlmProviderId } from "@interestled/schemas";
 import { z } from "zod";
 import { GenerationError } from "../errors";
 import type { GenerateRequest, LlmProvider } from "./types";
+import type { SpeakRequest, Speech, SpeechProvider } from "./speech";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -96,6 +97,91 @@ export function createGeminiProvider(options: GeminiOptions): LlmProvider {
         );
       }
       return text;
+    },
+  };
+}
+
+/**
+ * Only the fields we read from a speech reply. The audio comes back inline
+ * rather than as a link — one part, base64, with the encoding named in its own
+ * mime type rather than in the docs — so `mimeType` is not decoration: it
+ * carries the sample rate, and a WAV header written against the wrong rate
+ * plays at the wrong speed rather than failing.
+ */
+const GeminiSpeechResponse = z.object({
+  candidates: z
+    .array(
+      z.object({
+        content: z
+          .object({
+            parts: z
+              .array(z.object({ inlineData: z.object({ mimeType: z.string(), data: z.string() }).optional() }))
+              .optional(),
+          })
+          .optional(),
+        finishReason: z.string().optional(),
+      }),
+    )
+    .min(1),
+});
+
+/**
+ * The same endpoint as the text call, asked for audio instead: a TTS model
+ * answers :generateContent with one inline part rather than text.
+ *
+ * There is no system slot here and no JSON to parse. Everything about how the
+ * card should sound is already in the script the content model wrote — a
+ * speech model given instructions as well as words will read the instructions
+ * out, which is the one way this call fails visibly.
+ */
+export function createGeminiSpeech(options: GeminiOptions): SpeechProvider {
+  const doFetch = options.fetchImpl ?? fetch;
+  return {
+    id: LlmProviderId.Gemini,
+    model: options.model,
+    async speak(request: SpeakRequest): Promise<Speech> {
+      const response = await doFetch(
+        `${ENDPOINT}/${encodeURIComponent(options.model)}:generateContent`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": options.apiKey },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: request.text }] }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: request.voice } },
+              },
+            },
+          }),
+        },
+      );
+
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const parsed = GeminiError.safeParse(body);
+        throw new GenerationError(
+          parsed.success ? parsed.data.error.message : `Gemini returned ${response.status}`,
+        );
+      }
+      const parsed = GeminiSpeechResponse.safeParse(body);
+      if (!parsed.success) {
+        throw new GenerationError("Gemini returned no usable candidate");
+      }
+      const candidate = parsed.data.candidates[0]!;
+      const inline = (candidate.content?.parts ?? []).find((part) => part.inlineData !== undefined)
+        ?.inlineData;
+      if (inline === undefined) {
+        // Said the same way the text path says it, and for the same reason: a
+        // reply cut off at the token ceiling comes back with the reason set and
+        // no parts at all, and "no audio" alone names neither cause nor fix.
+        throw new GenerationError(
+          candidate.finishReason === TRUNCATED
+            ? "Gemini ran out of output tokens before it finished speaking"
+            : `Gemini returned no audio (finish reason: ${candidate.finishReason ?? "not stated"})`,
+        );
+      }
+      return { audio: Buffer.from(inline.data, "base64"), mimeType: inline.mimeType };
     },
   };
 }

@@ -6,6 +6,7 @@ import {
   GeneratedLeafChildren,
   GeneratedTwoLevelMap,
   MapQuestionSet,
+  NarrationScript,
   Verdict,
   flattenLeafChildren,
   flattenTwoLevelMap,
@@ -23,6 +24,7 @@ import type {
   LearningNodeT,
   MapQuestionT,
   MapShapeT,
+  NarrationScriptT,
   ProfileT,
   TopicContentSettingsT,
   TopicT,
@@ -35,6 +37,7 @@ import {
   drillPrompt,
   mapPrompt,
   mapQuestionsPrompt,
+  narrationPrompt,
   questionPrompt,
   subtreePrompt,
   SYSTEM,
@@ -216,6 +219,39 @@ export function generateAnswer(
     system: SYSTEM,
     prompt: questionPrompt(input),
     schema: CardAnswer,
+  });
+}
+
+/**
+ * The card as a script somebody could read out.
+ *
+ * Never cached by itself: the row the route writes holds it, keyed by the card
+ * it was made from, because the audio beside it is what actually cost something
+ * and the two must always be of the same words.
+ *
+ * A little hotter than the default, for the reason the questions call is: this
+ * one is asked to say the same content in a different register, and 0.3 is
+ * tuned for a card that should come out the same twice.
+ */
+export function generateNarration(
+  provider: LlmProvider,
+  input: {
+    topic: TopicT;
+    node: LearningNodeT;
+    card: CardContentT;
+    settings: CardSettingsT;
+  },
+): Promise<NarrationScriptT> {
+  return generateJson(provider, {
+    system: SYSTEM,
+    prompt: narrationPrompt(input),
+    schema: NarrationScript,
+    temperature: 0.4,
+    // A ten-minute card is fifteen hundred words of script, which is past the
+    // 4096 the other content calls take: the reply is one long string with no
+    // structure to spend tokens on, so it is the words themselves that need
+    // the room.
+    maxOutputTokens: 8192,
   });
 }
 

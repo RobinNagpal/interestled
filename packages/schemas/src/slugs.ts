@@ -62,8 +62,39 @@ export function slugify(text: string, fallback = "item"): SlugT {
   return slug === "" ? fallback : slug;
 }
 
+/**
+ * The learner's own slug, from the address they signed up with.
+ *
+ * It is the top folder of every audio object they own, so it wants to be a name
+ * rather than an id: `robin/kubernetes/scheduling/taints/…` is a path somebody
+ * can find a file down, and an account id is not. The part before the @ is the
+ * closest thing an email holds to a username, and slugifying it is the same
+ * rule every other slug here follows.
+ *
+ * Uniqueness is not this function's job — two accounts can hold the same
+ * address at two providers, and their folders must not be the same folder. Pass
+ * the result through `uniqueSlug` against the slugs already handed out, exactly
+ * as a node title is.
+ */
+export function emailSlug(email: string): SlugT {
+  return slugify(email.split("@")[0] ?? "", "learner");
+}
+
 /** How many suffixes to try before giving up on a readable slug. */
 const MAX_SUFFIX = 200;
+
+/**
+ * The part every numbered variant of a slug starts with.
+ *
+ * `uniqueSlug` cuts the base short before appending "-2", so that a 60-character
+ * title does not become a 63-character slug — which means the numbered variants
+ * of a long base do not start with that base. Anything looking for "every slug
+ * that could collide with this one" has to search on this rather than on the
+ * base, or it misses exactly the variants it allocated last time.
+ */
+export function slugStem(base: string, fallback = "item"): SlugT {
+  return base.slice(0, SLUG_MAX_LENGTH - 5).replace(/-+$/g, "") || fallback;
+}
 
 /**
  * slugify, then "-2", "-3" … until the result is free. `taken` is every slug
@@ -78,7 +109,7 @@ export function uniqueSlug(text: string, taken: ReadonlySet<string>, fallback = 
     return base;
   }
   // Leave room for the suffix rather than producing a 63-character slug.
-  const stem = base.slice(0, SLUG_MAX_LENGTH - 5).replace(/-+$/g, "") || fallback;
+  const stem = slugStem(base, fallback);
   for (let suffix = 2; suffix <= MAX_SUFFIX; suffix += 1) {
     const candidate = `${stem}-${suffix}`;
     if (isFree(candidate)) {

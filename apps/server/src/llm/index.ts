@@ -1,7 +1,8 @@
 export * from "./types";
+export * from "./speech";
 export * from "./content";
-export { createProvider } from "./registry";
-export { createGeminiProvider } from "./gemini";
+export { createProvider, createSpeechProvider } from "./registry";
+export { createGeminiProvider, createGeminiSpeech } from "./gemini";
 export { generateJson, stripFence } from "./json";
 // The instruction lines a topic falls back to when the learner has written none.
 export { seedContentInstructions, seedMapInstructions, effectiveMapInstructions } from "./prompts";

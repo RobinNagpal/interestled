@@ -43,5 +43,30 @@ export const keys = {
    * is asked for again on every open.
    */
   questions: (nodeId: string) => ["questions", nodeId] as const,
+  /** Every recording of one node, at every setting: the prefix a rewrite touches. */
+  audioOf: (nodeId: string) => ["audio", nodeId] as const,
+  /**
+   * The recording of one card, if it has one. Learner state rather than
+   * generated content, and deliberately so: what it carries is a signed link
+   * with an hour on it, so it has to be asked for again on every mount and
+   * every return to the foreground. The generated half — the script and the
+   * audio — is in the bucket, and this key never holds it.
+   *
+   * Keyed by the settings the card was written to, the same way `card` is and
+   * for the same reason: a node has a recording per card, and one entry for the
+   * node would hand the reader the recording of a card they are not looking at.
+   */
+  audio: (nodeId: string, settings: CardSettingsT) =>
+    [
+      "audio",
+      nodeId,
+      settings.depth,
+      settings.minutes,
+      settings.englishLevel,
+      settings.technicalDetail,
+      settings.format,
+      settings.paragraphLength,
+      settings.angle,
+    ] as const,
   review: ["review"] as const,
 };

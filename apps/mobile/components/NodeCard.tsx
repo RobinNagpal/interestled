@@ -44,6 +44,7 @@ import {
   QUESTION_MAX,
 } from "@interestled/schemas";
 import type { CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
+import { CardAudio } from "./CardAudio";
 import { ChipRow } from "./ChipRow";
 import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
@@ -174,6 +175,12 @@ export function NodeCard({
         {/* The claim first: the answer arrives before any context. */}
         <InlineMarkdown text={content.claim} className="text-xl font-semibold text-ink" />
       </View>
+
+      {/* Under the claim and above everything else, because listening instead of
+          reading is a decision made before starting rather than after finishing.
+          It reads the card that is on screen, so it belongs to the card rather
+          than to the panel of controls at the bottom. */}
+      <CardAudio nodeId={node.id} settings={settings} />
 
       {/* Advisory, not a gate. A live question is the strongest motivation the
           learner will ever have, and a lock spends it. */}

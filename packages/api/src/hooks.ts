@@ -10,6 +10,7 @@ import type {
   LearningNodeT,
   MapPlanViewT,
   MoveDirection,
+  NodeAudioT,
   NodeStatus,
   ProfileT,
   ProfileUpdateInputT,
@@ -269,7 +270,12 @@ export function useRewriteCard(
     // on when the answer lands: a rewrite runs for ten to thirty seconds, and a
     // control moved while it is in flight would otherwise file the new card
     // under a key it was not written to and overwrite the card that was.
-    onSuccess: (card, settings) => client.setQueryData(keys.card(nodeId, settings), card),
+    onSuccess: (card, settings) => {
+      client.setQueryData(keys.card(nodeId, settings), card);
+      // The card's recording is now of text that has been replaced, so the
+      // button on screen would otherwise play the words nobody can read.
+      void client.invalidateQueries({ queryKey: keys.audioOf(nodeId) });
+    },
   });
 }
 
@@ -318,6 +324,58 @@ export function useAskQuestion(nodeId: string): UseMutationResult<CardQuestionT,
         ...(current ?? []),
         answered,
       ]),
+  });
+}
+
+/**
+ * Whether this card has been read out, and where to play it from.
+ *
+ * On the default policy on purpose, which for this cache means asked again on
+ * every mount and every return to the foreground: the URL is signed and expires
+ * in an hour, so a stale entry is a link that no longer works. That is also why
+ * it is not folded into the card, which is cached by what it was written to and
+ * has no business carrying something with an expiry on it.
+ *
+ * Keyed by the card's settings, because a node has a recording per card and the
+ * one that matters is the one under the reader.
+ */
+export function useNodeAudio(
+  nodeId: string,
+  settings: CardSettingsT,
+): UseQueryResult<NodeAudioT | null> {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.audio(nodeId, settings),
+    queryFn: () => api.getNodeAudio(nodeId, settings),
+    enabled: nodeId !== "",
+  });
+}
+
+/**
+ * Read this card out.
+ *
+ * A mutation because it is the most expensive press in the product and nothing
+ * should be able to make it happen twice: a query would refetch on focus, and
+ * every return to the app would be another script and another synthesis. The
+ * result is written straight into the query above, so the player has something
+ * to play the moment it lands rather than after a second round trip.
+ *
+ * A failure marks that query stale rather than being only an error. Making a
+ * recording is the one call long enough to be cut off at the edge with the work
+ * already done — the server finishes it and writes the row either way — so the
+ * honest thing after a failed press is to go and look, and the recording is
+ * usually there.
+ */
+export function useReadCardAloud(
+  nodeId: string,
+  settings: CardSettingsT,
+): UseMutationResult<NodeAudioT, Error, void> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.createNodeAudio(nodeId, settings),
+    onSuccess: (audio) => client.setQueryData(keys.audio(nodeId, settings), audio),
+    onError: () => client.invalidateQueries({ queryKey: keys.audio(nodeId, settings) }),
   });
 }
 

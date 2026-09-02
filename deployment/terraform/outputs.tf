@@ -33,3 +33,19 @@ output "deployer_secret_access_key" {
   value       = var.create_deployer_access_key ? aws_iam_access_key.deployer[0].secret : null
   sensitive   = true
 }
+
+output "audio_bucket" {
+  description = "S3 bucket for cards read aloud — set as the AUDIO_BUCKET GitHub Actions variable."
+  value       = aws_s3_bucket.audio.bucket
+}
+
+output "api_access_key_id" {
+  description = "Set as the API_AWS_ACCESS_KEY_ID GitHub Actions secret. Not the deployer's key."
+  value       = var.create_deployer_access_key ? aws_iam_access_key.api[0].id : null
+}
+
+output "api_secret_access_key" {
+  description = "Set as the API_AWS_SECRET_ACCESS_KEY GitHub Actions secret."
+  value       = var.create_deployer_access_key ? aws_iam_access_key.api[0].secret : null
+  sensitive   = true
+}

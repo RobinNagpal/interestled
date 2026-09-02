@@ -2,12 +2,28 @@ import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { LoginInput, RegisterInput, User, newId } from "@interestled/schemas";
+import {
+  LoginInput,
+  RegisterInput,
+  User,
+  emailSlug,
+  newId,
+  slugStem,
+  uniqueSlug,
+} from "@interestled/schemas";
+import type { UserT } from "@interestled/schemas";
+import { Prisma } from "@prisma/client";
 import type { Db } from "./db";
+import { UniqueViolation } from "./errors";
 import { hashPassword, verifyPassword } from "./password";
 
 export interface AuthEnv {
-  Variables: { userId: string; defaultDepth: number };
+  /**
+   * `userSlug` is here for the same reason `defaultDepth` is: it is on the user
+   * row the session already loads, it never changes, and the alternative is a
+   * second lookup on a route that runs on every card view.
+   */
+  Variables: { userId: string; defaultDepth: number; userSlug: string };
 }
 
 /**
@@ -24,6 +40,72 @@ function issueToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
+/**
+ * The folder this account's recordings live under, from the address they signed
+ * up with.
+ *
+ * Allocated once, here, and never again: the audio bucket is laid out by it, so
+ * a slug that changed later would orphan everything already recorded. The same
+ * rule every other slug follows — the server allocates, nobody types one.
+ *
+ * Only the slugs that could actually collide are read, which is the ones
+ * starting with this base rather than the whole table.
+ */
+async function allocateSlug(db: Db, email: string): Promise<string> {
+  const base = emailSlug(email);
+  // The stem rather than the base: uniqueSlug cuts a long base short before
+  // numbering it, so "<58 characters>-2" does not start with the 58 characters.
+  // Searching on the base would not see that row, uniqueSlug would propose the
+  // same slug again, and every attempt would lose on the unique index — leaving
+  // that address unable to register at all.
+  const taken = await db.user.findMany({
+    where: { slug: { startsWith: slugStem(base) } },
+    select: { slug: true },
+  });
+  return uniqueSlug(base, new Set(taken.map((row) => row.slug)));
+}
+
+/**
+ * How many times a registration retries a slug collision.
+ *
+ * Two accounts registering the same base in the same instant both read the same
+ * set and both propose the same slug; the second insert loses on the unique
+ * index. Rare, and worth catching rather than showing: "that slug is taken" is
+ * meaningless to somebody who never chose one, and the retry reads the row the
+ * winner just wrote and numbers past it.
+ */
+const SLUG_ATTEMPTS = 3;
+
+/** Only the slug is retried here. A collision on the email is a different answer. */
+function slugCollision(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+  const target = UniqueViolation.safeParse(error.meta);
+  return target.success && target.data.target.includes("slug");
+}
+
+/**
+ * The account, with a folder of its own. Null only if three rounds of the same
+ * base collided in the same instant, which is not a thing that happens — but a
+ * loop that can run out has to say what it does when it has.
+ */
+async function createUser(db: Db, email: string, passwordHash: string): Promise<UserT | null> {
+  for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt += 1) {
+    try {
+      const slug = await allocateSlug(db, email);
+      return User.parse(await db.user.create({ data: { id: newId(), email, passwordHash, slug } }));
+    } catch (error) {
+      // Anything else — a taken email above all — is answered by the handler in
+      // app.ts, which names the columns that actually collided.
+      if (!slugCollision(error)) {
+        throw error;
+      }
+    }
+  }
+  return null;
+}
+
 export function authRouter(db: Db): Hono {
   const router = new Hono();
 
@@ -35,12 +117,13 @@ export function authRouter(db: Db): Hono {
       // login screen, and the address is the account name people will retry.
       return c.json({ error: "That email already has an account — sign in instead" }, 409);
     }
-    const user = await db.user.create({
-      data: { id: newId(), email, passwordHash: await hashPassword(password) },
-    });
+    const user = await createUser(db, email, await hashPassword(password));
+    if (user === null) {
+      return c.json({ error: "Could not create that account — try again" }, 409);
+    }
     const token = issueToken();
     await db.authSession.create({ data: { token, userId: user.id, expiresAt: expiry() } });
-    return c.json({ token, user: User.parse(user) }, 201);
+    return c.json({ token, user }, 201);
   });
 
   router.post("/login", zValidator("json", LoginInput), async (c) => {
@@ -82,6 +165,7 @@ export function requireAuth(db: Db): MiddlewareHandler<AuthEnv> {
     }
     c.set("userId", session.userId);
     c.set("defaultDepth", session.user.defaultDepth);
+    c.set("userSlug", session.user.slug);
     await next();
   };
 }

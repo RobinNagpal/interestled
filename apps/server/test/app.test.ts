@@ -10,6 +10,7 @@ import {
   MAP_QUESTION_KINDS,
   MapPlanView,
   MapQuestionKind,
+  NARRATION_VOICE,
   NodeStatus,
   ParagraphLength,
   TechnicalDetail,
@@ -17,9 +18,13 @@ import {
   TopicArchetype,
   TopicStatus,
   cardVariant,
+  narrationKey,
 } from "@interestled/schemas";
 import { createApp } from "../src/app";
 import type { Db } from "../src/db";
+import { GenerationError } from "../src/errors";
+import type { SpeechProvider } from "../src/llm/speech";
+import type { ObjectStore } from "../src/storage";
 import type { LlmProvider } from "../src/llm/types";
 
 /**
@@ -52,9 +57,15 @@ function stubDb(
   const db = {
     user: {
       findUnique: vi.fn(async () => null),
-      create: vi.fn(async () => ({
+      // Registration allocates a slug, which means reading the ones already
+      // handed out that could collide with it.
+      findMany: vi.fn(async () => []),
+      create: vi.fn(async ({ data }: { data: { slug: string } }) => ({
         id: "u1",
         email: "a@b.com",
+        // Echoed back rather than fixed, so a test can assert what the folder
+        // this account's recordings go in was actually named.
+        slug: data.slug,
         // The column's own default, which the real row always carries: the
         // register response says where this learner's cards will start.
         defaultDepth: 2,
@@ -75,7 +86,7 @@ function stubDb(
               token: session.token,
               userId: session.userId,
               expiresAt: session.expiresAt ?? new Date(Date.now() + 60_000),
-              user: { id: session.userId, defaultDepth: 2 },
+              user: { id: session.userId, defaultDepth: 2, slug: "robin" },
             }
           : null,
       ),
@@ -209,7 +220,7 @@ describe("topic settings writes", () => {
           token: "good",
           userId: "u1",
           expiresAt: new Date(Date.now() + 60_000),
-          user: { id: "u1", defaultDepth: 2 },
+          user: { id: "u1", defaultDepth: 2, slug: "robin" },
         })),
         deleteMany: vi.fn(async () => ({ count: 0 })),
       },
@@ -547,8 +558,16 @@ describe("card generation", () => {
         // The newest card this node has, at any settings: what a plain open
         // is answered with when nothing is cached at the settings asked for.
         findFirst: vi.fn(async () => null),
-        upsert: vi.fn(async () => ({})),
+        upsert: vi.fn(async () => ({ id: "c1" })),
         // What the rewrite budget counts: cards written in the last hour.
+        count: vi.fn(async () => 0),
+      },
+      cardNarration: {
+        findUnique: vi.fn(async () => null),
+        upsert: vi.fn(async ({ create }: { create: object }) => ({ ...create })),
+        // A rewrite drops the recording with the text it was of.
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        // What the narration budget counts: recordings made in the last hour.
         count: vi.fn(async () => 0),
       },
       cardQuestion: {
@@ -754,6 +773,29 @@ describe("card generation", () => {
       | undefined;
     expect(written?.update.content).toMatchObject({ claim: "A pod is the unit of scheduling." });
     expect(written?.update.createdAt).toBeInstanceOf(Date);
+  });
+
+  it("moves the card's date on a rewrite, which is what retires its recording", async () => {
+    // The recording is retired by the date rather than by a delete, and that is
+    // the whole of why: those rows in the last hour are the narration ceiling,
+    // so an endpoint that emptied the table would be a ceiling the learner
+    // could empty too, by pressing Regenerate between presses of play.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as {
+      conceptCard: { findUnique: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
+      cardNarration: { deleteMany: ReturnType<typeof vi.fn> };
+    };
+    stub.conceptCard.findUnique = vi.fn(async () => cardRow(plain));
+    const { provider: recorder } = recording();
+    await createApp(db, { provider: recorder }).request("/api/nodes/n2/card?rewrite=1", {
+      headers: { Authorization: "Bearer good" },
+    });
+
+    const written = stub.conceptCard.upsert.mock.calls[0]?.[0] as
+      | { update: { createdAt?: Date } }
+      | undefined;
+    expect(written?.update.createdAt).toBeInstanceOf(Date);
+    expect(stub.cardNarration.deleteMany).not.toHaveBeenCalled();
   });
 
   it("refuses a rewrite once the hour's card writing has hit its ceiling", async () => {
@@ -1471,5 +1513,415 @@ describe("map plans", () => {
 
     expect(response.status).toBe(200);
     expect(prompts[0]).toContain("Sample 3 for known");
+  });
+});
+
+/**
+ * The card, read out.
+ *
+ * Two calls to two different models and an object in a bucket, which is the
+ * most expensive press in the product — so what these are here to catch is the
+ * paths that make it cost twice or cost the wrong thing: a second press paying
+ * for the same card again, a recording served for text that has been replaced,
+ * a recording made of a card the reader is not looking at, and a plain GET
+ * writing or signing anything at all.
+ */
+describe("reading a card out", () => {
+  const SCRIPT = "So a pod is the unit of scheduling. Look at the section called What schedules a pod.";
+  /** A second of 16-bit mono at the rate the TTS models answer at. */
+  const PCM = Buffer.alloc(24000 * 2, 1);
+
+  const cardSettings = {
+    depth: 2,
+    minutes: 3,
+    englishLevel: EnglishLevel.Medium,
+    technicalDetail: TechnicalDetail.Medium,
+    format: ContentFormat.Prose,
+    paragraphLength: ParagraphLength.Medium,
+    angle: CardAngle.Base,
+    instructions: "",
+  };
+
+  /** The seven the app sends: what the card route said this card was written to. */
+  const QUERY = new URLSearchParams({
+    depth: String(cardSettings.depth),
+    minutes: String(cardSettings.minutes),
+    englishLevel: cardSettings.englishLevel,
+    technicalDetail: cardSettings.technicalDetail,
+    format: cardSettings.format,
+    paragraphLength: cardSettings.paragraphLength,
+    angle: cardSettings.angle,
+  }).toString();
+
+  const cardContent = {
+    claim: "A pod is the unit of scheduling.",
+    mechanism: [{ heading: "What schedules a pod", body: "The scheduler places pods." }],
+    jargon: [],
+  };
+
+  /** When the card on screen was written. The recording stores it to stay honest. */
+  const WRITTEN_AT = new Date("2026-09-01T10:00:00.000Z");
+
+  /** The key this learner's recording of that card belongs at. */
+  const KEY = narrationKey({
+    userSlug: "robin",
+    topicSlug: "kubernetes",
+    nodePath: "pods/restarts",
+    depth: cardSettings.depth,
+    variant: cardVariant(cardSettings),
+  });
+
+  interface AudioStub {
+    db: Db;
+    /** Everything written to the bucket, in order. */
+    put: { key: string; body: Buffer; contentType: string }[];
+    /** Every row the narration table was asked to write. */
+    saved: object[];
+    /** What was actually sent to the speech model. */
+    spoken: { text: string; voice: string }[];
+    /** How many times the bucket was reached for at all. */
+    stores: number;
+    /** Which card rows were looked up, so a test can prove which card was read. */
+    looked: object[];
+    speech: () => SpeechProvider;
+    objects: () => ObjectStore;
+  }
+
+  function audioStub(
+    options: {
+      card?: object | null;
+      narration?: object | null;
+      /** Recordings made in the last hour, against the ceiling. */
+      recent?: number;
+      children?: number;
+    } = {},
+  ): AudioStub {
+    const put: { key: string; body: Buffer; contentType: string }[] = [];
+    const saved: object[] = [];
+    const spoken: { text: string; voice: string }[] = [];
+    const looked: object[] = [];
+    const stub: { stores: number } = { stores: 0 };
+    const card =
+      options.card === undefined
+        ? {
+            id: "c1",
+            nodeId: "n2",
+            depth: cardSettings.depth,
+            variant: cardVariant(cardSettings),
+            instructions: "",
+            content: cardContent,
+            createdAt: WRITTEN_AT,
+          }
+        : options.card;
+    const db = {
+      authSession: {
+        findUnique: vi.fn(async () => ({
+          token: "good",
+          userId: "u1",
+          expiresAt: new Date(Date.now() + 60_000),
+          // The slug rides on the session, like the depth: it never changes,
+          // and the alternative is a second query on every card view.
+          user: { id: "u1", defaultDepth: 2, slug: "robin" },
+        })),
+      },
+      learningNode: {
+        findFirst: vi.fn(async () => ({
+          id: "n2",
+          topicId: "t1",
+          parentId: "g1",
+          path: "pods/restarts",
+          title: "Restarts and probes",
+          claim: "c",
+          minutes: 3,
+          archetype: TopicArchetype.Tool,
+          orderIndex: 1,
+          status: NodeStatus.Seen,
+          capability: "do it",
+          cardInstructions: "",
+          createdAt: new Date(),
+          prerequisites: [],
+          topic: topicRow(),
+        })),
+        count: vi.fn(async () => options.children ?? 0),
+      },
+      conceptCard: {
+        findUnique: vi.fn(async (args: object) => {
+          looked.push(args);
+          return card;
+        }),
+      },
+      cardNarration: {
+        findUnique: vi.fn(async () => options.narration ?? null),
+        count: vi.fn(async () => options.recent ?? 0),
+        upsert: vi.fn(async ({ create }: { create: object }) => {
+          saved.push(create);
+          return { ...create, createdAt: new Date() };
+        }),
+      },
+    };
+    return {
+      db: db as unknown as Db,
+      put,
+      saved,
+      spoken,
+      looked,
+      get stores() {
+        return stub.stores;
+      },
+      speech: () => ({
+        id: LlmProviderId.Gemini,
+        model: "tts",
+        speak: async (request) => {
+          spoken.push(request);
+          return { audio: PCM, mimeType: "audio/L16;codec=pcm;rate=24000" };
+        },
+      }),
+      objects: () => {
+        stub.stores += 1;
+        return {
+          put: async (key, body, contentType) => {
+            put.push({ key, body, contentType });
+          },
+          signedUrl: async (key, seconds) => `https://bucket.example/${key}?expires=${seconds}`,
+        };
+      },
+    };
+  }
+
+  const audioProvider = (): LlmProvider => ({
+    id: LlmProviderId.Gemini,
+    model: "test",
+    complete: async () => JSON.stringify({ script: SCRIPT }),
+  });
+
+  const authed = { Authorization: "Bearer good" };
+
+  /** A stored recording of the card above, current unless a test says otherwise. */
+  function narrationRow(overrides: object = {}): object {
+    return {
+      objectKey: KEY,
+      cardWrittenAt: WRITTEN_AT,
+      seconds: 91,
+      voice: NARRATION_VOICE,
+      createdAt: new Date("2026-09-01T10:05:00.000Z"),
+      ...overrides,
+    };
+  }
+
+  function app(stub: AudioStub) {
+    return createApp(stub.db, {
+      provider: audioProvider,
+      speech: stub.speech,
+      objects: stub.objects,
+    });
+  }
+
+  it("answers a node with no recording with null, and writes nothing", async () => {
+    const stub = audioStub({ narration: null });
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ audio: null });
+    // A GET must not reach either model or the bucket: the button asks whether
+    // there is a recording, and being asked cannot be what makes one.
+    expect(stub.spoken).toHaveLength(0);
+    expect(stub.put).toHaveLength(0);
+    expect(stub.saved).toHaveLength(0);
+  });
+
+  it("does not even build the bucket when there is nothing to point at", async () => {
+    // A deployment with no AUDIO_BUCKET is one with the play button off, not
+    // one that 502s on every card open — and this route runs on every mount and
+    // every return to the foreground.
+    const stub = audioStub({ narration: null });
+    await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+    expect(stub.stores).toBe(0);
+  });
+
+  it("answers a node with no card at all with null rather than writing one", async () => {
+    const stub = audioStub({ card: null });
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+
+    expect(await response.json()).toEqual({ audio: null });
+    expect(stub.stores).toBe(0);
+  });
+
+  it("reads the card the button is on, not the newest one the node has", async () => {
+    // Move a chip and move it back and the newest row is the card the reader
+    // navigated away from. The settings the card route answered are the only
+    // thing that says which card is on screen.
+    const stub = audioStub();
+    await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+
+    expect(stub.looked[0]).toEqual({
+      where: {
+        nodeId_depth_variant: {
+          nodeId: "n2",
+          depth: cardSettings.depth,
+          variant: cardVariant(cardSettings),
+        },
+      },
+    });
+  });
+
+  it("refuses a request that does not say which card it means", async () => {
+    const stub = audioStub();
+    const response = await app(stub).request("/api/nodes/n2/audio", { headers: authed });
+    expect(response.status).toBe(400);
+  });
+
+  it("writes the script, says it, and puts one playable object in the bucket", async () => {
+    const stub = audioStub();
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
+      method: "POST",
+      headers: authed,
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      audio: { url: `https://bucket.example/${KEY}?expires=3600`, seconds: 1, voice: NARRATION_VOICE },
+    });
+
+    // The words the model wrote, in the voice the product uses — and nothing
+    // else: a speech model handed instructions as well as words reads the
+    // instructions out.
+    expect(stub.spoken).toEqual([{ text: SCRIPT, voice: NARRATION_VOICE }]);
+
+    // Raw PCM is not something a browser or a phone will play, so what lands in
+    // the bucket has a RIFF header on it and says it is a WAV.
+    const [object] = stub.put;
+    expect(object?.key).toBe(KEY);
+    expect(object?.contentType).toBe("audio/wav");
+    expect(object?.body.subarray(0, 4).toString("ascii")).toBe("RIFF");
+    expect(object?.body.length).toBe(PCM.length + 44);
+
+    // The script is kept beside the audio: it is the only readable record of
+    // what a recording says, and re-saying it must not mean writing it again.
+    // The card's own date goes with it, which is what says later whether the
+    // recording is still of the words on the card.
+    expect(stub.saved[0]).toMatchObject({
+      cardId: "c1",
+      script: SCRIPT,
+      objectKey: KEY,
+      cardWrittenAt: WRITTEN_AT,
+      seconds: 1,
+      voice: NARRATION_VOICE,
+    });
+  });
+
+  it("lays the bucket out by the learner, the topic and the path down the map", async () => {
+    const stub = audioStub();
+    await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { method: "POST", headers: authed });
+
+    expect(stub.put[0]?.key.startsWith("robin/kubernetes/pods/restarts/")).toBe(true);
+  });
+
+  it("answers a second press from the bucket rather than paying for it twice", async () => {
+    // The one thing that must never regress: a double tap, or coming back to a
+    // card an hour later, costs a signature and nothing else.
+    const stub = audioStub({ narration: narrationRow() });
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
+      method: "POST",
+      headers: authed,
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ audio: { seconds: 91 } });
+    expect(stub.spoken).toHaveLength(0);
+    expect(stub.put).toHaveLength(0);
+  });
+
+  it("answers that second press even at the ceiling, since it costs nothing", async () => {
+    // The budget is about what a press would spend. Refusing one that would
+    // have been served from the bucket turns a retry after a slow first press —
+    // which is exactly what a timeout at the edge produces — into a dead end.
+    const stub = audioStub({ narration: narrationRow(), recent: 20 });
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
+      method: "POST",
+      headers: authed,
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("does not serve the recording of a card that has since been written again", async () => {
+    // A rewrite replaces the card's text in place and moves its date. The row
+    // stays — those rows are the ceiling — but nothing serves it.
+    const stub = audioStub({
+      narration: narrationRow({ cardWrittenAt: new Date("2026-08-01T10:00:00.000Z") }),
+    });
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+
+    expect(await response.json()).toEqual({ audio: null });
+  });
+
+  it("makes a new one for a rewritten card rather than answering with the old", async () => {
+    const stub = audioStub({
+      narration: narrationRow({ cardWrittenAt: new Date("2026-08-01T10:00:00.000Z") }),
+    });
+    await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { method: "POST", headers: authed });
+
+    expect(stub.spoken).toHaveLength(1);
+    expect(stub.saved[0]).toMatchObject({ cardWrittenAt: WRITTEN_AT });
+  });
+
+  it("does not serve a recording made under an earlier narration prompt", async () => {
+    // The revision travels in the key, so bumping it makes every stored row
+    // miss its own lookup — the same trick CARD_PROMPT_REVISION plays, with no
+    // migration and nothing to delete.
+    const stub = audioStub({
+      narration: narrationRow({ objectKey: "robin/kubernetes/pods/restarts/n0-d2-old.wav" }),
+    });
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+
+    expect(await response.json()).toEqual({ audio: null });
+  });
+
+  it("refuses once the hour's recordings have hit the ceiling", async () => {
+    const stub = audioStub({ recent: 20 });
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
+      method: "POST",
+      headers: authed,
+    });
+
+    expect(response.status).toBe(409);
+    expect(stub.spoken).toHaveLength(0);
+  });
+
+  it("refuses a node with no card rather than writing one to read out", async () => {
+    const stub = audioStub({ card: null });
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
+      method: "POST",
+      headers: authed,
+    });
+
+    expect(response.status).toBe(409);
+    expect(stub.spoken).toHaveLength(0);
+  });
+
+  it("refuses a group, which has no card to read out", async () => {
+    const stub = audioStub({ children: 4 });
+    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
+      method: "POST",
+      headers: authed,
+    });
+
+    expect(response.status).toBe(409);
+  });
+
+  it("says nothing about a deployment with no bucket except what is not set", async () => {
+    const stub = audioStub({ narration: narrationRow() });
+    const response = await createApp(stub.db, {
+      provider: audioProvider,
+      speech: stub.speech,
+      objects: () => {
+        throw new GenerationError(
+          "Reading cards aloud is not set up on this deployment — AUDIO_BUCKET is not set",
+        );
+      },
+    }).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("AUDIO_BUCKET") });
   });
 });
