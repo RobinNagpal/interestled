@@ -2,14 +2,31 @@ import "../global.css";
 import type { ReactElement, ReactNode } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { ApiProvider, createAppQueryClient } from "@interestled/api";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import {
+  ApiProvider,
+  PERSISTED_CACHE_VERSION,
+  QUERY_GC_MS,
+  createAppQueryClient,
+} from "@interestled/api";
 import { KeyboardInset, LoadingState } from "@interestled/ui";
 import { AuthProvider, useAuth } from "../lib/auth";
+import { useAppFocus } from "../lib/focus";
 import { backHeader } from "../lib/nav";
+import { queryPersister } from "../lib/queryPersister";
 import { AuthScreen } from "../components/AuthScreen";
 
 const queryClient = createAppQueryClient();
+
+/**
+ * What the cache on disk is allowed to be: no older than the client would keep
+ * it in memory, and written by a build whose responses had the same shape.
+ */
+const persistOptions = {
+  persister: queryPersister,
+  maxAge: QUERY_GC_MS,
+  buster: PERSISTED_CACHE_VERSION,
+};
 
 function Gate({ children }: { children: ReactNode }): ReactElement {
   const { ready, user, client } = useAuth();
@@ -29,8 +46,10 @@ function Gate({ children }: { children: ReactNode }): ReactElement {
  * never conditionally absent.
  */
 export default function RootLayout(): ReactElement {
+  useAppFocus();
+
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
       <AuthProvider>
         <StatusBar style="dark" />
         {/* Above every screen, so no screen has to remember the keyboard. */}
@@ -74,6 +93,6 @@ export default function RootLayout(): ReactElement {
           </Gate>
         </KeyboardInset>
       </AuthProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }

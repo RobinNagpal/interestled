@@ -5,7 +5,8 @@ import { createApiClient } from "@interestled/api";
 import type { ApiClient } from "@interestled/api";
 import type { LoginInputT, RegisterInputT, UserT } from "@interestled/schemas";
 import { API_URL } from "./config";
-import { readToken, writeToken } from "./storage";
+import { queryPersister } from "./queryPersister";
+import { readToken, readUser, writeToken, writeUser } from "./storage";
 
 interface AuthState {
   ready: boolean;
@@ -30,9 +31,13 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     token.current = null;
     setUser(null);
     void writeToken(null);
+    void writeUser(null);
     // The QueryClient outlives the session, so without this the next person to
     // sign in on this device sees the previous one's cached topics and answers.
+    // The copy on disk goes with it, rather than waiting for the throttled
+    // write that would otherwise carry the empty cache there a second later.
     queryClient.clear();
+    void queryPersister.removeClient();
   }, [queryClient]);
 
   const client = useMemo(
@@ -45,27 +50,51 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     [clearSession],
   );
 
+  const remember = useCallback(async (next: UserT): Promise<void> => {
+    setUser(next);
+    await writeUser(next);
+  }, []);
+
   useEffect(() => {
     void (async () => {
       const stored = await readToken();
-      if (stored !== null) {
-        token.current = stored;
-        // A token the server has forgotten resolves to signed-out via
-        // onUnauthorized, so a stale one never strands the app on a spinner.
-        await client
-          .me()
-          .then(setUser)
-          .catch(() => undefined);
+      if (stored === null) {
+        setReady(true);
+        return;
       }
+      token.current = stored;
+      // A token on disk is a session until the server says otherwise, so the
+      // app opens on the last user it was told about rather than on a spinner:
+      // the round trip that confirms them runs behind the first screen, and a
+      // token the server has forgotten resolves to signed-out through
+      // onUnauthorized, so a stale one never strands anybody on the app either.
+      // With no user on disk (an older build's session) the confirmation is
+      // waited for, as it always was.
+      const known = await readUser();
+      if (known !== null) {
+        setUser(known);
+        setReady(true);
+      }
+      await client
+        .me()
+        .then(remember)
+        .catch(() => undefined);
       setReady(true);
     })();
-  }, [client]);
+  }, [client, remember]);
 
-  const adopt = useCallback(async (result: { token: string; user: UserT }): Promise<void> => {
-    token.current = result.token;
-    await writeToken(result.token);
-    setUser(result.user);
-  }, []);
+  const adopt = useCallback(
+    async (result: { token: string; user: UserT }): Promise<void> => {
+      // A sign-in starts from an empty cache. The one on disk is cleared on
+      // sign-out too, but a sign-out cut off before that write landed would
+      // otherwise hand the next person the last one's map for a moment.
+      queryClient.clear();
+      token.current = result.token;
+      await writeToken(result.token);
+      await remember(result.user);
+    },
+    [queryClient, remember],
+  );
 
   const value = useMemo<AuthState>(
     () => ({

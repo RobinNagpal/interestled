@@ -390,6 +390,44 @@ changing them deletes that topic's cached cards so the change is visible on the 
 node rather than only on unread ones. Drills are kept: deleting one cascades to the
 attempts made against it.
 
+## The cache on the phone and the website
+
+The app is one codebase on two devices, and somebody switches between them: a node
+drilled on the website has to be `Verified` on the phone the moment it comes out of a
+pocket, and the phone has to open on something rather than on a spinner. Both come out
+of one query cache with one policy, in `createAppQueryClient` in `packages/api`, and
+`packages/api/test/queryClient.test.ts` pins it.
+
+- **Learner state is never trusted past the moment it arrived.** Topics, the map with
+  its statuses, the review batch and the profile have `staleTime: 0`: a screen mounting
+  asks again, and so does the app coming to the foreground. The old answer stays on
+  screen while the new one is fetched, so nothing blanks — the map corrects itself. A
+  phone has no tab to lose focus, so `useAppFocus` in `apps/mobile/lib/focus.ts` feeds
+  `AppState` to the cache's `focusManager`; without that line the phone never hears it
+  was put away, which is exactly when the website was open.
+- **Generated content is left alone.** Cards keep `CONTENT_STALE_MS` and drills are
+  stale never, and neither refetches on focus: a card must not swap under the reader
+  when the phone unlocks, and a drill must never change under a half-typed answer. They
+  are server-cached by the settings they were written to, and everything that changes
+  them — content settings, a rewrite, a map edit — already writes into or invalidates
+  the cache by hand. Both are set with `setQueryDefaults` on the `keys.cards` and
+  `keys.drills` prefixes, so a new card or drill hook inherits the policy by its key.
+- **The cache is written to disk and read back on launch.** `PersistQueryClientProvider`
+  in `app/_layout.tsx` with `queryPersister` (AsyncStorage, which is localStorage on
+  the web) paints the last topics, map and card at once, and the refetch above makes
+  them right. The signed-in user is stored beside the token for the same reason: with
+  both on disk the app opens on the app, and the `me()` round trip confirms them behind
+  the first screen rather than in front of it.
+- **Bump `PERSISTED_CACHE_VERSION` when a response shape changes.** A restore does not
+  parse what it reads back, so a field added to `TopicDetail` is `undefined` off a
+  cache written by the previous build until the refetch lands. Moving the version
+  discards the persisted cache on the next launch — the same idea as
+  `CARD_PROMPT_REVISION`.
+- **A sign-in starts from an empty cache, and a sign-out empties the disk too.**
+  `clearSession` calls `removeClient` on the persister rather than waiting for the
+  throttled write, and `adopt` clears before it stores the token, so a sign-out cut off
+  early never hands the next person the last one's map.
+
 ## The component set
 
 **Every control is react-native-reusables underneath.** The components are

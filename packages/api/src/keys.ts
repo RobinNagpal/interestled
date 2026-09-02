@@ -29,6 +29,8 @@ export const keys = {
       settings.paragraphLength ?? null,
       settings.angle ?? null,
     ] as const,
+  /** Every drill — the prefix the cache policy for generated content hangs off. */
+  drills: ["drill"] as const,
   drill: (nodeId: string, kind: string | null) => ["drill", nodeId, kind] as const,
   review: ["review"] as const,
 };
