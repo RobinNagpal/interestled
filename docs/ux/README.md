@@ -318,6 +318,14 @@ group — in the learner's own words, "less YAML, more networking" — leaving e
 group and all the progress on it untouched. Rebuilding the whole map is there too, and
 says plainly that it replaces everything.
 
+**The map's edit screen says what the map was built to**, folded away above the rows: the heading
+counts, the sitting, how far into the subject it goes, and the instruction lines the
+model was actually given — the learner's own if they wrote them, the ones the settings
+seed if they did not. It is closed by default, with the shape on the closed row, because
+the map is what the screen is for. Someone reading a map that is nearly right cannot say
+what to change without the answers it came from, and the only other place those answers
+appear is inside the sheet that replaces the map.
+
 **Three things are editable, not one**, each at its own address under `…/edit`:
 `…/edit/map` is the map itself; `…/edit/goals` is the goal, the starting point, the time
 budget and the one line the topics list shows; and `…/edit/content` is how the topic is
@@ -1043,7 +1051,7 @@ the design, not an acceptable gap.
 | A9 | No streaks | Cumulative session count only; missed days are unmarked |
 | A10 | No dead time | Streaming with skeletons; speculative pre-generation; no spinner over finished content |
 | A11 | Not several instructions at once | One instruction per screen; multi-step tasks render as a checklist |
-| A12 | Nothing carried across screens | Values repeated at the point of use; jargon defined on hover in place |
+| A12 | Nothing carried across screens | Values repeated at the point of use; jargon defined on hover in place; the map's edit screen states the shape and the instruction lines the map was built to, so what was chosen at build time is read rather than remembered |
 | A13 | No clutter | One visual per card; groups on the map collapse, so a wide subject is still one screen; chrome hidden during drills; no badges or notifications mid-session |
 | A14 | No setup before starting | Calibration is 60 interesting seconds; the seven choices are one screen each, all skippable, and every one is a pick rather than a form field; the profile is optional and never blocks a topic; sign-in comes after the first node |
 | A15 | No repeating known material | Two correct applications retires a node to spaced review; skip is always available |
