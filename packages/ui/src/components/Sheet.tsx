@@ -1,6 +1,7 @@
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 import { Text } from "../ui/text";
+import { useKeyboardInset } from "./FormScroll";
 
 /**
  * A question asked in front of the screen it belongs to, rather than on a screen
@@ -21,9 +22,12 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
 }): ReactElement {
+  // A sheet sits against the bottom of the screen, which is exactly where the
+  // keyboard opens, so a sheet with a box in it is the case that hides most.
+  const inset = useKeyboardInset();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 justify-end">
+      <View className="flex-1 justify-end" style={inset === 0 ? undefined : { paddingBottom: inset }}>
         {/*
          * The backdrop is a SIBLING of the card, never its ancestor. A Pressable
          * wrapping the card reads on the web as a role="button" ancestor of
@@ -44,7 +48,7 @@ export function Sheet({
           className="bg-ink/40"
         />
         <View className="max-h-[85%] rounded-t-card bg-surface">
-          <ScrollView contentContainerClassName="gap-4 p-5">
+          <ScrollView contentContainerClassName="gap-4 p-5" keyboardShouldPersistTaps="handled">
             <View className="gap-1">
               <Text variant="h3">{title}</Text>
               {body === undefined ? null : <Text variant="muted">{body}</Text>}

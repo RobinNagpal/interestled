@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   ErrorState,
+  FormScroll,
   InlineMarkdown,
   Input,
   LoadingContent,
@@ -112,7 +113,7 @@ export function NodeDrill({ topic, node }: { topic: TopicT; node: LearningNodeT 
   }
 
   return (
-    <ScrollView contentContainerClassName="gap-5 p-4">
+    <FormScroll contentContainerClassName="gap-5 p-4">
       {/* Predict drills say so explicitly: the commitment is the point, and
           nothing here is scored. */}
       {isPredict ? (
@@ -163,7 +164,7 @@ export function NodeDrill({ topic, node }: { topic: TopicT; node: LearningNodeT 
         busy={submit.isPending}
         disabled={response.trim().length === 0}
       />
-    </ScrollView>
+    </FormScroll>
   );
 }
 

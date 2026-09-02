@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { useProfile, useUpdateProfile } from "@interestled/api";
-import { Button, ErrorState, Input, LoadingContent } from "@interestled/ui";
+import { Button, ErrorState, FormScroll, Input, LoadingContent } from "@interestled/ui";
 import { LEARNING_STYLES, LEARNING_STYLE_LABELS } from "@interestled/schemas";
 import type { LearningStyle, ProfileT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
@@ -64,7 +64,7 @@ export default function ProfileScreen(): ReactElement {
   };
 
   return (
-    <ScrollView contentContainerClassName="gap-5 p-4">
+    <FormScroll contentContainerClassName="gap-5 p-4">
       <Text className="text-sm text-ink-soft">
         Answered once. Every map and card after this is written to it.
       </Text>
@@ -110,6 +110,6 @@ export default function ProfileScreen(): ReactElement {
           Saved. It applies to the next map or card generated.
         </Text>
       ) : null}
-    </ScrollView>
+    </FormScroll>
   );
 }

@@ -416,6 +416,18 @@ holds only what this product composes on top of them.
   there is no such rule the vendored component is exported straight — `Card` is
   the whole of `Card`. A wrapper that only renames a variant is one more thing to
   keep in step.
+- **A screen with a field on it is a `FormScroll`, never a bare `ScrollView`.**
+  Neither mobile browser shrinks the page when the keyboard opens — the layout
+  viewport keeps its height and the keys are drawn over the bottom of it — so a
+  screen that is one full-height scrolling box has a dead band at the bottom that
+  no amount of scrolling can lift a field out of. `FormScroll` shrinks the box by
+  `keyboardOverlap`, the difference between the layout viewport and the visual
+  one, and then puts what is focused back in the middle of what is left. It also
+  carries the props that only ever have one right answer on a form:
+  `keyboardShouldPersistTaps="handled"`, so the button under the keyboard takes
+  one tap rather than two, and iOS's own `automaticallyAdjustKeyboardInsets`.
+  `Sheet` does the same to itself, because a sheet opens against the bottom edge
+  and is the thing a keyboard covers most completely.
 - **`cn` is what makes an override work**, and it has to be taught anything
   Tailwind did not ship: `rounded-card` is registered on its border-radius theme,
   or `cn("rounded-md", "rounded-card")` emits both and the winner is whichever
