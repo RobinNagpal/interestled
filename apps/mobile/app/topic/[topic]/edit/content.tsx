@@ -212,9 +212,10 @@ function ContentForm({
       </View>
 
       <Text className="text-sm text-ink-faint">
-        Saving a change clears the cards already written for this topic, so the next time you open a
-        node it is written to these settings. The drills you have answered, and everything you have
-        done on the map, stay as they are.
+        Cards already written stay as they are. Each one says under it that the settings have moved,
+        and is written again only when you ask it to be. Nodes you have not opened yet are written to
+        these settings. The drills you have answered, and everything you have done on the map, stay
+        as they are.
       </Text>
 
       {save.isError ? <ErrorState message={messageOf(save.error)} /> : null}

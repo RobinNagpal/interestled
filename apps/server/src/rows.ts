@@ -1,5 +1,6 @@
 import {
   Atom,
+  CardQuestion,
   ConceptCard,
   Drill,
   LearningNode,
@@ -12,6 +13,7 @@ import {
 } from "@interestled/schemas";
 import type {
   AtomT,
+  CardQuestionT,
   ConceptCardT,
   DrillT,
   LearningNodeT,
@@ -39,6 +41,7 @@ export interface NodeRow {
   orderIndex: number;
   status: string;
   capability: string;
+  cardInstructions: string;
   createdAt: Date;
   prerequisites?: { prerequisiteId: string }[];
 }
@@ -75,6 +78,10 @@ export function toCard(row: unknown): ConceptCardT {
 
 export function toDrill(row: unknown): DrillT {
   return Drill.parse(row);
+}
+
+export function toCardQuestion(row: unknown): CardQuestionT {
+  return CardQuestion.parse(row);
 }
 
 export function toAtom(row: unknown): AtomT {

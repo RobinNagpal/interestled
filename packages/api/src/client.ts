@@ -3,6 +3,7 @@ import {
   Atom,
   AuthResult,
   CardContent,
+  CardQuestion,
   CardSettings,
   Drill,
   LearningNode,
@@ -19,6 +20,7 @@ import {
 import type {
   AtomT,
   AttemptInputT,
+  CardQuestionT,
   CardSettingsT,
   DrillKind,
   DrillT,
@@ -136,6 +138,12 @@ export const CardView = z.object({
   node: LearningNode,
   /** What this card was actually written to, which is what the controls show. */
   settings: CardSettings,
+  /**
+   * What a plain open of this node writes to now. Where it differs from
+   * `settings`, the settings have moved since this card was written — and
+   * nothing is written again until the learner asks.
+   */
+  defaults: CardSettings,
   content: CardContent,
   missingPrerequisites: z.array(NodeRef),
 });
@@ -232,6 +240,15 @@ export interface ApiClient {
     settings?: Partial<CardSettingsT>,
     options?: { rewrite?: boolean },
   ): Promise<CardViewT>;
+  /**
+   * What the learner wants for this node's card in particular. Saved on the
+   * node and nothing written: the card is written again only when asked.
+   */
+  saveCardInstructions(nodeId: string, instructions: string): Promise<LearningNodeT>;
+  /** Everything asked on this card, oldest first. */
+  listQuestions(nodeId: string): Promise<CardQuestionT[]>;
+  /** One question, answered against the card the learner is reading, and kept. */
+  askQuestion(nodeId: string, question: string): Promise<CardQuestionT>;
   getDrill(nodeId: string, kind?: DrillKind): Promise<DrillT>;
   submitAttempt(input: AttemptInputT): Promise<AttemptResultT>;
   setNodeStatus(nodeId: string, status: NodeStatus): Promise<LearningNodeT>;
@@ -337,6 +354,13 @@ export function createApiClient(config: ClientConfig): ApiClient {
       const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
       return get(`/api/nodes/${nodeId}/card${suffix}`, CardView);
     },
+    saveCardInstructions: (nodeId, instructions) =>
+      request(config, `/api/nodes/${nodeId}/card-instructions`, "PUT", LearningNode, {
+        instructions,
+      }),
+    listQuestions: (nodeId) => get(`/api/nodes/${nodeId}/questions`, z.array(CardQuestion)),
+    askQuestion: (nodeId, question) =>
+      post(`/api/nodes/${nodeId}/questions`, CardQuestion, { question }),
     getDrill: (nodeId, kind) =>
       get(`/api/nodes/${nodeId}/drill${kind === undefined ? "" : `?kind=${kind}`}`, Drill),
     submitAttempt: (input) => post("/api/nodes/attempts", AttemptResult, input),
@@ -352,4 +376,4 @@ export function createApiClient(config: ClientConfig): ApiClient {
   };
 }
 
-export type { AtomT, DrillT, LearningNodeT, ProfileT, TopicT };
+export type { AtomT, CardQuestionT, DrillT, LearningNodeT, ProfileT, TopicT };

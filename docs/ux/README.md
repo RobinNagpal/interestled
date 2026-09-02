@@ -493,6 +493,36 @@ has no ceiling of its own.
 *Back to how the topic is written* moves every chip back to the topic's own settings,
 and like every other control here it is a request until the button is pressed.
 
+Under the chips is the one control that is not a chip: a box for what this card in
+particular should do, in the reader's own words — *compare it with how Postgres does
+it*, *use an example from banking*. It is kept with the node, so it is there again the
+next time the card is opened and holds for the next writing too, and it goes to the
+model after the topic's standing instructions with a note saying which wins. Like the
+chips, typing in it writes nothing; the button under it does.
+
+Changing the topic's settings never writes a card either. It used to: the cards were
+dropped, and the next open of every node was a model call and a thirty-second wait,
+whether or not the reader wanted that card different — which is the wait A10 forbids,
+paid on every node for a setting moved once. Now a node whose card was written to the
+old settings answers with that card, and the closed row says *the settings have moved
+since*. Opened, the panel states both sides — what the card was written to, and what
+the node now asks for — and the same button writes it again. The same holds when the
+reader's own depth has moved on, and when the box above was edited: the card on screen
+is always the card they have, and the panel is always honest about what it is.
+
+### Asking about a card
+
+*Ask*, in the bar over every card, opens a sheet with one box in it. The answer comes
+back as one paragraph the length the card's own paragraphs are — the *how long a
+paragraph runs* setting, so it reads as part of the card rather than as a different
+voice — written against the card on screen, with the map around it, so it points at a
+section by name rather than repeating it and says which node covers a thing that is not
+this one's. The question and its answer are kept with the node and shown on the card
+under *What you asked*, each answer folded behind its question, the newest open. A
+question answered and then lost is the glossary problem again: a trip that has to be
+made twice (A12). An answer is one model call per press and nothing else bounds it, so
+questions in an hour are capped per learner, the way rewrites are.
+
 The wait now says what is being written — *depth 3 of 5 — the mechanism · about 3 min ·
 medium English · some detail*. Ten to thirty seconds against a label saying only that
 something is happening is a wait nobody can tell from a hang, and it is the one moment
@@ -1026,7 +1056,7 @@ the design, not an acceptable gap.
 | W4 | Tiny physical first action | Sessions and resumes open on one keystroke or drag, never on a page of reading |
 | W5 | Change format often | Format rotation in the session composer; forced switch after three of a kind |
 | W6 | Fast feedback | Drill grading is the one always-live backend call; playgrounds respond on the drag |
-| W7 | Move around freely | The map never locks; search enters at any node; every node has its own URL, so a link opens straight into it; the ask rail follows a tangent without losing place |
+| W7 | Move around freely | The map never locks; search enters at any node; every node has its own URL, so a link opens straight into it; *Ask* answers a tangent on the card the reader is on, and keeps the answer there |
 | W8 | Hands and mouth busy | Every node completes by production; voice input on explain-back |
 | W9 | Everything needed in view | Drill prompts embed their own values; the goal line stays framed; compare tables put both things side by side |
 | W10 | Mild urgency | Timed speed reps in the review deck; high event rate in fluency topics |
@@ -1054,9 +1084,9 @@ the design, not an acceptable gap.
 | A7 | Notes are not the activity | The system writes the notes; learner effort goes into explain-back |
 | A8 | Do not rely on them returning | A scheduled nudge that names the next node and opens straight into it |
 | A9 | No streaks | Cumulative session count only; missed days are unmarked |
-| A10 | No dead time | Streaming with skeletons; speculative pre-generation; no spinner over finished content |
+| A10 | No dead time | Streaming with skeletons; speculative pre-generation; no spinner over finished content; a settings change never rewrites a card on the next open — the card that exists is shown, and writing it again is one deliberate press |
 | A11 | Not several instructions at once | One instruction per screen; multi-step tasks render as a checklist |
-| A12 | Nothing carried across screens | Values repeated at the point of use; jargon defined on hover in place; the map's edit screen states the shape and the instruction lines the map was built to, so what was chosen at build time is read rather than remembered |
+| A12 | Nothing carried across screens | Values repeated at the point of use; jargon defined on hover in place; the map's edit screen states the shape and the instruction lines the map was built to, so what was chosen at build time is read rather than remembered; a question asked on a card is answered and kept on that card, and the panel under a card states both what it was written to and what the node now asks for |
 | A13 | No clutter | One visual per card; groups on the map collapse, so a wide subject is still one screen; chrome hidden during drills; no badges or notifications mid-session |
 | A14 | No setup before starting | Calibration is 60 interesting seconds; the seven choices are one screen each, all skippable, and every one is a pick rather than a form field; the profile is optional and never blocks a topic; sign-in comes after the first node |
 | A15 | No repeating known material | Two correct applications retires a node to spaced review; skip is always available |

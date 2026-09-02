@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UseMutationResult, UseQueryResult } from "@tanstack/react-query";
 import type {
   AttemptInputT,
+  CardQuestionT,
   CardSettingsT,
   DrillKind,
   DrillT,
@@ -153,9 +154,11 @@ export function useUpdateTopicInfo(
 }
 
 /**
- * How the topic is written. The server drops the cards it has already generated
- * for this topic, so every cached card here is stale the moment this returns —
- * hence the whole card key, not just this topic's.
+ * How the topic is written. The server keeps the cards it has already written,
+ * but answers each of them against the new settings from now on — so every
+ * cached card here is stale the moment this returns, and the next open of one
+ * has to ask again to learn that the settings have moved. Hence the whole card
+ * key, not just this topic's: the keys do not carry the topic.
  */
 export function useUpdateTopicContentSettings(
   slug: string,
@@ -267,6 +270,54 @@ export function useRewriteCard(
     // control moved while it is in flight would otherwise file the new card
     // under a key it was not written to and overwrite the card that was.
     onSuccess: (card, settings) => client.setQueryData(keys.card(nodeId, settings), card),
+  });
+}
+
+/**
+ * What the learner wants for this node's card in particular. Saved on the node,
+ * which is on the map, so the map is refetched; and every card of this node is
+ * marked stale without being refetched — the one on screen is about to be
+ * written again by the press that saved this, and a refetch racing that write
+ * could land after it and put the old card back.
+ */
+export function useSaveCardInstructions(
+  topicSlug: string,
+  nodeId: string,
+): UseMutationResult<LearningNodeT, Error, string> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (instructions: string) => api.saveCardInstructions(nodeId, instructions),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.topic(topicSlug) });
+      void client.invalidateQueries({ queryKey: keys.cardsOf(nodeId), refetchType: "none" });
+    },
+  });
+}
+
+export function useQuestions(nodeId: string): UseQueryResult<CardQuestionT[]> {
+  const api = useApi();
+  return useQuery({
+    queryKey: keys.questions(nodeId),
+    queryFn: () => api.listQuestions(nodeId),
+    enabled: nodeId !== "",
+  });
+}
+
+/**
+ * Ask one question on a card. The answer is appended to the list on screen as
+ * it lands rather than refetched, so the accordion opens on it at once.
+ */
+export function useAskQuestion(nodeId: string): UseMutationResult<CardQuestionT, Error, string> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (question: string) => api.askQuestion(nodeId, question),
+    onSuccess: (answered) =>
+      client.setQueryData<CardQuestionT[]>(keys.questions(nodeId), (current) => [
+        ...(current ?? []),
+        answered,
+      ]),
   });
 }
 

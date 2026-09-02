@@ -30,6 +30,9 @@ export function defaultCardSettings(
     format: topic.format,
     paragraphLength: topic.paragraphLength,
     angle: CardAngle.Base,
+    // The node's own, because the node is what carries them: a control that
+    // did not reach the default would be one the plain card ignores.
+    instructions: node.cardInstructions,
   };
 }
 
@@ -51,6 +54,7 @@ export function sameCardSettings(a: CardSettingsT, b: CardSettingsT): boolean {
     a.technicalDetail === b.technicalDetail &&
     a.format === b.format &&
     a.paragraphLength === b.paragraphLength &&
-    a.angle === b.angle
+    a.angle === b.angle &&
+    a.instructions === b.instructions
   );
 }

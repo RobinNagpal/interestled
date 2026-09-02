@@ -9,8 +9,13 @@ export const keys = {
   topic: (slug: string) => ["topic", slug] as const,
   /** The default writing settings a topic falls back to. Constant, so fetched once. */
   topicDefaults: ["topic-defaults"] as const,
-  /** Every card, at every depth and variant — what changing a topic's settings drops. */
+  /**
+   * Every card, at every depth and variant — what changing a topic's settings
+   * marks stale, so the next open of each learns the settings have moved.
+   */
   cards: ["card"] as const,
+  /** Every card of one node, at every setting: what saving its instructions touches. */
+  cardsOf: (nodeId: string) => ["card", nodeId] as const,
   /**
    * Keyed by the settings the card was asked for, so two sets of controls never
    * share an entry. Written out field by field rather than by spreading the
@@ -32,5 +37,11 @@ export const keys = {
   /** Every drill — the prefix the cache policy for generated content hangs off. */
   drills: ["drill"] as const,
   drill: (nodeId: string, kind: string | null) => ["drill", nodeId, kind] as const,
+  /**
+   * What was asked on a card. Learner state, not generated content — it is
+   * whatever the last device to ask left — so it takes the default policy and
+   * is asked for again on every open.
+   */
+  questions: (nodeId: string) => ["questions", nodeId] as const,
   review: ["review"] as const,
 };

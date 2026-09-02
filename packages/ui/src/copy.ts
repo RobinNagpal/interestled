@@ -292,5 +292,10 @@ export function settingsSummary(settings: CardSettingsT): string {
   if (settings.angle !== CardAngle.Base) {
     parts.push(ANGLE_COPY[settings.angle].toLowerCase());
   }
+  // Not the text itself — it can be a paragraph — but that it was there, since
+  // a card written with instructions and one without are different cards.
+  if (settings.instructions !== "") {
+    parts.push("your instructions");
+  }
   return parts.join(" · ");
 }

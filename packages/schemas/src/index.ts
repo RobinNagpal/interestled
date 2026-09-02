@@ -7,6 +7,7 @@ export * from "./topics";
 export * from "./mapQuestions";
 export * from "./nodes";
 export * from "./cards";
+export * from "./questions";
 export * from "./drills";
 export * from "./review";
 export * from "./sessions";

@@ -124,6 +124,24 @@ export async function assertRewriteBudget(db: Db, userId: string): Promise<void>
 }
 
 /**
+ * Questions a learner may ask in an hour. The same shape of ceiling as the
+ * rewrites above, for the same reason: an answer is a model call per press, and
+ * nothing else bounds it — a card is written once per settings and a drill once
+ * per node, but a question can be asked as many times as there is a button.
+ */
+const MAX_QUESTIONS_PER_HOUR = 60;
+
+export async function assertQuestionBudget(db: Db, userId: string): Promise<void> {
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const recent = await db.cardQuestion.count({
+    where: { node: { topic: { userId } }, createdAt: { gte: hourAgo } },
+  });
+  if (recent >= MAX_QUESTIONS_PER_HOUR) {
+    throw new ConflictError("That is a lot of questions in one hour — the limit resets shortly.");
+  }
+}
+
+/**
  * Which of the three model calls this is about, so each counter guards the call
  * that actually spends the tokens.
  *
@@ -574,13 +592,19 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
   });
 
   /**
-   * Standing instructions for everything generated inside this topic. Cards
-   * already written are dropped, because a setting whose effect you cannot see
-   * until you happen to open an unread node is one nobody can tell is working —
-   * and a card costs one call to write again.
+   * Standing instructions for everything generated inside this topic.
    *
-   * Drills are deliberately kept. Deleting one cascades to the attempts made
-   * against it, and those are the learner's own record of what they answered.
+   * Cards already written are kept. They used to be dropped here, so that the
+   * next open of any node showed the new settings — and the next open of every
+   * node was then a model call and a thirty-second wait, whether or not the
+   * reader wanted this card different. Now a node whose card was written to the
+   * old settings answers with that card, and the panel under it says the
+   * settings have moved; writing it again is one press, and the reader's to
+   * make. The card route is where that happens (cardFor in learning.ts).
+   *
+   * Drills are kept for the older reason: deleting one cascades to the attempts
+   * made against it, and those are the learner's own record of what they
+   * answered.
    */
   router.put("/:slug/content-settings", zValidator("json", TopicContentSettingsInput), async (c) => {
     const userId = c.get("userId");
@@ -596,7 +620,6 @@ export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): 
       return c.json(topic);
     }
     const updated = await db.topic.update({ where: { id: topic.id }, data: input });
-    await db.conceptCard.deleteMany({ where: { node: { topicId: topic.id } } });
     if (input.averageReadTime !== topic.averageReadTime) {
       await rescaleMinutes(db, topic.id, topic.averageReadTime, input.averageReadTime);
     }
