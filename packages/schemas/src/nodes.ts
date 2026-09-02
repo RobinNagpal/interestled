@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CardInstructions } from "./cards";
 import { Id } from "./ids";
 import { NodePath, Slug } from "./slugs";
 import { MAX_NODE_MINUTES, TopicArchetypeSchema } from "./topics";
@@ -66,6 +67,13 @@ export const LearningNode = z.object({
   prerequisiteIds: z.array(Id),
   /** What the learner can do once this is verified. Progress is stated in these. */
   capability: z.string().min(1).max(200),
+  /**
+   * What the learner asked for this node's card in particular, appended to the
+   * topic's standing instructions whenever the card is written. On the node
+   * rather than on the card, so it survives the card being written again — it
+   * is what the next writing is asked to honour, not a fact about the last one.
+   */
+  cardInstructions: CardInstructions,
   createdAt: z.coerce.date(),
 });
 

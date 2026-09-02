@@ -24,6 +24,7 @@ import {
 } from "@interestled/schemas";
 import type {
   CardContentT,
+  CardQuestionT,
   AnsweredQuestionT,
   LearningNodeT,
   ProfileT,
@@ -41,6 +42,7 @@ import {
   effectiveMapInstructions,
   mapPrompt,
   mapQuestionsPrompt,
+  questionPrompt,
   seedContentInstructions,
   seedMapInstructions,
   subtreePrompt,
@@ -97,6 +99,7 @@ const node: LearningNodeT = {
   status: NodeStatus.Seen,
   prerequisiteIds: [],
   capability: "Say which controller is acting and what it wants",
+  cardInstructions: "",
   createdAt: new Date(),
 };
 
@@ -584,7 +587,95 @@ function withSettings(
   return { ...base, settings: { ...base.settings, ...changes } };
 }
 
+describe("questionPrompt", () => {
+  const asked: CardQuestionT = {
+    id: "q1",
+    nodeId: "n1",
+    question: "Why forever?",
+    answer: "Because the actual state keeps changing under it.",
+    createdAt: new Date(),
+  };
+
+  function questionInput(
+    overrides: Partial<Parameters<typeof questionPrompt>[0]> = {},
+  ): Parameters<typeof questionPrompt>[0] {
+    return {
+      topic,
+      node,
+      nodes: [node],
+      card,
+      settings: defaultCardSettings(topic, node, 3),
+      question: "What happens if two controllers disagree?",
+      earlier: [],
+      profile,
+      ...overrides,
+    };
+  }
+
+  it("answers against the card the learner read, in one paragraph its length", () => {
+    const prompt = unwrapped(questionPrompt(questionInput()));
+    expect(prompt).toContain("What happens if two controllers disagree?");
+    // The whole card, under the names the reader saw: the answer has to be
+    // able to point at a section rather than repeat it.
+    expect(prompt).toContain(card.claim);
+    expect(prompt).toContain("The loop: The API server holds desired state.");
+    expect(prompt).toContain("Concretely: 3 replicas, one node dies");
+    expect(prompt).toContain("What people get wrong: kubectl creates the pod");
+    // One paragraph, the length the card's paragraphs are — said outright, not
+    // only through standing instructions the learner may have rewritten.
+    expect(prompt).toContain("One paragraph, 4-5 sentences long");
+    expect(prompt).toContain('Return JSON: {"answer"}');
+  });
+
+  it("takes the paragraph length from the card's settings", () => {
+    const short = questionPrompt(
+      questionInput({
+        settings: { ...defaultCardSettings(topic, node, 3), paragraphLength: ParagraphLength.Short },
+      }),
+    );
+    expect(unwrapped(short)).toContain("One paragraph, 2-3 sentences long");
+  });
+
+  it("carries the earlier questions on the card, so a follow-up follows", () => {
+    const prompt = unwrapped(questionPrompt(questionInput({ earlier: [asked] })));
+    expect(prompt).toContain("What they asked on this card before");
+    expect(prompt).toContain("Q: Why forever?");
+    expect(prompt).toContain("A: Because the actual state keeps changing under it.");
+    // And nothing about earlier questions when there were none.
+    expect(questionPrompt(questionInput())).not.toContain("What they asked on this card before");
+  });
+
+  it("writes the answer under the card's own instructions", () => {
+    const prompt = questionPrompt(
+      questionInput({
+        settings: { ...defaultCardSettings(topic, node, 3), instructions: "Answers in French" },
+      }),
+    );
+    expect(prompt).toContain("Answers in French");
+  });
+});
+
 describe("cardPrompt", () => {
+  it("sends the card's own instructions after the topic's, and says which wins", () => {
+    // What the learner asked for this card in particular. After the standing
+    // instructions rather than joined onto them, because the two are different
+    // in kind and the model has to be told which one wins.
+    const prompt = unwrapped(
+      cardPrompt(withSettings({ instructions: "Compare it with how Postgres does it" })),
+    );
+    expect(prompt).toContain("For this card in particular, they also asked:");
+    expect(prompt).toContain("Compare it with how Postgres does it");
+    expect(prompt).toContain("win where the two disagree");
+    expect(prompt.indexOf("Standing instructions for this topic")).toBeLessThan(
+      prompt.indexOf("For this card in particular"),
+    );
+  });
+
+  it("says nothing about card instructions when there are none", () => {
+    // A labelled blank is a thing the model answers.
+    expect(cardPrompt(cardInput())).not.toContain("For this card in particular");
+  });
+
   it("changes the instruction with the depth", () => {
     const shallow = cardPrompt(withSettings({ depth: 1 }));
     const deep = cardPrompt(withSettings({ depth: 5 }));

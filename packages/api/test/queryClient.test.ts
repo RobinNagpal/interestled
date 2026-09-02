@@ -22,6 +22,9 @@ describe("createAppQueryClient", () => {
     expect(client.getQueryDefaults(keys.topics)).toEqual({});
     expect(client.getQueryDefaults(keys.review)).toEqual({});
     expect(client.getQueryDefaults(keys.profile)).toEqual({});
+    // Nor for what was asked on a card: it is learner state, not generated
+    // content, and the phone must show the question the website just asked.
+    expect(client.getQueryDefaults(keys.questions("node"))).toEqual({});
   });
 
   it("leaves a card alone while it is being read", () => {

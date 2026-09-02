@@ -18,6 +18,7 @@ const settings: CardSettingsT = {
   format: ContentFormat.Prose,
   paragraphLength: ParagraphLength.Medium,
   angle: CardAngle.Base,
+  instructions: "",
 };
 
 /** One of these per field, which is what the count below is checking. */
@@ -29,6 +30,7 @@ const moved: CardSettingsT[] = [
   { ...settings, format: ContentFormat.ReferenceNotes },
   { ...settings, paragraphLength: ParagraphLength.Long },
   { ...settings, angle: CardAngle.MoreConcrete },
+  { ...settings, instructions: "Compare it with Postgres" },
 ];
 
 describe("sameCardSettings", () => {

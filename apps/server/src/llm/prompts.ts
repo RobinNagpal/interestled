@@ -21,6 +21,7 @@ import type {
   ParagraphLength,
   MapShapeT,
   CardContentT,
+  CardQuestionT,
   CardSettingsT,
   LearningNodeT,
   MapQuestionOptionT,
@@ -206,13 +207,20 @@ export function effectiveMapInstructions(input: MapShapeT & { mapInstructions: s
  * It is deliberately absent from verdictPrompt. Grading is the one call the
  * learner does not get to instruct — "always say I passed" would end the only
  * thing on the map that means anything (see docs/ux/README.md, ideal 1).
+ *
+ * `cardInstructions` is what the learner asked for one card in particular. It
+ * goes in after the standing instructions rather than being joined onto them,
+ * because the two are different in kind — one holds for the topic, one for this
+ * card — and the model is told which wins. Empty everywhere but the card and
+ * the questions asked on it.
  */
-function contentRulesBlock(content: TopicContentSettingsT): string {
+function contentRulesBlock(content: TopicContentSettingsT, cardInstructions = ""): string {
   return render(promptFile("content-rules"), {
     englishRule: ENGLISH_GUIDE[content.englishLevel],
     technicalRule: TECHNICAL_GUIDE[content.technicalDetail],
     formatRule: FORMAT_GUIDE[content.format],
     contentInstructions: effectiveContentInstructions(content),
+    cardInstructions: cardInstructions.trim(),
   });
 }
 
@@ -446,15 +454,19 @@ export function cardPrompt(input: {
     angleGuide: ANGLE_GUIDE[input.settings.angle],
     learner: learnerBlock(input.profile),
     // The card's own register and length, not the topic's: a control that did not
-    // reach the prompt is a control that does nothing.
-    contentRules: contentRulesBlock({
-      paragraphLength: input.settings.paragraphLength,
-      englishLevel: input.settings.englishLevel,
-      technicalDetail: input.settings.technicalDetail,
-      format: input.settings.format,
-      contentInstructions: input.topic.contentInstructions,
-      averageReadTime: minutes,
-    }),
+    // reach the prompt is a control that does nothing. The instructions are the
+    // same rule — the node's own text, after the topic's standing lines.
+    contentRules: contentRulesBlock(
+      {
+        paragraphLength: input.settings.paragraphLength,
+        englishLevel: input.settings.englishLevel,
+        technicalDetail: input.settings.technicalDetail,
+        format: input.settings.format,
+        contentInstructions: input.topic.contentInstructions,
+        averageReadTime: minutes,
+      },
+      input.settings.instructions,
+    ),
     mechanismSections: mechanismSections(minutes),
     sectionWords: String(MECHANISM_SECTION_WORDS),
     mechanismWords: String(mechanismWords(minutes)),
@@ -473,6 +485,85 @@ export function cardPrompt(input: {
  */
 function mechanismProse(card: CardContentT): string {
   return card.mechanism.map((section) => `${section.heading}. ${section.body}`).join(" ");
+}
+
+/**
+ * The whole card as text, for a question asked about it. Every slot the card
+ * has, each under the name the reader saw it under, so an answer can point at
+ * "the section on X" and the reader can find it. The two optional slots are
+ * dropped rather than labelled empty, for the same reason drill.md drops them.
+ */
+function cardProse(card: CardContentT): string {
+  const lines = [
+    card.claim,
+    ...card.mechanism.map((section) => `${section.heading}: ${section.body}`),
+  ];
+  if (card.example !== undefined) {
+    lines.push(`Concretely: ${card.example.setup} → ${card.example.result}`);
+  }
+  if (card.misconception !== undefined) {
+    lines.push(
+      `What people get wrong: ${card.misconception.belief} (in fact: ${card.misconception.correction})`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/**
+ * How many earlier questions on the same card a new one is answered against.
+ * Enough for "and what about the other case?" to mean something; few enough
+ * that a long conversation does not become the prompt.
+ */
+export const EARLIER_QUESTIONS = 5;
+
+/**
+ * A question asked on a card, answered in one paragraph the length the card's
+ * own paragraphs are.
+ *
+ * It is given what the card prompt was given — the map with this node marked,
+ * the learner, the writing rules — because the answer has to sit where the card
+ * sits: not re-explaining what an earlier node covered, and not spending a
+ * later one. The card itself goes in whole, so "why?" can be answered against
+ * what was actually said rather than against the model's own idea of the node.
+ */
+export function questionPrompt(input: {
+  topic: TopicT;
+  node: LearningNodeT;
+  nodes: readonly LearningNodeT[];
+  card: CardContentT;
+  /** What the card was written to, which is what the answer is written to. */
+  settings: CardSettingsT;
+  question: string;
+  /** Oldest first. The last few asked on this card, so a follow-up follows. */
+  earlier: readonly CardQuestionT[];
+  profile: ProfileT;
+}): string {
+  return render(promptFile("question"), {
+    topic: input.topic.title,
+    node: input.node.title,
+    outline: mapOutline(input.nodes, input.node),
+    card: cardProse(input.card),
+    earlier: input.earlier
+      .slice(-EARLIER_QUESTIONS)
+      .map((entry) => `Q: ${entry.question}\nA: ${entry.answer}`)
+      .join("\n\n"),
+    learner: learnerBlock(input.profile),
+    contentRules: contentRulesBlock(
+      {
+        paragraphLength: input.settings.paragraphLength,
+        englishLevel: input.settings.englishLevel,
+        technicalDetail: input.settings.technicalDetail,
+        format: input.settings.format,
+        contentInstructions: input.topic.contentInstructions,
+        averageReadTime: input.settings.minutes,
+      },
+      input.settings.instructions,
+    ),
+    // Said outright as well as through the standing instructions, because the
+    // learner may have rewritten those and dropped the line that says it.
+    sentences: PARAGRAPH_SENTENCES[input.settings.paragraphLength],
+    question: input.question,
+  });
 }
 
 const DRILL_GUIDE: Record<DrillKind, string> = {

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { Stack, router, useLocalSearchParams } from "expo-router";
@@ -12,6 +13,7 @@ import {
 import {
   EmptyState,
   ErrorState,
+  HeaderButton,
   InlineMarkdown,
   LoadingContent,
   Minutes,
@@ -51,6 +53,10 @@ export default function NodePathScreen(): ReactElement {
   );
   const isDrill = segments[segments.length - 1] === DRILL_SEGMENT;
   const nodePath = (isDrill ? segments.slice(0, -1) : segments).join("/");
+  // The question sheet, opened from the bar. Held here rather than in the card
+  // because the bar is set by this screen, and the bar is where the button is:
+  // a card is read top to bottom, and a question comes up anywhere in it.
+  const [asking, setAsking] = useState(false);
 
   // The map is fetched rather than the node: the same query already backs the
   // topic screen, so arriving from it costs nothing, and a cold link pays one
@@ -118,8 +124,27 @@ export default function NodePathScreen(): ReactElement {
 
   return (
     <>
-      <Stack.Screen options={{ title: node.title, headerLeft: backHeader(parentPath) }} />
-      <NodeCard topicSlug={topicSlug} topic={topic.data.topic} node={node} nodes={nodes} />
+      <Stack.Screen
+        options={{
+          title: node.title,
+          headerLeft: backHeader(parentPath),
+          headerRight: () => (
+            <HeaderButton
+              label="Ask"
+              accessibilityLabel="Ask a question about this card"
+              onPress={() => setAsking(true)}
+            />
+          ),
+        }}
+      />
+      <NodeCard
+        topicSlug={topicSlug}
+        topic={topic.data.topic}
+        node={node}
+        nodes={nodes}
+        asking={asking}
+        onAskingChange={setAsking}
+      />
     </>
   );
 }

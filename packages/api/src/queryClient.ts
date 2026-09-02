@@ -24,7 +24,7 @@ export const CONTENT_STALE_MS = 5 * 60 * 1000;
  * version discards the whole persisted cache on the next launch and nothing
  * else; the same idea as `CARD_PROMPT_REVISION` on the server.
  */
-export const PERSISTED_CACHE_VERSION = "1";
+export const PERSISTED_CACHE_VERSION = "2";
 
 /**
  * One cache, two kinds of thing in it.

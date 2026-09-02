@@ -6,7 +6,9 @@ import {
   CardAngleSchema,
   CardContent,
   CardDepth,
+  CardInstructionsInput,
   CardMinutes,
+  CardQuestionInput,
   ContentFormatSchema,
   DrillKind,
   DrillKindSchema,
@@ -19,6 +21,7 @@ import {
   cardVariant,
   contentSettingsOf,
   newId,
+  parseCardVariant,
 } from "@interestled/schemas";
 import type { CardContentT, CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
 import {
@@ -32,11 +35,12 @@ import {
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
-import { generateAtoms, generateCard, generateDrill, gradeAttempt } from "./llm";
+import { generateAnswer, generateAtoms, generateCard, generateDrill, gradeAttempt } from "./llm";
+import { EARLIER_QUESTIONS } from "./llm/prompts";
 import type { LlmProvider } from "./llm";
 import { loadProfile } from "./profile";
-import { assertRewriteBudget } from "./topics";
-import { toDrill, toNode, toTopic } from "./rows";
+import { assertQuestionBudget, assertRewriteBudget } from "./topics";
+import { toCardQuestion, toDrill, toNode, toTopic } from "./rows";
 
 async function loadNode(
   db: Db,
@@ -67,6 +71,61 @@ async function refuseGroup(db: Db, node: LearningNodeT): Promise<void> {
 }
 
 /**
+ * How a card is asked for. Three ways, because there are three things a caller
+ * can mean, and a boolean could only tell two of them apart.
+ */
+enum CardLookup {
+  /**
+   * The card at exactly these settings: read it if it is cached, write it if
+   * not. What the controls under a card ask for, since a chip moved to somewhere
+   * new is a request for the card that lives there.
+   */
+  Exact = "exact",
+  /**
+   * The card at these settings if it is cached — otherwise whatever card this
+   * node already has, and only when it has none, write one. What a plain open of
+   * a node asks for, and what the drill and the review items are written
+   * against: the card the learner actually read. This is the whole of what
+   * makes regeneration manual. The topic's settings moving, or the learner's
+   * depth, changes which key a plain open looks under; answering the miss with
+   * the card that exists, and saying what it was written to, is what turns
+   * "every node you open is written again" into a note and a button.
+   */
+  Written = "written",
+  /**
+   * Write it again at these settings, whatever is cached. Generation is not
+   * deterministic, so the same request twice is a genuinely different card —
+   * which is the whole of what the control offers, and why it cannot be served
+   * from the cache it is asking to go around.
+   */
+  Rewrite = "rewrite",
+}
+
+/** What a caller gets back: the card, and what it was actually written to. */
+interface WrittenCard {
+  content: CardContentT;
+  settings: CardSettingsT;
+}
+
+/** The columns a cached row has to say what it is. */
+interface CardRow {
+  depth: number;
+  variant: string;
+  instructions: string;
+  content: unknown;
+}
+
+/**
+ * A row as the card it holds and the settings it was written to, or null for a
+ * row that cannot say — one from an earlier prompt revision, which bumping the
+ * revision is meant to retire.
+ */
+function writtenCard(row: CardRow): WrittenCard | null {
+  const settings = parseCardVariant(row.variant, row.depth, row.instructions);
+  return settings === null ? null : { content: CardContent.parse(row.content), settings };
+}
+
+/**
  * Cards are cached per (node, depth, variant), which is what lets a depth button
  * answer instantly instead of costing a wait — and a depth control that costs a
  * wait is one nobody presses.
@@ -76,6 +135,11 @@ async function refuseGroup(db: Db, node: LearningNodeT): Promise<void> {
  * id. That is what makes it safe to write the card against this learner's
  * profile. It also means an edited profile does not rewrite cards already
  * generated — the same as changing the topic's own answers.
+ *
+ * A hit is answered with the settings the row was written to, not the ones
+ * asked for. The two differ in one place: the instructions, which are not in
+ * the key. A row found at its key with other instructions on it is still the
+ * card the learner has, and the panel says so; nothing is written until asked.
  */
 async function cardFor(
   db: Db,
@@ -84,23 +148,34 @@ async function cardFor(
   topic: TopicT,
   node: LearningNodeT,
   settings: CardSettingsT,
-  /**
-   * Write it again at the settings it already has, rather than reading the row.
-   * Generation is not deterministic, so the same request twice is a genuinely
-   * different card — which is the whole of what the control offers, and why it
-   * cannot be served from the cache it is asking to go around.
-   */
-  rewrite = false,
-): Promise<CardContentT> {
+  lookup: CardLookup,
+): Promise<WrittenCard> {
   const key = { nodeId: node.id, depth: settings.depth, variant: cardVariant(settings) };
-  if (rewrite) {
+  if (lookup === CardLookup.Rewrite) {
     // The one generating call a learner can repeat without bound: every other
     // one either creates nodes or is answered from the cache the second time.
     await assertRewriteBudget(db, userId);
   } else {
     const cached = await db.conceptCard.findUnique({ where: { nodeId_depth_variant: key } });
     if (cached !== null) {
-      return CardContent.parse(cached.content);
+      return {
+        content: CardContent.parse(cached.content),
+        settings: { ...settings, instructions: cached.instructions },
+      };
+    }
+    if (lookup === CardLookup.Written) {
+      // The newest card this node has, at any settings: the one the learner
+      // last read. Newest rather than nearest, because "the card you were
+      // looking at" is a rule a reader can predict and "the closest match" is
+      // not.
+      const latest = await db.conceptCard.findFirst({
+        where: { nodeId: node.id },
+        orderBy: { createdAt: "desc" },
+      });
+      const existing = latest === null ? null : writtenCard(latest);
+      if (existing !== null) {
+        return existing;
+      }
     }
   }
   // Read only on a miss. A hit is the normal case, and neither the profile nor
@@ -124,21 +199,27 @@ async function cardFor(
   // way, so treat the collision as the cache hit it effectively is — except on
   // a rewrite, which exists precisely to replace what is there. createdAt moves
   // with the content, because it is what the rewrite budget counts and a row
-  // that keeps its original date is a rewrite the ceiling never sees.
+  // that keeps its original date is a rewrite the ceiling never sees. The
+  // instructions move with it too: they are what this writing was asked for.
   await db.conceptCard.upsert({
     where: { nodeId_depth_variant: key },
-    create: { id: newId(), ...key, content },
-    update: rewrite ? { content, createdAt: new Date() } : {},
+    create: { id: newId(), ...key, instructions: settings.instructions, content },
+    update:
+      lookup === CardLookup.Rewrite
+        ? { content, instructions: settings.instructions, createdAt: new Date() }
+        : {},
   });
-  return content;
+  return { content, settings };
 }
 
 /**
- * The four controls under a card, each optional. What the learner has not
- * overridden comes from the topic and the node, so the plain URL still returns
- * the plain card — and an override travels in the query rather than being
- * stored, because it is a thing they wanted once, on one node, not a new
- * setting for the topic.
+ * The controls under a card, each optional. What the learner has not overridden
+ * comes from the topic and the node, so the plain URL still returns the plain
+ * card — and an override travels in the query rather than being stored, because
+ * it is a thing they wanted once, on one node, not a new setting for the topic.
+ *
+ * The card's instructions are the exception and are not here: they are the
+ * node's own text, saved on it, so they hold for the next writing too.
  */
 const CardQuery = z.object({
   depth: z.coerce.number().int().min(1).max(5).optional(),
@@ -157,8 +238,10 @@ const CardQuery = z.object({
   rewrite: z.literal("1").optional(),
 });
 
+type CardQueryT = z.infer<typeof CardQuery>;
+
 function settingsFrom(
-  query: z.infer<typeof CardQuery>,
+  query: CardQueryT,
   topic: TopicT,
   node: LearningNodeT,
   defaultDepth: number,
@@ -179,6 +262,26 @@ function settingsFrom(
 }
 
 /**
+ * Which lookup a request is. A rewrite says so. Anything that moves a chip is
+ * asking for the card at those settings exactly; a plain open is asking for the
+ * card this node has.
+ */
+function lookupFor(query: CardQueryT): CardLookup {
+  if (query.rewrite === "1") {
+    return CardLookup.Rewrite;
+  }
+  const overridden =
+    query.depth !== undefined ||
+    query.minutes !== undefined ||
+    query.englishLevel !== undefined ||
+    query.technicalDetail !== undefined ||
+    query.format !== undefined ||
+    query.paragraphLength !== undefined ||
+    query.angle !== undefined;
+  return overridden ? CardLookup.Exact : CardLookup.Written;
+}
+
+/**
  * Every model call in this file writes inside a map the learner already has —
  * a card, a drill, a verdict, a review item — so every one of them asks for the
  * content model.
@@ -194,27 +297,30 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
     const userId = c.get("userId");
     const { node, topic } = await loadNode(db, userId, c.req.param("id"));
     await refuseGroup(db, node);
-    const settings = settingsFrom(c.req.valid("query"), topic, node, c.get("defaultDepth"));
+    const query = c.req.valid("query");
+    const asked = settingsFrom(query, topic, node, c.get("defaultDepth"));
 
-    const content = await cardFor(
+    const card = await cardFor(
       db,
       provider(LlmTask.Content),
       userId,
       topic,
       node,
-      settings,
-      c.req.valid("query").rewrite === "1",
+      asked,
+      lookupFor(query),
     );
 
     if (node.status === NodeStatus.Untouched) {
       await db.learningNode.update({ where: { id: node.id }, data: { status: NodeStatus.Seen } });
     }
-    // Depth follows the learner rather than resetting per node.
-    if (settings.depth !== c.get("defaultDepth")) {
+    // Depth follows the learner rather than resetting per node. It follows what
+    // was asked for, not what was answered: a node answering with the card it
+    // already has is not the learner choosing that depth.
+    if (asked.depth !== c.get("defaultDepth")) {
       await db.user.update({
         where: { id: userId },
         data: {
-          defaultDepth: nextDefaultDepth(CardDepth.parse(c.get("defaultDepth")), settings.depth),
+          defaultDepth: nextDefaultDepth(CardDepth.parse(c.get("defaultDepth")), asked.depth),
         },
       });
     }
@@ -227,9 +333,15 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
       node: { ...node, status: node.status === NodeStatus.Untouched ? NodeStatus.Seen : node.status },
       // Answered back, so the controls can show what the card was actually
       // written to rather than what was asked for — the two differ at the ends
-      // of each scale.
-      settings,
-      content,
+      // of each scale, and they differ whenever the settings have moved since
+      // this card was written.
+      settings: card.settings,
+      // What a plain open of this node writes to now: the topic's settings, the
+      // node's own instructions, and the learner's depth. The panel compares
+      // the card against this to say whether the settings have moved. From the
+      // server rather than worked out on the phone, because the depth is here.
+      defaults: defaultCardSettings(topic, node, c.get("defaultDepth")),
+      content: card.content,
       // Advisory, never a gate: shown as a note with a link on the node itself.
       missingPrerequisites: missingPrerequisites(node, all.map(toNode)).map((row) => ({
         id: row.id,
@@ -237,6 +349,83 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
         minutes: row.minutes,
       })),
     });
+  });
+
+  /**
+   * What the learner wants for this node's card in particular. Saved on the
+   * node and nothing written: the card on screen keeps its writing until the
+   * button under it is pressed, the same as every other control there.
+   */
+  router.put("/:id/card-instructions", zValidator("json", CardInstructionsInput), async (c) => {
+    const userId = c.get("userId");
+    const { node } = await loadNode(db, userId, c.req.param("id"));
+    await refuseGroup(db, node);
+    const updated = await db.learningNode.update({
+      where: { id: node.id },
+      data: { cardInstructions: c.req.valid("json").instructions },
+      include: { prerequisites: { select: { prerequisiteId: true } } },
+    });
+    return c.json(toNode(updated));
+  });
+
+  /** Everything asked on this card, oldest first, so the screen reads as it was asked. */
+  router.get("/:id/questions", async (c) => {
+    const userId = c.get("userId");
+    const { node } = await loadNode(db, userId, c.req.param("id"));
+    const rows = await db.cardQuestion.findMany({
+      where: { nodeId: node.id },
+      orderBy: { createdAt: "asc" },
+    });
+    return c.json(rows.map(toCardQuestion));
+  });
+
+  /**
+   * A question asked on a card, answered against the card the learner is
+   * reading — the one the node has, not a card written for the occasion — and
+   * kept with the node. A model call per press, so it is inside its own budget.
+   */
+  router.post("/:id/questions", zValidator("json", CardQuestionInput), async (c) => {
+    const userId = c.get("userId");
+    const { node, topic } = await loadNode(db, userId, c.req.param("id"));
+    await refuseGroup(db, node);
+    await assertQuestionBudget(db, userId);
+    const { question } = c.req.valid("json");
+
+    const content = provider(LlmTask.Content);
+    const [card, earlier, profile, rows] = await Promise.all([
+      cardFor(
+        db,
+        content,
+        userId,
+        topic,
+        node,
+        defaultCardSettings(topic, node, c.get("defaultDepth")),
+        CardLookup.Written,
+      ),
+      // Newest first off the index, then turned round: the prompt reads them in
+      // the order they were asked.
+      db.cardQuestion.findMany({
+        where: { nodeId: node.id },
+        orderBy: { createdAt: "desc" },
+        take: EARLIER_QUESTIONS,
+      }),
+      loadProfile(db, userId),
+      db.learningNode.findMany({ where: { topicId: topic.id } }),
+    ]);
+    const { answer } = await generateAnswer(content, {
+      topic,
+      node,
+      nodes: rows.map(toNode),
+      card: card.content,
+      settings: card.settings,
+      question,
+      earlier: earlier.reverse().map(toCardQuestion),
+      profile,
+    });
+    const created = await db.cardQuestion.create({
+      data: { id: newId(), nodeId: node.id, question, answer },
+    });
+    return c.json(toCardQuestion(created), 201);
   });
 
   /** A drill of the requested kind, generated once per node and then reused. */
@@ -250,6 +439,9 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
     if (existing !== null) {
       return c.json(toDrill(existing));
     }
+    // Written against the card the learner read, whatever it was written to,
+    // and not against a fresh one written for the drill: that would be the
+    // regeneration the card route just declined to do, through a side door.
     const card = await cardFor(
       db,
       provider(LlmTask.Content),
@@ -257,11 +449,12 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
       topic,
       node,
       defaultCardSettings(topic, node, c.get("defaultDepth")),
+      CardLookup.Written,
     );
     const generated = await generateDrill(provider(LlmTask.Content), {
       node,
       kind,
-      card,
+      card: card.content,
       content: contentSettingsOf(topic),
     });
     const created = await db.drill.create({
@@ -359,12 +552,12 @@ async function createAtoms(
   node: LearningNodeT,
   settings: CardSettingsT,
 ): Promise<void> {
-  // The learner's own default settings, so this is the card they just read
-  // rather than a second generation of the same node at another depth.
-  const content = await cardFor(db, provider, userId, topic, node, settings);
+  // The card they just read, rather than a second generation of the same node
+  // at whatever the settings are now.
+  const card = await cardFor(db, provider, userId, topic, node, settings, CardLookup.Written);
   const atoms = await generateAtoms(provider, {
     node,
-    card: content,
+    card: card.content,
     content: contentSettingsOf(topic),
   });
   const now = new Date();

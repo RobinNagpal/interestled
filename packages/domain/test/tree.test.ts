@@ -39,6 +39,7 @@ function node(overrides: Partial<LearningNodeT> & { path: string }): LearningNod
     status: NodeStatus.Untouched,
     prerequisiteIds: [],
     capability: "Do the thing",
+    cardInstructions: "",
     createdAt: new Date(),
     ...overrides,
   };

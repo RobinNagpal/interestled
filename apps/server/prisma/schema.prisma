@@ -194,6 +194,11 @@ model LearningNode {
   orderIndex    Int                @map("order_index")
   status        String             @default("untouched")
   capability    String
+  // What the learner asked for this node's card in particular, added after the
+  // topic's standing instructions whenever the card is written. "" means
+  // nothing was asked. The default is also the deploy gap: the old bundle
+  // inserts nodes that do not name it.
+  cardInstructions String          @default("") @map("card_instructions")
   createdAt     DateTime           @default(now()) @map("created_at")
   topic         Topic              @relation(fields: [topicId], references: [id], onDelete: Cascade)
   parent        LearningNode?      @relation("NodeChildren", fields: [parentId], references: [id], onDelete: Cascade)
@@ -201,6 +206,7 @@ model LearningNode {
   cards         ConceptCard[]
   drills        Drill[]
   atoms         Atom[]
+  questions     CardQuestion[]
   // Advisory edges only: the app shows them as a note and never gates on them.
   prerequisites NodePrerequisite[] @relation("NodeToPrerequisite")
   requiredBy    NodePrerequisite[] @relation("PrerequisiteToNode")
@@ -227,18 +233,50 @@ model NodePrerequisite {
  * is what lets the controls under a card respond instantly. "variant" is built by
  * cardVariant in packages/schemas: the prompt revision, the angle, the minutes and
  * the register — everything that changes the writing without changing the depth.
+ *
+ * A row is never dropped because the settings moved. When nothing is cached at
+ * the settings being asked for, the node answers with the newest card it has,
+ * and the panel under it says what that card was written to; the learner
+ * decides whether to write it again. That is why the variant has to be readable
+ * back into settings (parseCardVariant), and why the instructions are stored
+ * here in full — they are the one setting the key does not carry.
  */
 model ConceptCard {
-  id        String       @id
-  nodeId    String       @map("node_id")
-  depth     Int
-  variant   String       @default("base")
-  content   Json
-  createdAt DateTime     @default(now()) @map("created_at")
-  node      LearningNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  id           String       @id
+  nodeId       String       @map("node_id")
+  depth        Int
+  variant      String       @default("base")
+  // The node's card_instructions at the moment this was written. Not in the
+  // key: free text cannot be one without being hashed, and a hash cannot say
+  // what it was. "" is also the deploy gap — the old bundle inserts without it.
+  instructions String       @default("")
+  content      Json
+  createdAt    DateTime     @default(now()) @map("created_at")
+  node         LearningNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
 
   @@unique([nodeId, depth, variant])
   @@map("concept_cards")
+}
+
+/**
+ * A question the learner asked on a card, and the answer it got. Kept, so the
+ * next open of the card shows what was asked on it rather than making the same
+ * trip twice.
+ *
+ * Rows in the last hour are also the budget counter for the answering call —
+ * it is a model call a learner can repeat without bound, and nothing else
+ * counts it. See assertQuestionBudget in src/topics.ts.
+ */
+model CardQuestion {
+  id        String       @id
+  nodeId    String       @map("node_id")
+  question  String
+  answer    String
+  createdAt DateTime     @default(now()) @map("created_at")
+  node      LearningNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId, createdAt])
+  @@map("card_questions")
 }
 
 model Drill {

@@ -2,7 +2,13 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 import { router } from "expo-router";
-import { useCard, useRewriteCard } from "@interestled/api";
+import {
+  useAskQuestion,
+  useCard,
+  useQuestions,
+  useRewriteCard,
+  useSaveCardInstructions,
+} from "@interestled/api";
 import { defaultCardSettings, drillHref, nodeHref, sameCardSettings } from "@interestled/domain";
 import {
   ANGLE_OPTIONS,
@@ -17,6 +23,7 @@ import {
   FORMAT_COPY,
   FORMAT_OPTIONS,
   InlineMarkdown,
+  Input,
   JargonList,
   LoadingContent,
   Markdown,
@@ -25,10 +32,17 @@ import {
   Screen,
   SectionTitle,
   settingsSummary,
+  Sheet,
   TECHNICAL_COPY,
   TECHNICAL_OPTIONS,
 } from "@interestled/ui";
-import { CardDepth, CardMinutes, DEFAULT_CARD_DEPTH } from "@interestled/schemas";
+import {
+  CARD_INSTRUCTIONS_MAX,
+  CardDepth,
+  CardMinutes,
+  DEFAULT_CARD_DEPTH,
+  QUESTION_MAX,
+} from "@interestled/schemas";
 import type { CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
 import { ChipRow } from "./ChipRow";
 import { useAuth } from "../lib/auth";
@@ -44,36 +58,45 @@ export function NodeCard({
   topic,
   node,
   nodes,
+  asking,
+  onAskingChange,
 }: {
   topicSlug: string;
   topic: TopicT;
   node: LearningNodeT;
   nodes: readonly LearningNodeT[];
+  /** The question sheet is open. Owned by the screen, because the bar's button opens it. */
+  asking: boolean;
+  onAskingChange: (open: boolean) => void;
 }): ReactElement {
   // Two states, not one. `applied` is what the card on screen was asked for —
   // an empty object is the card as the topic is written, which is what a fresh
-  // arrival must get. `draft` is where the chips stand, which is only a request
-  // until the button under them is pressed: writing a card takes ten to thirty
-  // seconds and a model call, so a panel that wrote one per chip could not be
-  // adjusted twice, and the second half of a change was always paid for as a
-  // card nobody wanted.
+  // arrival must get. `draft` is where the chips have moved since, which is only
+  // a request until the button under them is pressed: writing a card takes ten
+  // to thirty seconds and a model call, so a panel that wrote one per chip could
+  // not be adjusted twice, and the second half of a change was always paid for
+  // as a card nobody wanted.
   const [applied, setApplied] = useState<Partial<CardSettingsT>>({});
   const [draft, setDraft] = useState<Partial<CardSettingsT>>({});
+  // The box under the chips, started from what the node has saved. The same
+  // rule as the chips: typing in it writes nothing until the button is pressed.
+  const [instructions, setInstructions] = useState(node.cardInstructions);
   const card = useCard(node.id, applied);
   const rewrite = useRewriteCard(node.id);
+  const saveInstructions = useSaveCardInstructions(topicSlug, node.id);
   const { user } = useAuth();
 
   if (card.isPending) {
     // The same rule the server writes to, so the wait names the card that
     // actually arrives rather than a guess at it.
-    const asking = {
+    const wanted = {
       ...defaultCardSettings(topic, node, user?.defaultDepth ?? DEFAULT_CARD_DEPTH),
       ...applied,
     };
     return (
       <LoadingContent
         label={`Writing the card for ${node.title}…`}
-        detail={settingsSummary(asking)}
+        detail={settingsSummary(wanted)}
         hint="The first time a node is opened its card is written for you, which takes 10–30 seconds. After that it is instant."
         lines={6}
       />
@@ -87,18 +110,63 @@ export function NodeCard({
     );
   }
 
-  const { content, missingPrerequisites, settings } = card.data;
-  // Where the chips stand: what the card in front of them was written to, with
-  // anything moved since on top. Reading them off the response alone would put
-  // a chip back the moment it was pressed, since nothing has been written yet.
-  const chosen: CardSettingsT = { ...settings, ...draft };
-  // The card as the topic is written, which is what "back to how the topic is
-  // written" moves the chips to — and the same rule the server resolves an
-  // unanswered setting by, so the two cannot describe different cards.
-  const asWritten = defaultCardSettings(topic, node, user?.defaultDepth ?? DEFAULT_CARD_DEPTH);
+  const { content, missingPrerequisites, settings, defaults } = card.data;
+  // What this open asked for: the node's own settings now, with whatever the
+  // controls overrode on top. The server answers with the card it has rather
+  // than writing one, so the card on screen can be written to something else —
+  // which is exactly what `moved` says.
+  const expected: CardSettingsT = { ...defaults, ...applied };
+  // The settings moved under this card — the topic's, the node's instructions,
+  // or the reader's depth — after it was written. Nothing is written until asked.
+  const moved = !sameCardSettings(settings, expected);
+  // Where the chips stand: what was asked for, with anything moved since on
+  // top. Reading them off the card alone would put a chip back the moment it
+  // was pressed, since nothing has been written yet; and it would put them on
+  // the old settings when the settings have moved, which is the one place the
+  // reader wants the new ones shown.
+  const chosen: CardSettingsT = { ...expected, ...draft, instructions: instructions.trim() };
   // The chips are ahead of the card on screen: there is something to write.
   const unwritten = !sameCardSettings(chosen, settings);
+  const instructionsChanged = instructions.trim() !== defaults.instructions;
   const byId = new Map(nodes.map((candidate) => [candidate.id, candidate]));
+  const busy =
+    card.isPlaceholderData || card.isFetching || rewrite.isPending || saveInstructions.isPending;
+
+  // The one press that reaches the model, and only when it has to.
+  const regenerate = (): void => {
+    rewrite.reset();
+    saveInstructions.reset();
+    const request = { ...applied, ...draft };
+    const write = (): void => {
+      // At settings the card was not written to, the cache may already hold that
+      // card, so it is asked for and costs nothing if so. Not when the settings
+      // have moved and the chips stand where they moved to: nothing is cached
+      // there, or the server would have answered with it. And not when the
+      // instructions changed: a card found at that key was written without them.
+      const maybeCached = unwritten && !sameCardSettings(chosen, expected) && !instructionsChanged;
+      if (maybeCached) {
+        setApplied(request);
+        setDraft({});
+        return;
+      }
+      // Otherwise it is written, going around the cache. The card on screen stays
+      // up until the new one lands, and the controls move to it only then — moving
+      // them first would ask for the card at those settings a second time.
+      rewrite.mutate(request, {
+        onSuccess: () => {
+          setApplied(request);
+          setDraft({});
+        },
+      });
+    };
+    if (instructionsChanged) {
+      saveInstructions.mutate(instructions, { onSuccess: write });
+    } else {
+      write();
+    }
+  };
+
+  const failure = rewrite.error ?? saveInstructions.error;
 
   return (
     <Screen contentContainerClassName="gap-5 p-4">
@@ -174,31 +242,34 @@ export function NodeCard({
 
       <JargonList terms={content.jargon} />
 
+      <Questions nodeId={node.id} asking={asking} onAskingChange={onAskingChange} />
+
       <CardControls
         settings={chosen}
+        written={settings}
+        moved={moved}
         unwritten={unwritten}
-        rewriting={card.isPlaceholderData || card.isFetching || rewrite.isPending}
-        // The one press that reaches the model, and only when it has to: at
-        // settings the card was not written to it asks for that card, which the
-        // cache may already hold; at the settings it already has there is
-        // nothing to fetch, so it asks for the same card to be written again.
-        onRegenerate={() => {
+        rewriting={busy}
+        instructions={instructions}
+        onInstructionsChange={(text) => {
           rewrite.reset();
-          if (unwritten) {
-            setApplied(draft);
-          } else {
-            rewrite.mutate(applied);
-          }
+          saveInstructions.reset();
+          setInstructions(text);
         }}
-        rewriteError={rewrite.error === null ? undefined : messageOf(rewrite.error)}
-        changed={!sameCardSettings(chosen, asWritten)}
+        onRegenerate={regenerate}
+        rewriteError={failure === null ? undefined : messageOf(failure)}
+        changed={!sameCardSettings(chosen, defaults)}
         onChange={(change) => {
           rewrite.reset();
+          saveInstructions.reset();
           setDraft((current) => ({ ...current, ...change }));
         }}
         // Moves the chips back, like every other control here. The card on
         // screen is still the one that was written until the button is pressed.
-        onReset={() => setDraft(asWritten)}
+        onReset={() => {
+          setDraft(defaults);
+          setInstructions(defaults.instructions);
+        }}
       />
 
       <Button label="Now prove it" onPress={() => router.push(drillHref(topicSlug, node.path))} />
@@ -206,6 +277,75 @@ export function NodeCard({
   );
 }
 
+/**
+ * What was asked on this card, and the sheet that asks the next one.
+ *
+ * The questions sit on the card rather than on a screen of their own, and each
+ * answer is folded behind its question: the question is what the reader will
+ * recognise, and a column of answers is a second card under the first. The
+ * newest one opens on arrival, because it is the one just asked.
+ */
+function Questions({
+  nodeId,
+  asking,
+  onAskingChange,
+}: {
+  nodeId: string;
+  asking: boolean;
+  onAskingChange: (open: boolean) => void;
+}): ReactElement {
+  const questions = useQuestions(nodeId);
+  const ask = useAskQuestion(nodeId);
+  const [question, setQuestion] = useState("");
+  const [latestId, setLatestId] = useState<string | null>(null);
+  const asked = questions.data ?? [];
+
+  return (
+    <>
+      {asked.length === 0 ? null : (
+        <View className="gap-2">
+          <SectionTitle>What you asked</SectionTitle>
+          {asked.map((entry) => (
+            <Disclosure key={entry.id} title={entry.question} defaultOpen={entry.id === latestId}>
+              <Markdown text={entry.answer} />
+            </Disclosure>
+          ))}
+        </View>
+      )}
+
+      <Sheet
+        visible={asking}
+        title="Ask about this card"
+        body="One paragraph back, written the way this card is. It is kept here with the card."
+        onClose={() => (ask.isPending ? undefined : onAskingChange(false))}
+      >
+        <Input
+          label="Your question"
+          value={question}
+          onChangeText={setQuestion}
+          multiline
+          autoFocus
+          maxLength={QUESTION_MAX}
+          placeholder={"Why does that happen?\nWhat if the other case is true?"}
+        />
+        {ask.isError ? <ErrorState message={messageOf(ask.error)} /> : null}
+        <Button
+          label={ask.isPending ? "Answering…" : "Ask"}
+          busy={ask.isPending}
+          onPress={() =>
+            ask.mutate(question, {
+              onSuccess: (answered) => {
+                setQuestion("");
+                setLatestId(answered.id);
+                onAskingChange(false);
+              },
+            })
+          }
+        />
+      </Sheet>
+    </>
+  );
+}
 
 function ControlRow({
   title,
@@ -228,7 +368,8 @@ function ControlRow({
 /**
  * Everything that decides how this card came out, as the same rows of chips the
  * topic's own settings screen offers, in the same order and out of the same
- * copy. Depth and angle are the two a card has and a topic does not.
+ * copy. Depth and angle are the two a card has and a topic does not, and the
+ * box at the end is the one control that is not a chip.
  *
  * Chips rather than the pair of step buttons this used to be: "Simpler" and
  * "Deeper" could move the depth but never say where it stood, so the only
@@ -242,9 +383,13 @@ function ControlRow({
  */
 function CardControls({
   settings,
+  written,
+  moved,
   unwritten,
   rewriting,
   changed,
+  instructions,
+  onInstructionsChange,
   onChange,
   onReset,
   onRegenerate,
@@ -252,12 +397,19 @@ function CardControls({
 }: {
   /** Where the chips stand, which is not what is on screen until it is written. */
   settings: CardSettingsT;
+  /** What the card on screen was written to. */
+  written: CardSettingsT;
+  /** The settings moved after the card on screen was written. */
+  moved: boolean;
   /** The chips are ahead of the card: pressing the button writes a different one. */
   unwritten: boolean;
   /** The card on screen is the previous one; the next is being written. */
   rewriting: boolean;
   /** The chips are somewhere other than how the topic is written. */
   changed: boolean;
+  /** The box, as typed. Trimmed only when it is compared and sent. */
+  instructions: string;
+  onInstructionsChange: (text: string) => void;
   onChange: (change: Partial<CardSettingsT>) => void;
   onReset: () => void;
   onRegenerate: () => void;
@@ -273,15 +425,33 @@ function CardControls({
       summary={
         rewriting
           ? "Writing it…"
-          : unwritten
-            ? `${settingsSummary(settings)} — not written yet`
-            : settingsSummary(settings)
+          : moved
+            ? `${settingsSummary(written)} — the settings have moved since`
+            : unwritten
+              ? `${settingsSummary(settings)} — not written yet`
+              : settingsSummary(settings)
       }
     >
       {rewriting ? (
         <View className="flex-row items-center gap-2">
           <ActivityIndicator color="#2563eb" />
           <Text className="text-xs text-ink-soft">Writing the next one…</Text>
+        </View>
+      ) : null}
+
+      {/* Said before the chips, because it is about the card above them rather
+          than the panel: the settings changed after this card was written, and
+          it was left as it was. Where the two stand is stated in full, so the
+          reader can decide from here rather than from memory of the settings
+          screen (A12). */}
+      {moved && !rewriting ? (
+        <View className="gap-1 rounded-card bg-surface-sunken p-3">
+          <Text className="text-sm font-medium text-ink">
+            The settings have moved since this card was written.
+          </Text>
+          <Text className="text-sm text-ink-soft">
+            {`It was written to ${settingsSummary(written)}. The node now asks for ${settingsSummary(settings)}. The card stays as it is until you press the button below.`}
+          </Text>
         </View>
       ) : null}
 
@@ -349,6 +519,19 @@ function CardControls({
         />
       </ControlRow>
 
+      {/* The one control that is not a chip: what this card in particular should
+          do, in the reader's own words. It is kept with the node, so it is here
+          again next time and holds for the next writing too. */}
+      <Input
+        label="Anything else, for this card only"
+        value={instructions}
+        onChangeText={onInstructionsChange}
+        multiline
+        maxLength={CARD_INSTRUCTIONS_MAX}
+        placeholder={"Compare it with how Postgres does it\nUse an example from banking"}
+        hint="Added after the topic's standing instructions whenever this card is written, and kept here."
+      />
+
       {/* The only control here that costs anything. Moving a chip used to write
           a card on the spot, which made a second change a second wait and a
           second model call — and gave nobody a way to ask for the same card
@@ -359,9 +542,11 @@ function CardControls({
         {/* Said above the button rather than under it: it is what the press is
             about to do, which is no use read afterwards. */}
         <Text className="text-sm text-ink-soft">
-          {unwritten
-            ? "Nothing is written until you press this, so move as many of these as you want first."
-            : "The card you are reading is already written to these. Pressing this asks for it again, and it comes back written differently."}
+          {moved
+            ? "Pressing this writes the card again to where these stand. Until then, the card above is the one you have."
+            : unwritten
+              ? "Nothing is written until you press this, so move as many of these as you want first."
+              : "The card you are reading is already written to these. Pressing this asks for it again, and it comes back written differently."}
         </Text>
         <Button
           label={rewriting ? "Writing it…" : unwritten ? "Regenerate" : "Write it again"}

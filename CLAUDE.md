@@ -334,20 +334,59 @@ one call that must be live, and it runs at `temperature: 0` so the same answer d
 not get two different verdicts.
 
 **The card's own settings are what the controls under it change.** `CardSettings`
-(depth, minutes, englishLevel, technicalDetail, format, angle) is what `cardPrompt`
-reads, what the card cache is keyed by — `cardVariant` builds the variant half, depth
-has its own column — and what the card route answers back, so the panel can state where
-the card stands rather than guessing. The topic's settings are the defaults; each
-control is an override for one card. A control that does not reach the prompt is a
+(depth, minutes, englishLevel, technicalDetail, format, angle, instructions) is what
+`cardPrompt` reads, what the card cache is keyed by — `cardVariant` builds the variant
+half, depth has its own column — and what the card route answers back, so the panel can
+state where the card stands rather than guessing. The topic's settings are the defaults;
+each control is an override for one card. A control that does not reach the prompt is a
 control that does nothing, which is what "Simpler" was at depth 1: a refetch returning
 the identical card. `defaultCardSettings` lives in `packages/domain` rather than on the
 server, because the app names what a card is being written to while it waits for it.
 
-**`?rewrite=1` is the one call that must go around the card cache**, and the only one a
+**`instructions` is the one setting that is not a chip and not in the key.** It is the
+node's own text (`learning_nodes.card_instructions`), saved by `PUT
+/nodes/:id/card-instructions` and read off the row rather than sent in the query, so it
+holds for the next writing too. The prompt gets it after the topic's standing
+instructions, as its own block in `content-rules.md`, told which wins. Free text cannot
+be a cache key without being hashed, and a hash cannot say what it was — so the card
+row stores the text it was written with (`concept_cards.instructions`), and a row found
+at its key with other instructions on it is answered as it is. That is the same rule as
+below, and the panel handles it the same way.
+
+**Regeneration is manual: nothing about a settings change writes a card.** Changing the
+topic's writing settings used to delete its cached cards, and the next open of every
+node was then a model call and a thirty-second wait, whether or not the reader wanted
+that card different. Now the settings change writes nothing, and the card route has
+three lookups (`CardLookup` in `learning.ts`): *Exact* for a moved chip, which reads or
+writes the card at those settings; *Rewrite* for `?rewrite=1`; and *Written* for a plain
+open, the drill and the review items, which answers a miss with the newest card the node
+already has. `parseCardVariant` is what lets a row say what it was written to — and it
+returns null for an earlier prompt revision, so bumping `CARD_PROMPT_REVISION` still
+retires everything. The route answers `settings` (what the card was written to) beside
+`defaults` (what a plain open writes to now, from the server because the sticky depth is
+there), and the panel compares the two: where they differ it says the settings have
+moved and offers the one button. The drill goes through *Written* on purpose — a drill
+written against a fresh card would be the regeneration the card route just declined,
+through a side door.
+
+**`?rewrite=1` is the one call that must go around the card cache**, and one of two a
 learner can repeat without bound — every other generating path either creates nodes or
 is answered from the cache the second time. It is therefore inside `assertRewriteBudget`
 (cards written per user per hour), and its upsert moves `createdAt` with the content, or
-a rewrite of an old row is one the ceiling never counts.
+a rewrite of an old row is one the ceiling never counts. The app uses it for more than
+"write it again": when the settings have moved under a card, or its instructions
+changed, nothing is cached at the settings the chips stand at, so the press goes around
+the cache rather than asking for a card that would only be written anyway.
+
+**The other is a question asked on a card.** `POST /nodes/:id/questions` answers in one
+paragraph — the card's own paragraph length, said outright in `question.md` because the
+learner may have rewritten the standing instructions and dropped the line — against the
+card the learner is reading (the *Written* lookup, never a fresh one), the map with the
+node marked, and the last `EARLIER_QUESTIONS` asked on that card, so a follow-up
+follows. The row is kept (`card_questions`, gone with its node) and listed on the card,
+answers folded behind their questions. It is a model call per press, so it is inside
+`assertQuestionBudget`, which counts those rows by the hour. The answer is never cached:
+the same words twice is the learner asking again.
 
 **A card is written to the learner's read time, not to a constant.** `CARD_MINUTES_MAX`
 is the ceiling one card can hold, and `CardContent`'s limits are the outer bound of a
@@ -385,10 +424,12 @@ card must handle their absence — the screen drops the section, and `drill.md` 
 `format`, `averageReadTime` and `contentInstructions`, defaulting to
 `prompts/content-instructions.md` when the learner has written none. The first two are
 independent on purpose, and `content-rules.md` says so to the model: two rules pulling
-opposite ways are two rules it resolves by picking one. `contentSettingsOf(topic)` is what every generating call passes, and
-changing them deletes that topic's cached cards so the change is visible on the next
-node rather than only on unread ones. Drills are kept: deleting one cascades to the
-attempts made against it.
+opposite ways are two rules it resolves by picking one. `contentSettingsOf(topic)` is
+what every generating call passes. Changing them deletes nothing: every card already
+written keeps its writing and says under it that the settings have moved (see
+*Regeneration is manual* above), and nodes nobody has opened are written to the new
+settings. Drills are kept for the older reason: deleting one cascades to the attempts
+made against it.
 
 ## The cache on the phone and the website
 

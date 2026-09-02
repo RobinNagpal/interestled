@@ -11,6 +11,7 @@ import {
   MECHANISM_SHARE,
   WORDS_PER_MINUTE,
   cardVariant,
+  parseCardVariant,
 } from "../src/cards";
 import {
   GeneratedThreeLevelMap,
@@ -141,8 +142,15 @@ describe("CardContent", () => {
       format: ContentFormat.Prose,
       paragraphLength: ParagraphLength.Medium,
       angle: CardAngle.Base,
+      instructions: "",
     };
     expect(cardVariant(base)).toBe(cardVariant({ ...base }));
+    // Not the instructions: free text cannot be a key without being hashed, and
+    // the row stores the text instead. A card at its key with other
+    // instructions is answered as it is, and the panel says so.
+    expect(cardVariant({ ...base, instructions: "Compare it with Postgres" })).toBe(
+      cardVariant(base),
+    );
     expect(cardVariant({ ...base, minutes: 10 })).not.toBe(cardVariant(base));
     // Paragraph length is the newest of them and the easiest to forget: it
     // changes the writing without changing the depth, the register or the length.
@@ -163,6 +171,38 @@ describe("CardContent", () => {
     // And the prompt generation, so rewriting card.md is not a change that
     // reaches only the nodes nobody has opened yet.
     expect(cardVariant(base)).toContain(`r${CARD_PROMPT_REVISION}`);
+  });
+
+  it("reads a cached row's key back into the settings it was written to", () => {
+    // What lets a node answer with the card it has when nothing is cached at
+    // the settings asked for: the row has to be able to say what it is.
+    const settings = {
+      depth: 4,
+      minutes: 7,
+      englishLevel: EnglishLevel.Simple,
+      technicalDetail: TechnicalDetail.High,
+      format: ContentFormat.ReferenceNotes,
+      paragraphLength: ParagraphLength.Long,
+      angle: CardAngle.WhyItMatters,
+      instructions: "Use an example from banking",
+    };
+    expect(parseCardVariant(cardVariant(settings), 4, settings.instructions)).toEqual(settings);
+  });
+
+  it("refuses a row from an earlier prompt revision, so the bump still retires it", () => {
+    const stale = cardVariant({
+      depth: 2,
+      minutes: 3,
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
+      paragraphLength: ParagraphLength.Medium,
+      angle: CardAngle.Base,
+      instructions: "",
+    }).replace(`r${CARD_PROMPT_REVISION}`, `r${CARD_PROMPT_REVISION - 1}`);
+    expect(parseCardVariant(stale, 2, "")).toBeNull();
+    expect(parseCardVariant("base", 2, "")).toBeNull();
+    expect(parseCardVariant(`r${CARD_PROMPT_REVISION}|base|3|loud|medium|prose|medium`, 2, "")).toBeNull();
   });
 
   it("takes a card with no example and no misconception", () => {

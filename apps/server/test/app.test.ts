@@ -265,7 +265,11 @@ describe("topic settings writes", () => {
     expect(deletedNodes).toEqual([]);
   });
 
-  it("drops the cached cards when the writing settings change", async () => {
+  it("keeps the cached cards when the writing settings change", async () => {
+    // They used to be dropped here, and the next open of every node was then
+    // a model call and a thirty-second wait. Now each node answers with the
+    // card it has and says the settings moved; writing it again is the
+    // reader's press to make.
     const { db, updates, deletedCards } = settingsDb();
     const response = await send(db, "/api/topics/kubernetes/content-settings", {
       englishLevel: EnglishLevel.Advanced,
@@ -288,8 +292,7 @@ describe("topic settings writes", () => {
         averageReadTime: ReadTime.Ten,
       },
     ]);
-    // Every card in the topic, so the next open is written to the new settings.
-    expect(deletedCards).toEqual([{ where: { node: { topicId: "t1" } } }]);
+    expect(deletedCards).toEqual([]);
   });
 
   it("moves the map's own minutes when the read time changes", async () => {
@@ -479,6 +482,7 @@ describe("card generation", () => {
       archetype: TopicArchetype.Tool,
       status: NodeStatus.Untouched,
       capability: "do it",
+      cardInstructions: "",
       createdAt: new Date(),
     };
     const leaf = (id: string, slug: string, title: string, orderIndex: number) => ({
@@ -540,16 +544,48 @@ describe("card generation", () => {
       },
       conceptCard: {
         findUnique: vi.fn(async () => null),
+        // The newest card this node has, at any settings: what a plain open
+        // is answered with when nothing is cached at the settings asked for.
+        findFirst: vi.fn(async () => null),
         upsert: vi.fn(async () => ({})),
         // What the rewrite budget counts: cards written in the last hour.
         count: vi.fn(async () => 0),
+      },
+      cardQuestion: {
+        findMany: vi.fn(async () => []),
+        // What the question budget counts: questions asked in the last hour.
+        count: vi.fn(async () => 0),
+        create: vi.fn(async ({ data }: { data: object }) => ({ ...data, createdAt: new Date() })),
       },
     };
     return { db: db as unknown as Db, statuses };
   }
 
+  /** The settings a plain open of a three-minute node writes to, at depth 2. */
+  const plain = {
+    depth: 2,
+    minutes: 3,
+    englishLevel: EnglishLevel.Medium,
+    technicalDetail: TechnicalDetail.Medium,
+    format: ContentFormat.Prose,
+    paragraphLength: ParagraphLength.Medium,
+    angle: CardAngle.Base,
+    instructions: "",
+  };
+
+  /** A cached row, as the card route reads it. */
+  function cardRow(settings: typeof plain, instructions = settings.instructions) {
+    return {
+      depth: settings.depth,
+      variant: cardVariant(settings),
+      instructions,
+      content: JSON.parse(CARD),
+      createdAt: new Date(),
+    };
+  }
+
   /** Records what actually reached the model, and which model was asked for. */
-  function recording(): {
+  function recording(reply = CARD): {
     provider: (task: LlmTask) => LlmProvider;
     prompts: string[];
     tasks: LlmTask[];
@@ -566,7 +602,7 @@ describe("card generation", () => {
           model: "test",
           complete: async (request) => {
             prompts.push(request.prompt);
-            return CARD;
+            return reply;
           },
         };
       },
@@ -655,6 +691,7 @@ describe("card generation", () => {
         technicalDetail: TechnicalDetail.High,
         format: ContentFormat.ReferenceNotes,
         angle: CardAngle.WhereThisBreaks,
+        instructions: "",
       }),
     );
   });
@@ -676,7 +713,7 @@ describe("card generation", () => {
       learningNode: { findMany: ReturnType<typeof vi.fn> };
       user: { findUniqueOrThrow: ReturnType<typeof vi.fn> };
     };
-    cached.conceptCard.findUnique = vi.fn(async () => ({ content: JSON.parse(CARD) }));
+    cached.conceptCard.findUnique = vi.fn(async () => cardRow(plain));
     const { provider: recorder, prompts } = recording();
     const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
       headers: { Authorization: "Bearer good" },
@@ -699,7 +736,7 @@ describe("card generation", () => {
     const stub = db as unknown as {
       conceptCard: { findUnique: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
     };
-    stub.conceptCard.findUnique = vi.fn(async () => ({ content: JSON.parse(CARD) }));
+    stub.conceptCard.findUnique = vi.fn(async () => cardRow(plain));
     const { provider: recorder, prompts } = recording();
     const response = await createApp(db, { provider: recorder }).request(
       "/api/nodes/n2/card?rewrite=1",
@@ -749,6 +786,136 @@ describe("card generation", () => {
     expect(response.status).toBe(200);
   });
 
+  it("answers a plain open with the card the node has when the settings have moved", async () => {
+    // The topic's settings changed after this card was written, so nothing is
+    // cached at the settings a plain open now asks for. Writing one on the spot
+    // is what used to happen, on every node, whether or not the reader wanted
+    // this card different. The card that exists is answered instead, with what
+    // it was written to and what the node now asks for, and the panel says so.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as { conceptCard: { findFirst: ReturnType<typeof vi.fn> } };
+    const before = { ...plain, englishLevel: EnglishLevel.Simple, depth: 4 };
+    stub.conceptCard.findFirst = vi.fn(async () => cardRow(before));
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
+      headers: { Authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(prompts).toEqual([]);
+    expect(await response.json()).toMatchObject({
+      settings: { englishLevel: EnglishLevel.Simple, depth: 4 },
+      defaults: { englishLevel: EnglishLevel.Medium, depth: 2 },
+    });
+    // The newest card, whatever it was written to: "the one you last read".
+    expect(stub.conceptCard.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { createdAt: "desc" } }),
+    );
+  });
+
+  it("writes the card a moved chip asks for, even when the node has one already", async () => {
+    // A chip moved somewhere new is a request for the card that lives there.
+    // Answering it with the old card would make the button do nothing.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as { conceptCard: { findFirst: ReturnType<typeof vi.fn> } };
+    stub.conceptCard.findFirst = vi.fn(async () => cardRow(plain));
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request(
+      `/api/nodes/n2/card?angle=${CardAngle.WhereThisBreaks}`,
+      { headers: { Authorization: "Bearer good" } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prompts).toHaveLength(1);
+    expect(stub.conceptCard.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("does not answer with a card from an earlier prompt revision", async () => {
+    // Bumping the revision is how every cached card is retired without a
+    // migration. A row that cannot be named is one that is never served.
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as { conceptCard: { findFirst: ReturnType<typeof vi.fn> } };
+    stub.conceptCard.findFirst = vi.fn(async () => ({
+      ...cardRow(plain),
+      variant: cardRow(plain).variant.replace(/^r\d+/, "r1"),
+    }));
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
+      headers: { Authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(prompts).toHaveLength(1);
+  });
+
+  it("writes the node's own instructions into the card, and stores them on it", async () => {
+    const rows = mapRows().map((row) =>
+      row.id === "n2" ? { ...row, cardInstructions: "Compare it with how Postgres does it" } : row,
+    );
+    const { db } = cardDb(rows, "n2");
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
+      headers: { Authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(prompts[0]).toContain("Compare it with how Postgres does it");
+    expect(await response.json()).toMatchObject({
+      settings: { instructions: "Compare it with how Postgres does it" },
+      defaults: { instructions: "Compare it with how Postgres does it" },
+    });
+    const written = (db as unknown as { conceptCard: { upsert: ReturnType<typeof vi.fn> } })
+      .conceptCard.upsert.mock.calls[0]?.[0] as { create: { instructions: string } } | undefined;
+    expect(written?.create.instructions).toBe("Compare it with how Postgres does it");
+  });
+
+  it("answers a cached card with the instructions it was written to, not the node's", async () => {
+    // The instructions are not in the key, so the row at it may have been
+    // written before they changed. It is still the card the reader has: the
+    // panel says the settings moved, and nothing is written until asked.
+    const rows = mapRows().map((row) =>
+      row.id === "n2" ? { ...row, cardInstructions: "Use an example from banking" } : row,
+    );
+    const { db } = cardDb(rows, "n2");
+    const stub = db as unknown as { conceptCard: { findUnique: ReturnType<typeof vi.fn> } };
+    stub.conceptCard.findUnique = vi.fn(async () => cardRow(plain, ""));
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request("/api/nodes/n2/card", {
+      headers: { Authorization: "Bearer good" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(prompts).toEqual([]);
+    expect(await response.json()).toMatchObject({
+      settings: { instructions: "" },
+      defaults: { instructions: "Use an example from banking" },
+    });
+  });
+
+  it("saves a card's instructions on the node without writing anything", async () => {
+    const { db } = cardDb(mapRows(), "n2");
+    const stub = db as unknown as { learningNode: { update: ReturnType<typeof vi.fn> } };
+    const { provider: recorder, prompts } = recording();
+    const response = await createApp(db, { provider: recorder }).request(
+      "/api/nodes/n2/card-instructions",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json", Authorization: "Bearer good" },
+        body: JSON.stringify({ instructions: "  Use an example from banking  " }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prompts).toEqual([]);
+    expect(stub.learningNode.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { cardInstructions: "Use an example from banking" } }),
+    );
+    expect(await response.json()).toMatchObject({
+      id: "n2",
+      cardInstructions: "Use an example from banking",
+    });
+  });
+
   it("reads \"rewrite=false\" as not a rewrite, rather than as a rewrite", async () => {
     // Boolean("false") is true, which is the whole reason this is a literal:
     // a client saying it does not want one would otherwise be charged for one
@@ -760,6 +927,165 @@ describe("card generation", () => {
       { headers: { Authorization: "Bearer good" } },
     );
     expect(response.status).toBe(400);
+  });
+});
+
+/**
+ * A question asked on a card. It is answered against the card the learner is
+ * reading — never a fresh one written for the occasion — and kept with the
+ * node; and it is a model call a learner can repeat without bound, so it has a
+ * ceiling of its own.
+ */
+describe("card questions", () => {
+  const ANSWER = JSON.stringify({ answer: "Because the actual state keeps changing under it." });
+
+  function questionDb(): { db: Db; created: object[] } {
+    const created: object[] = [];
+    const node = {
+      id: "n2",
+      topicId: "t1",
+      parentId: "g1",
+      path: "pods/restarts",
+      title: "Restarts and probes",
+      claim: "c",
+      minutes: 3,
+      archetype: TopicArchetype.Tool,
+      orderIndex: 1,
+      status: NodeStatus.Seen,
+      capability: "do it",
+      cardInstructions: "",
+      createdAt: new Date(),
+    };
+    const db = {
+      authSession: {
+        findUnique: vi.fn(async () => ({
+          token: "good",
+          userId: "u1",
+          expiresAt: new Date(Date.now() + 60_000),
+          user: { id: "u1", defaultDepth: 2 },
+        })),
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+      },
+      user: {
+        findUniqueOrThrow: vi.fn(async () => ({ age: null, background: "", learningStyles: [] })),
+      },
+      learningNode: {
+        findFirst: vi.fn(async () => ({ ...node, prerequisites: [], topic: topicRow() })),
+        count: vi.fn(async () => 0),
+        findMany: vi.fn(async () => [{ ...node, prerequisites: [] }]),
+      },
+      conceptCard: {
+        // The card the learner is reading.
+        findUnique: vi.fn(async () => ({
+          depth: 2,
+          variant: "base",
+          instructions: "",
+          content: {
+            claim: "A pod is the unit of scheduling.",
+            mechanism: [{ heading: "What schedules a pod", body: "The scheduler places pods." }],
+            jargon: [],
+          },
+        })),
+        findFirst: vi.fn(async () => null),
+      },
+      cardQuestion: {
+        count: vi.fn(async () => 0),
+        findMany: vi.fn(async () => [
+          {
+            id: "q0",
+            nodeId: "n2",
+            question: "Why forever?",
+            answer: "Because it drifts.",
+            createdAt: new Date(),
+          },
+        ]),
+        create: vi.fn(async ({ data }: { data: object }) => {
+          created.push(data);
+          return { ...data, createdAt: new Date() };
+        }),
+      },
+    };
+    return { db: db as unknown as Db, created };
+  }
+
+  const ask = (db: Db, provider: (task: LlmTask) => LlmProvider, question: string) =>
+    createApp(db, { provider }).request("/api/nodes/n2/questions", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: "Bearer good" },
+      body: JSON.stringify({ question }),
+    });
+
+  function recording(reply: string): { provider: (task: LlmTask) => LlmProvider; prompts: string[] } {
+    const prompts: string[] = [];
+    return {
+      prompts,
+      provider: () => ({
+        id: LlmProviderId.Gemini,
+        model: "test",
+        complete: async (request) => {
+          prompts.push(request.prompt);
+          return reply;
+        },
+      }),
+    };
+  }
+
+  it("answers against the card the learner has, and keeps the question", async () => {
+    const { db, created } = questionDb();
+    const { provider, prompts } = recording(ANSWER);
+    const response = await ask(db, provider, "What happens if two controllers disagree?");
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      nodeId: "n2",
+      question: "What happens if two controllers disagree?",
+      answer: "Because the actual state keeps changing under it.",
+    });
+    // One model call: the answer. The card was read, not written.
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("What happens if two controllers disagree?");
+    expect(prompts[0]).toContain("A pod is the unit of scheduling.");
+    // The earlier question on this card goes in, so a follow-up follows.
+    expect(prompts[0]).toContain("Q: Why forever?");
+    // One paragraph, the length the card's paragraphs are.
+    expect(prompts[0]).toContain("4-5 sentences");
+    expect(created).toEqual([
+      expect.objectContaining({
+        nodeId: "n2",
+        question: "What happens if two controllers disagree?",
+        answer: "Because the actual state keeps changing under it.",
+      }),
+    ]);
+  });
+
+  it("lists what was asked, oldest first", async () => {
+    const { db } = questionDb();
+    const { provider } = recording(ANSWER);
+    const response = await createApp(db, { provider }).request("/api/nodes/n2/questions", {
+      headers: { Authorization: "Bearer good" },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject([{ id: "q0", question: "Why forever?" }]);
+    const stub = db as unknown as { cardQuestion: { findMany: ReturnType<typeof vi.fn> } };
+    expect(stub.cardQuestion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { createdAt: "asc" } }),
+    );
+  });
+
+  it("refuses an empty question before it costs anything", async () => {
+    const { db } = questionDb();
+    const { provider, prompts } = recording(ANSWER);
+    expect((await ask(db, provider, "   ")).status).toBe(400);
+    expect(prompts).toEqual([]);
+  });
+
+  it("stops the sixty-first question in an hour", async () => {
+    const { db } = questionDb();
+    const stub = db as unknown as { cardQuestion: { count: ReturnType<typeof vi.fn> } };
+    stub.cardQuestion.count = vi.fn(async () => 60);
+    const { provider, prompts } = recording(ANSWER);
+    expect((await ask(db, provider, "Why?")).status).toBe(409);
+    expect(prompts).toEqual([]);
   });
 });
 

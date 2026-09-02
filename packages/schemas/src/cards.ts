@@ -60,6 +60,17 @@ export enum CardAngle {
 
 export const CardAngleSchema = z.nativeEnum(CardAngle);
 
+/** Shared with the app, so the box stops at the same length the server refuses. */
+export const CARD_INSTRUCTIONS_MAX = 2000;
+
+/**
+ * What the learner wants for one card in particular, in their own words. Kept
+ * on the node rather than on the card, so it is still there the next time the
+ * card is written; sent to the model after the topic's standing instructions,
+ * and it wins where the two disagree. "" means nothing has been asked.
+ */
+export const CardInstructions = z.string().trim().max(CARD_INSTRUCTIONS_MAX);
+
 /**
  * Everything that decides how one card comes out. The controls under a card set
  * these directly rather than naming an action for the server to interpret: a
@@ -67,7 +78,9 @@ export const CardAngleSchema = z.nativeEnum(CardAngle);
  * writing comes back similar.
  *
  * The topic's own settings are the defaults; each of these is the learner
- * overriding one of them for this card alone.
+ * overriding one of them for this card alone. `instructions` is the one that is
+ * not a chip: it is the node's own text, read off the row rather than sent in
+ * the query, and stored on the card beside the writing it shaped.
  */
 export const CardSettings = z.object({
   depth: CardDepth,
@@ -77,9 +90,15 @@ export const CardSettings = z.object({
   format: ContentFormatSchema,
   paragraphLength: ParagraphLengthSchema,
   angle: CardAngleSchema,
+  instructions: CardInstructions,
 });
 
 export type CardSettingsT = z.infer<typeof CardSettings>;
+
+/** The text the learner saves for one card. A whole-value write, like every other settings box. */
+export const CardInstructionsInput = z.object({ instructions: CardInstructions });
+
+export type CardInstructionsInputT = z.infer<typeof CardInstructionsInput>;
 
 /**
  * Which generation of the card prompt wrote a cached card.
@@ -114,6 +133,13 @@ export const CARD_PROMPT_REVISION = 6;
  * The cache key's variant half. Depth has a column of its own, so this carries
  * the rest: two settings that would produce different writing must never share
  * a cached card, and two that would not must never generate twice.
+ *
+ * The instructions are deliberately not in it. They are free text, so they
+ * cannot be a key without being hashed, and a hash cannot be read back into
+ * the settings a row was written to. The row stores the text instead, and a
+ * card found at its key with other instructions on it is answered as it is —
+ * the panel says the settings have moved, and the learner decides whether to
+ * write it again. That is the same rule every other setting follows now.
  */
 export function cardVariant(settings: CardSettingsT): string {
   return [
@@ -125,6 +151,41 @@ export function cardVariant(settings: CardSettingsT): string {
     settings.format,
     settings.paragraphLength,
   ].join("|");
+}
+
+/**
+ * The settings a cached row was written to, read back off its key.
+ *
+ * This is what lets a node answer with the card it already has when nothing is
+ * cached at the settings being asked for — the topic's settings moved, or the
+ * learner's depth did — instead of writing a new one on the spot. The row has
+ * to be able to say what it is, or the panel under it cannot.
+ *
+ * Null for a row written under an earlier prompt revision, so bumping the
+ * revision still retires every cached card: a row that cannot be named is one
+ * that is never served. Null too for anything that does not parse, which is the
+ * same outcome for the same reason.
+ */
+export function parseCardVariant(
+  variant: string,
+  depth: number,
+  instructions: string,
+): CardSettingsT | null {
+  const parts = variant.split("|");
+  if (parts.length !== 7 || parts[0] !== `r${CARD_PROMPT_REVISION}`) {
+    return null;
+  }
+  const parsed = CardSettings.safeParse({
+    depth,
+    angle: parts[1],
+    minutes: Number(parts[2]),
+    englishLevel: parts[3],
+    technicalDetail: parts[4],
+    format: parts[5],
+    paragraphLength: parts[6],
+    instructions,
+  });
+  return parsed.success ? parsed.data : null;
 }
 
 const JargonTerm = z.object({

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  CardAnswer,
   CardContent,
   GeneratedAtom,
   GeneratedLeafChildren,
@@ -11,7 +12,9 @@ import {
 } from "@interestled/schemas";
 import type {
   AnsweredQuestionT,
+  CardAnswerT,
   CardContentT,
+  CardQuestionT,
   CardSettingsT,
   DrillKind,
   GeneratedAtomT,
@@ -32,6 +35,7 @@ import {
   drillPrompt,
   mapPrompt,
   mapQuestionsPrompt,
+  questionPrompt,
   subtreePrompt,
   SYSTEM,
   verdictPrompt,
@@ -187,6 +191,31 @@ export function generateCard(
     system: SYSTEM,
     prompt: cardPrompt(input),
     schema: CardContent,
+  });
+}
+
+/**
+ * One answer to one question asked on a card. Never cached: a question is asked
+ * in the learner's own words, and the same words twice are the learner asking
+ * again, which is a new answer. What is kept is the row the route writes.
+ */
+export function generateAnswer(
+  provider: LlmProvider,
+  input: {
+    topic: TopicT;
+    node: LearningNodeT;
+    nodes: readonly LearningNodeT[];
+    card: CardContentT;
+    settings: CardSettingsT;
+    question: string;
+    earlier: readonly CardQuestionT[];
+    profile: ProfileT;
+  },
+): Promise<CardAnswerT> {
+  return generateJson(provider, {
+    system: SYSTEM,
+    prompt: questionPrompt(input),
+    schema: CardAnswer,
   });
 }
 
