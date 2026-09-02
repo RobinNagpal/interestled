@@ -11,7 +11,7 @@ import {
   StudyDays,
   TechnicalDetail,
 } from "@interestled/schemas";
-import type { CardSettingsT } from "@interestled/schemas";
+import type { CardSettingsT, MapShapeT } from "@interestled/schemas";
 
 /**
  * The words for the settings, in one place because two screens now set the same
@@ -137,6 +137,57 @@ export const MINUTES_OPTIONS = MINUTES_PER_DAY.map((value) => ({
   value: String(value),
   label: `${value} min`,
 }));
+
+/**
+ * What a map was built to, as rows: the counts, the sitting, and how far into
+ * the subject it goes.
+ *
+ * The same words as the chips that set them, out of the same copy above — the
+ * edit screen states what the map was built to, and a reader who is told
+ * "Working" there and offered "Working" in the rebuild sheet is being told
+ * about one setting rather than two.
+ */
+export interface MapShapeRow {
+  label: string;
+  value: string;
+  /** What the value means, where the label and the value do not say it. */
+  body?: string;
+}
+
+export function mapShapeRows(shape: MapShapeT): MapShapeRow[] {
+  return [
+    { label: "Main headings", value: String(shape.mainHeadings) },
+    { label: "Sub-headings under each", value: String(shape.subHeadings) },
+    { label: "A sitting", value: `${shape.minutesPerDay} min` },
+    { label: "Over", value: DAY_COPY[shape.days] },
+    {
+      label: "How far in",
+      value: MAP_DEPTH_COPY[shape.depth].label,
+      body: MAP_DEPTH_COPY[shape.depth].body,
+    },
+  ];
+}
+
+/**
+ * The same shape in one line, for a closed row that has to say what is inside
+ * it. Lower-cased against the labels above, because this is read as a sentence
+ * fragment rather than as a set of fields.
+ *
+ * One day is one sitting, and it is said that way here for the same reason the
+ * seeded instruction line says it that way: "20 min a day for 1 day" is two ways
+ * of saying the same number with a grammatical error between them.
+ */
+export function mapShapeSummary(shape: MapShapeT): string {
+  const time =
+    shape.days === StudyDays.One
+      ? `${shape.minutesPerDay} min in one sitting`
+      : `${shape.minutesPerDay} min a day for ${DAY_COPY[shape.days].toLowerCase()}`;
+  return [
+    `${shape.mainHeadings} headings, ${shape.subHeadings} under each`,
+    time,
+    MAP_DEPTH_COPY[shape.depth].label.toLowerCase(),
+  ].join(" · ");
+}
 
 /**
  * How long a paragraph runs, labelled by the sentence count — the thing actually

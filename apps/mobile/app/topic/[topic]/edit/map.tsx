@@ -27,6 +27,7 @@ import type { LearningNodeT, MapAnswerT, MapPlanViewT, MapShapeT } from "@intere
 import { messageOf } from "../../../../lib/errors";
 import { backHeader } from "../../../../lib/nav";
 import { MapQuestions } from "../../../../components/MapQuestions";
+import { MapSettings } from "../../../../components/MapSettings";
 import { MapShapeFields } from "../../../../components/MapShapeFields";
 
 /** Which rebuild sheet is open: the whole map, one group, or nothing. */
@@ -213,6 +214,11 @@ export default function EditMapScreen(): ReactElement {
   return (
     <ScrollView contentContainerClassName="gap-5 p-4">
       {header}
+
+      {/* What it was built to, before anything that changes it: a map that is
+          nearly right cannot be corrected by someone who cannot see the answers
+          it came from. */}
+      <MapSettings topic={topic.data.topic} />
 
       <View className="gap-2">
         <SectionTitle>The whole map</SectionTitle>
