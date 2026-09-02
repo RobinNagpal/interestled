@@ -9,6 +9,7 @@ import {
   joinPath,
   parentPath,
   slugOfPath,
+  slugStem,
   slugify,
   uniqueSlug,
 } from "../src/slugs";
@@ -116,5 +117,30 @@ describe("emailSlug", () => {
     const slug = emailSlug(`${"a".repeat(120)}@example.com`);
     expect(slug.length).toBeLessThanOrEqual(SLUG_MAX_LENGTH);
     expect(Slug.safeParse(slug).success).toBe(true);
+  });
+});
+
+describe("slugStem", () => {
+  it("is what every numbered variant of a slug starts with", () => {
+    // The reason this is exported at all: uniqueSlug cuts a long base short
+    // before numbering it, so the variants of a 58-character base do not start
+    // with those 58 characters. Anything searching for "slugs that could
+    // collide with this one" has to search on the stem, or it misses exactly
+    // the ones it allocated last time and proposes them again forever.
+    const base = "a".repeat(58);
+    const numbered = uniqueSlug(base, new Set([base]));
+    expect(numbered.startsWith(base)).toBe(false);
+    expect(numbered.startsWith(slugStem(base))).toBe(true);
+  });
+
+  it("leaves a short slug exactly as it is", () => {
+    expect(slugStem("robin")).toBe("robin");
+  });
+
+  it("never leaves a trailing hyphen for the suffix to double", () => {
+    // "foo--2" is not a slug the schema accepts.
+    const stem = slugStem(`${"a".repeat(54)}-b`);
+    expect(stem.endsWith("-")).toBe(false);
+    expect(Slug.safeParse(`${stem}-2`).success).toBe(true);
   });
 });

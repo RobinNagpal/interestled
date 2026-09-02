@@ -274,9 +274,8 @@ model ConceptCard {
  *
  * Keyed on the card rather than the node, because a recording is of one
  * writing of one card — a node has a card per settings, and the learner may be
- * reading any of them. A rewrite replaces the card's content in place, so the
- * route deletes the row with it: the recording would otherwise be of text that
- * no longer exists anywhere.
+ * reading any of them. A rewrite replaces the card's content in place, and
+ * cardWrittenAt below is what stops the old recording being served for it.
  *
  * The script is kept as well as the audio because it is the expensive half. It
  * is also the only readable record of what a recording says.
@@ -295,7 +294,20 @@ model CardNarration {
   // have now: they differ only when NARRATION_PROMPT_REVISION has moved, which
   // is what retires every recording in one line.
   objectKey String      @map("object_key")
+  // The card's own createdAt at the moment this was recorded, which is what
+  // says whether the recording is still of the words on the card. A rewrite
+  // moves the card's date without changing its id, so a row whose value no
+  // longer matches is a recording of text that has been replaced.
+  //
+  // The row is marked stale this way rather than deleted, because the rows in
+  // the last hour are the budget counter: a counter another endpoint can empty
+  // is one a learner can empty, and rewrite-then-play in a loop would then cost
+  // nothing against the tightest ceiling in the product.
+  cardWrittenAt DateTime @map("card_written_at")
   seconds   Int
+  // Nothing reads this. It is here so the size of the bucket can be read off
+  // the table rather than out of S3, which is the question asked when the bill
+  // arrives.
   bytes     Int
   // The prebuilt voice that spoke it, so a row can still say which one after
   // NARRATION_VOICE has moved on.

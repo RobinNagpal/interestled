@@ -80,5 +80,5 @@ export function createAppQueryClient(): QueryClient {
  * a fresh link, so there is nothing to gain by keeping the stale one.
  */
 export function shouldPersistQuery(query: Query): boolean {
-  return defaultShouldDehydrateQuery(query) && query.queryKey[0] !== keys.audio("")[0];
+  return defaultShouldDehydrateQuery(query) && query.queryKey[0] !== keys.audioOf("")[0];
 }

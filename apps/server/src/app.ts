@@ -2,11 +2,10 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { Prisma } from "@prisma/client";
 import type { TextTask } from "@interestled/schemas";
-import { z } from "zod";
 import { authRouter, requireAuth, sessionRouter } from "./auth";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
-import { ConflictError, GenerationError, NotFoundError } from "./errors";
+import { ConflictError, GenerationError, NotFoundError, UniqueViolation } from "./errors";
 import { learningRouter } from "./learning";
 import { createProvider, createSpeechProvider } from "./llm";
 import type { LlmProvider, SpeechProvider } from "./llm";
@@ -16,9 +15,6 @@ import { sessionsRouter } from "./sessions";
 import { createObjectStore } from "./storage";
 import type { ObjectStore } from "./storage";
 import { topicsRouter } from "./topics";
-
-/** P2002 reports the columns that collided; naming them beats guessing. */
-const UniqueViolation = z.object({ target: z.array(z.string()) });
 
 function uniqueMessage(error: Prisma.PrismaClientKnownRequestError): string {
   const parsed = UniqueViolation.safeParse(error.meta);

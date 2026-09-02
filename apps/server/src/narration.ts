@@ -4,7 +4,6 @@ import {
   cardVariant,
   narrationKey,
   newId,
-  parseCardVariant,
 } from "@interestled/schemas";
 import type {
   CardContentT,
@@ -15,46 +14,55 @@ import type {
 } from "@interestled/schemas";
 import { pcmSeconds, pcmToWav, sampleRateOf } from "./audio/wav";
 import type { Db } from "./db";
-import { ConflictError, NotFoundError } from "./errors";
+import { ConflictError } from "./errors";
 import { generateNarration } from "./llm";
 import type { LlmProvider, SpeechProvider } from "./llm";
 import { AUDIO_URL_TTL_SECONDS } from "./storage";
 import type { ObjectStore } from "./storage";
+import { assertNarrationBudget } from "./topics";
 
 /** What a WAV is served as. The bucket stores it; the player reads it back. */
 const AUDIO_CONTENT_TYPE = "audio/wav";
 
-/**
- * The card a recording is of: the newest one the node has, whatever settings it
- * was written to.
- *
- * The same rule CardLookup.Written follows, and for the same reason — it is the
- * card on the screen the play button is on. Deliberately never writes one: a
- * press of play must not be able to trigger a card generation through a side
- * door, and a node with no card is a node nobody has opened.
- *
- * Null for a row from an earlier card prompt revision, which is what bumping
- * CARD_PROMPT_REVISION means: a card that cannot say what it was written to
- * cannot be narrated at settings anybody could name.
- */
-async function narratedCard(
+/** Who is asking, what they are reading, and where the recording belongs. */
+export interface NarrationTarget {
+  userId: string;
+  /** Off the session, not looked up: it never changes and it is already loaded. */
+  userSlug: string;
+  topic: TopicT;
+  node: LearningNodeT;
+  /**
+   * What the card on screen was written to, as the card route answered it.
+   *
+   * Named by the caller rather than resolved here as "the newest card this node
+   * has". Those are not the same card: moving a chip writes a second card at
+   * those settings and moving it back serves the first one again, so the newest
+   * row is the one the reader just navigated away from. A recording is of the
+   * card the button is on, and this is the only thing that says which that is.
+   */
+  settings: CardSettingsT;
+}
+
+/** The one writing of the card the button sits on, or null if there is none. */
+async function cardBeingRead(
   db: Db,
-  nodeId: string,
-): Promise<{ id: string; content: CardContentT; settings: CardSettingsT } | null> {
-  const row = await db.conceptCard.findFirst({
-    where: { nodeId },
-    orderBy: { createdAt: "desc" },
+  target: NarrationTarget,
+): Promise<{ id: string; content: CardContentT; writtenAt: Date } | null> {
+  const row = await db.conceptCard.findUnique({
+    where: {
+      nodeId_depth_variant: {
+        nodeId: target.node.id,
+        depth: target.settings.depth,
+        variant: cardVariant(target.settings),
+      },
+    },
   });
-  if (row === null) {
-    return null;
-  }
-  const settings = parseCardVariant(row.variant, row.depth, row.instructions);
-  // Parsed here rather than at the one call site that reads it: `content` is a
-  // Json column, which is the one thing Prisma cannot describe the shape of, so
-  // this is the boundary where an unrecognised row has to fail loudly.
-  return settings === null
+  // Parsed here rather than at the call site that reads it: `content` is a Json
+  // column, which is the one thing Prisma cannot describe the shape of, so this
+  // is the boundary where an unrecognised row has to fail loudly.
+  return row === null
     ? null
-    : { id: row.id, content: CardContent.parse(row.content), settings };
+    : { id: row.id, content: CardContent.parse(row.content), writtenAt: row.createdAt };
 }
 
 /**
@@ -65,64 +73,77 @@ async function narratedCard(
  * moved, which is how a rewritten narration.md retires every recording without
  * a migration and without deleting anything.
  */
-async function keyFor(
-  db: Db,
-  userId: string,
-  topic: TopicT,
-  node: LearningNodeT,
-  settings: CardSettingsT,
-): Promise<string> {
-  const user = await db.user.findUnique({ where: { id: userId }, select: { slug: true } });
-  if (user === null) {
-    throw new NotFoundError("Account not found");
-  }
+function keyFor(target: NarrationTarget): string {
   return narrationKey({
-    userSlug: user.slug,
-    topicSlug: topic.slug,
-    nodePath: node.path,
-    depth: settings.depth,
-    variant: cardVariant(settings),
+    userSlug: target.userSlug,
+    topicSlug: target.topic.slug,
+    nodePath: target.node.path,
+    depth: target.settings.depth,
+    variant: cardVariant(target.settings),
   });
 }
 
+/** The columns a stored recording has to say whether it is still the right one. */
+interface NarrationRow {
+  objectKey: string;
+  cardWrittenAt: Date;
+  seconds: number;
+  voice: string;
+  createdAt: Date;
+}
+
+/**
+ * Whether a stored recording is still of the words on the card.
+ *
+ * Two ways it can stop being: the card was written again, which moves its
+ * `createdAt` without changing its id; and NARRATION_PROMPT_REVISION moved,
+ * which changes the key the recording would be written to now. Both are answered
+ * as "there is no recording", because that is what they mean to the button.
+ */
+function isCurrent(row: NarrationRow, key: string, cardWrittenAt: Date): boolean {
+  return row.objectKey === key && row.cardWrittenAt.getTime() === cardWrittenAt.getTime();
+}
+
 /** A stored row as the app sees it: somewhere to play from, and for how long. */
-async function playable(
-  store: ObjectStore,
-  row: { objectKey: string; seconds: number; voice: string },
-): Promise<NodeAudioT> {
+async function playable(store: ObjectStore, row: NarrationRow): Promise<NodeAudioT> {
   return {
     url: await store.signedUrl(row.objectKey, AUDIO_URL_TTL_SECONDS),
     expiresAt: new Date(Date.now() + AUDIO_URL_TTL_SECONDS * 1000),
     seconds: row.seconds,
     voice: row.voice,
+    // What identifies this recording to a player that has already loaded one.
+    madeAt: row.createdAt,
   };
 }
 
 /**
- * The recording of the card on screen, if there is one. Costs two queries and a
- * signature — no model call, no synthesis, and nothing written.
+ * The recording of the card on screen, if there is one. Two queries and, only
+ * when there is something to point at, one signature — no model call, no
+ * synthesis, and nothing written.
  *
- * Answers null rather than an error for every kind of absence: no card yet, no
- * recording yet, or one made under an older narration prompt. All three mean
- * the same thing to the button, which is that pressing it will make one.
+ * The store is a factory rather than a store for that last reason: building it
+ * needs AUDIO_BUCKET, and a deployment that has not set one is supposed to
+ * serve every route and fail only the press. Built eagerly, this route would
+ * answer 502 on every card open instead.
+ *
+ * Null is every kind of "not yet" — no card, no recording, one of a card since
+ * rewritten, one from an older narration prompt. They all mean the same thing
+ * to the button, which is that pressing it will make one.
  */
 export async function readNarration(
   db: Db,
-  store: ObjectStore,
-  userId: string,
-  topic: TopicT,
-  node: LearningNodeT,
+  objects: () => ObjectStore,
+  target: NarrationTarget,
 ): Promise<NodeAudioT | null> {
-  const card = await narratedCard(db, node.id);
+  const card = await cardBeingRead(db, target);
   if (card === null) {
     return null;
   }
   const row = await db.cardNarration.findUnique({ where: { cardId: card.id } });
-  if (row === null) {
+  if (row === null || !isCurrent(row, keyFor(target), card.writtenAt)) {
     return null;
   }
-  const expected = await keyFor(db, userId, topic, node, card.settings);
-  return row.objectKey === expected ? playable(store, row) : null;
+  return playable(objects(), row);
 }
 
 /**
@@ -134,35 +155,38 @@ export async function readNarration(
  * changed later is a synthesis, not a re-reading of the card.
  *
  * Idempotent by design: a second press while the first is still in flight, or
- * one right after it, finds the row already at the key it would write and
- * answers with it rather than paying for the same card twice.
+ * one right after it, finds the row already current and answers with it rather
+ * than paying for the same card twice. That check runs before the budget, so a
+ * press that would have cost nothing is never the one refused — including the
+ * retry after a slow first press timed out at the edge with the work already
+ * done and the row already written.
  */
 export async function writeNarration(
   db: Db,
   provider: LlmProvider,
   speech: SpeechProvider,
-  store: ObjectStore,
-  userId: string,
-  topic: TopicT,
-  node: LearningNodeT,
+  objects: () => ObjectStore,
+  target: NarrationTarget,
 ): Promise<NodeAudioT> {
-  const card = await narratedCard(db, node.id);
+  const card = await cardBeingRead(db, target);
   if (card === null) {
-    // Never generates one: the button lives on a card, so a node with none is a
-    // node this request has no business writing.
+    // Never generates one: the button lives on a card, so a node with none at
+    // these settings is a node this request has no business writing.
     throw new ConflictError("Open this card first — there is nothing to read out yet.");
   }
-  const key = await keyFor(db, userId, topic, node, card.settings);
+  const key = keyFor(target);
   const existing = await db.cardNarration.findUnique({ where: { cardId: card.id } });
-  if (existing !== null && existing.objectKey === key) {
+  const store = objects();
+  if (existing !== null && isCurrent(existing, key, card.writtenAt)) {
     return playable(store, existing);
   }
+  await assertNarrationBudget(db, target.userId);
 
   const { script } = await generateNarration(provider, {
-    topic,
-    node,
+    topic: target.topic,
+    node: target.node,
     card: card.content,
-    settings: card.settings,
+    settings: target.settings,
   });
   const spoken = await speech.speak({ text: script, voice: NARRATION_VOICE });
   const rate = sampleRateOf(spoken.mimeType);
@@ -171,11 +195,13 @@ export async function writeNarration(
   // The object first, the row second. The other order leaves a row pointing at
   // nothing, which the player meets as a broken link; this order can leave an
   // object nothing points at, which nobody meets at all and the next press
-  // overwrites.
+  // overwrites — the key is the card's identity, so a re-recording lands on top
+  // of what it replaces rather than beside it.
   await store.put(key, wav, AUDIO_CONTENT_TYPE);
   const row = {
     script,
     objectKey: key,
+    cardWrittenAt: card.writtenAt,
     seconds: pcmSeconds(spoken.audio.length, rate),
     bytes: wav.length,
     voice: NARRATION_VOICE,
@@ -183,8 +209,9 @@ export async function writeNarration(
   const saved = await db.cardNarration.upsert({
     where: { cardId: card.id },
     create: { id: newId(), cardId: card.id, ...row },
-    // createdAt moves with the content, because it is what the budget counts and
-    // a row keeping its original date is a recording the ceiling never sees.
+    // createdAt moves with the content, because it is what the budget counts, a
+    // row keeping its original date is a recording the ceiling never sees, and
+    // it is what tells a player already holding one that this is a new one.
     update: { ...row, createdAt: new Date() },
   });
   return playable(store, saved);

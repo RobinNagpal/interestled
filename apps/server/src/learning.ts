@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import {
@@ -40,8 +41,9 @@ import { EARLIER_QUESTIONS } from "./llm/prompts";
 import type { LlmProvider, SpeechProvider } from "./llm";
 import { loadProfile } from "./profile";
 import { readNarration, writeNarration } from "./narration";
+import type { NarrationTarget } from "./narration";
 import type { ObjectStore } from "./storage";
-import { assertNarrationBudget, assertQuestionBudget, assertRewriteBudget } from "./topics";
+import { assertQuestionBudget, assertRewriteBudget } from "./topics";
 import { toCardQuestion, toDrill, toNode, toTopic } from "./rows";
 
 async function loadNode(
@@ -203,7 +205,7 @@ async function cardFor(
   // with the content, because it is what the rewrite budget counts and a row
   // that keeps its original date is a rewrite the ceiling never sees. The
   // instructions move with it too: they are what this writing was asked for.
-  const saved = await db.conceptCard.upsert({
+  await db.conceptCard.upsert({
     where: { nodeId_depth_variant: key },
     create: { id: newId(), ...key, instructions: settings.instructions, content },
     update:
@@ -211,13 +213,12 @@ async function cardFor(
         ? { content, instructions: settings.instructions, createdAt: new Date() }
         : {},
   });
-  if (lookup === CardLookup.Rewrite) {
-    // A rewrite replaces the card's text in place, so anything made from that
-    // text is now of words nobody can read. The recording goes with it rather
-    // than being re-made here: making one is the most expensive call in the
-    // product, and nobody asked for a second one by pressing Regenerate.
-    await db.cardNarration.deleteMany({ where: { cardId: saved.id } });
-  }
+  // A rewrite moves the row's createdAt with its content, which is also what
+  // retires the recording made from the old text: card_narrations stores the
+  // date it recorded, and a row that no longer matches is never served. It is
+  // marked stale rather than deleted on purpose — those rows in the last hour
+  // are the narration ceiling, and a counter this endpoint could empty is one a
+  // learner could empty by pressing Regenerate between presses of play.
   return { content, settings };
 }
 
@@ -271,6 +272,26 @@ function settingsFrom(
 }
 
 /**
+ * Which card the play button is on.
+ *
+ * Every setting, and none of them optional: these are what the card route
+ * answered as `settings`, and they are the only thing that names one of a
+ * node's cards rather than another. Defaulting any of them would resolve to a
+ * card the reader is not looking at, which is a recording of the wrong text.
+ */
+const AudioQuery = z.object({
+  depth: z.coerce.number().int().pipe(CardDepth),
+  minutes: z.coerce.number().int().pipe(CardMinutes),
+  englishLevel: EnglishLevelSchema,
+  technicalDetail: TechnicalDetailSchema,
+  format: ContentFormatSchema,
+  paragraphLength: ParagraphLengthSchema,
+  angle: CardAngleSchema,
+});
+
+type AudioQueryT = z.infer<typeof AudioQuery>;
+
+/**
  * Which lookup a request is. A rewrite says so. Anything that moves a chip is
  * asking for the card at those settings exactly; a plain open is asking for the
  * card this node has.
@@ -288,6 +309,32 @@ function lookupFor(query: CardQueryT): CardLookup {
     query.paragraphLength !== undefined ||
     query.angle !== undefined;
   return overridden ? CardLookup.Exact : CardLookup.Written;
+}
+
+/**
+ * The node, the topic and the card the audio routes are about.
+ *
+ * The instructions are read off the node rather than sent, the same as
+ * everywhere else: they are not in the cache key, so they play no part in
+ * naming the card — but the prompt is given them, and they are the node's to
+ * hold between writings.
+ */
+async function audioTarget(
+  db: Db,
+  c: Context<AuthEnv>,
+  nodeId: string,
+  query: AudioQueryT,
+): Promise<NarrationTarget> {
+  const userId = c.get("userId");
+  const { node, topic } = await loadNode(db, userId, nodeId);
+  await refuseGroup(db, node);
+  return {
+    userId,
+    userSlug: c.get("userSlug"),
+    topic,
+    node,
+    settings: { ...query, instructions: node.cardInstructions },
+  };
 }
 
 /**
@@ -453,39 +500,29 @@ export function learningRouter(
    * A query rather than part of the card, because it is not part of the card:
    * the signed link expires, so this is asked again on every mount and every
    * return to the foreground, and folding it into the card route would put a
-   * one-hour expiry inside a response cached for a day. Null is every kind of
-   * "not yet", and all of them mean the same thing to the button.
+   * one-hour expiry inside a response cached for a day.
+   *
+   * The settings are required and are what the card route answered, because
+   * they are the only thing that says which of a node's cards the button is on.
+   * Null is every kind of "not yet", and all of them mean the same thing to it.
    */
-  router.get("/:id/audio", async (c) => {
-    const userId = c.get("userId");
-    const { node, topic } = await loadNode(db, userId, c.req.param("id"));
-    await refuseGroup(db, node);
-    return c.json({ audio: await readNarration(db, objects(), userId, topic, node) });
+  router.get("/:id/audio", zValidator("query", AudioQuery), async (c) => {
+    const target = await audioTarget(db, c, c.req.param("id"), c.req.valid("query"));
+    return c.json({ audio: await readNarration(db, objects, target) });
   });
 
   /**
    * Read this card out and keep the recording.
    *
    * The most expensive press in the product — a model call for the script and
-   * then minutes of synthesis — so it is inside its own hourly ceiling, and it
-   * answers a card already recorded from the bucket rather than making a second
-   * one. It is a POST because it writes: the recording outlives the press, and
-   * a GET that costs money is a GET something will eventually retry.
+   * then minutes of synthesis — so it is inside its own hourly ceiling, which
+   * writeNarration applies after deciding there is actually something to make.
+   * It is a POST because it writes: the recording outlives the press, and a GET
+   * that costs money is a GET something will eventually retry.
    */
-  router.post("/:id/audio", async (c) => {
-    const userId = c.get("userId");
-    const { node, topic } = await loadNode(db, userId, c.req.param("id"));
-    await refuseGroup(db, node);
-    await assertNarrationBudget(db, userId);
-    const audio = await writeNarration(
-      db,
-      provider(LlmTask.Content),
-      speech(),
-      objects(),
-      userId,
-      topic,
-      node,
-    );
+  router.post("/:id/audio", zValidator("query", AudioQuery), async (c) => {
+    const target = await audioTarget(db, c, c.req.param("id"), c.req.valid("query"));
+    const audio = await writeNarration(db, provider(LlmTask.Content), speech(), objects, target);
     return c.json({ audio }, 201);
   });
 

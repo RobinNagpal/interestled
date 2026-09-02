@@ -525,12 +525,16 @@ screen, and the words point at it.
 
 That costs two model calls, so it happens once. The script and the audio are kept
 together, keyed on the card they were made from — not on the node, because a node has a
-card per setting and the recording is of the one being read — and the file goes into a
-bucket under a path built from the same slugs the URLs are built from:
-`robin/kubernetes/scheduling/taints/…`. The second press is a download. Pressing
-*write it again* on the card below drops the recording with the text it was of, and
-nothing is made in its place: asking for a card to be written again is not asking to be
-read to.
+card per setting and the recording is of the one being read, which is why the play
+button says which card it is on rather than letting the server guess. The file goes into
+a bucket under a path built from the same slugs the URLs are built from:
+`robin/kubernetes/scheduling/taints/…`. The second press is a download.
+
+Pressing *write it again* on the card below retires the recording along with the text it
+was of, and nothing is made in its place: asking for a card to be written again is not
+asking to be read to. The button goes back to offering one, and a player part-way
+through the old recording stops offering to resume it — reading out words that are no
+longer on the screen is the one thing this feature must never do.
 
 - *Covers:* W5 (a different channel for the same content), W8 (hands free while it
   plays), A1 (a card that reads as a wall can be listened to instead).

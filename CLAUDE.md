@@ -407,18 +407,35 @@ also the one prompt that turns off a `SYSTEM` rule, because "every string you wr
 rendered as Markdown" read aloud is a machine saying "asterisk". Both halves are covered
 by tests.
 
-- **The recording is of a card, not of a node.** `card_narrations.card_id` is unique,
-  and the card it names is the one `CardLookup.Written` would answer with — the card on
-  the screen the button is on. A rewrite replaces that card's text in place, so the
-  route deletes the row with it and makes nothing in its place: pressing *write it
-  again* is not asking to be read to.
+- **The recording is of a card, not of a node**, and the app says which. The audio
+  routes take the seven settings the card route answered, and resolve the card at
+  exactly them. "The newest card this node has" is not the same card: moving a chip
+  writes a second one and moving it back serves the first again, so the newest row is
+  the one the reader just navigated away from.
+- **A rewrite retires the recording without deleting the row.** `card_narrations`
+  stores `card_written_at`, the card's own `createdAt` at the moment it recorded, and a
+  row that no longer matches is never served — so pressing *write it again* is not
+  asking to be read to. Marked stale rather than deleted because those rows in the last
+  hour are the ceiling below: a counter another endpoint empties is a counter a learner
+  empties, and rewrite-then-play in a loop would cost nothing against the tightest
+  budget in the product.
 - **The bucket is laid out by slug, and the key is the card's identity.**
   `narrationKey` builds `<user>/<topic>/<node path>/n<rev>-d<depth>-<variant>.wav`, so a
   card rewritten at the same settings overwrites its own object and one written at other
   settings gets its own. `users.slug` is allocated at registration from the address —
   `emailSlug` then `uniqueSlug`, because two accounts at two providers can hold the same
   local part and their folders must not be the same folder — and never changed, because
-  changing it orphans everything already recorded.
+  changing it orphans everything already recorded. It rides on the session beside
+  `defaultDepth`, so the audio routes do not re-read it. Anything searching for the
+  slugs that could collide with a base must search on `slugStem(base)`: `uniqueSlug`
+  cuts a long base short before numbering it, so the variants of a 58-character base do
+  not start with those 58 characters, and searching on the base proposes a taken slug
+  forever.
+- **Nothing deletes an object.** A re-recording overwrites its own key, but a deleted
+  node, a rebuilt map and a bumped revision all leave objects with no row pointing at
+  them. There is no lifecycle rule, because expiring a learner's recording silently
+  costs a model call to get back. It is a known cost, not an oversight — the fix is a
+  sweep by prefix, and it needs `s3:DeleteObject` the API user deliberately lacks.
 - **`NARRATION_PROMPT_REVISION` retires every recording**, the same way
   `CARD_PROMPT_REVISION` retires every card. It travels in the key, and the row stores
   the key it was written to, so a bump makes every stored row miss its own lookup. No
@@ -429,8 +446,17 @@ by tests.
   on it — the cost is size, about 48 KB a second, which is why the object is made once
   and played from the bucket after that.
 - **It is the most expensive press in the product**, so it has the tightest ceiling
-  (`assertNarrationBudget`) and the POST is idempotent: a row already at the key it
-  would write is answered rather than remade.
+  (`assertNarrationBudget`) and the POST is idempotent: a row already current is
+  answered rather than remade. The ceiling is checked *after* that, so a press that
+  would have cost nothing is never the one refused — which is also what makes the retry
+  work after a slow first press was cut off at CloudFront's 60s origin timeout with the
+  work already done and the row already written. That timeout is the known limit here:
+  a ten-minute card is a script plus minutes of synthesis in one request, and the app's
+  answer to a failed press is to go and look rather than to pay again.
+- **`GET` must not build the object store until it has something to sign.** It runs on
+  every card mount and every return to the foreground, so building it eagerly would make
+  a deployment with no `AUDIO_BUCKET` answer 502 on every card open — which is the
+  opposite of what optional is supposed to mean. It takes the factory, not the store.
 - **The signed URL is never cached and never persisted.** It expires in an hour, so the
   query takes the default policy and `shouldPersistQuery` keeps it off disk — a launch
   that painted a restored link would paint a dead one.

@@ -32,7 +32,13 @@ numbered AS (
   SELECT id, stem, row_number() OVER (PARTITION BY stem ORDER BY id) AS rank FROM base
 )
 UPDATE "users" AS u
-SET "slug" = CASE WHEN n.rank = 1 THEN n.stem ELSE left(n.stem, 55) || '-' || n.rank END
+-- The stem is trimmed again after the cut, the same way uniqueSlug does it: a
+-- base whose 55th character is a hyphen would otherwise produce "foo--2", which
+-- the Slug schema refuses and the runtime allocator could never write.
+SET "slug" = CASE
+  WHEN n.rank = 1 THEN n.stem
+  ELSE trim(BOTH '-' FROM left(n.stem, 55)) || '-' || n.rank
+END
 FROM numbered AS n
 WHERE u."id" = n."id";
 
@@ -55,6 +61,7 @@ CREATE TABLE "card_narrations" (
     "card_id" TEXT NOT NULL,
     "script" TEXT NOT NULL,
     "object_key" TEXT NOT NULL,
+    "card_written_at" TIMESTAMP(3) NOT NULL,
     "seconds" INTEGER NOT NULL,
     "bytes" INTEGER NOT NULL,
     "voice" TEXT NOT NULL,

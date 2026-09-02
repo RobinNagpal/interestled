@@ -2,15 +2,28 @@ import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { LoginInput, RegisterInput, User, emailSlug, newId, uniqueSlug } from "@interestled/schemas";
+import {
+  LoginInput,
+  RegisterInput,
+  User,
+  emailSlug,
+  newId,
+  slugStem,
+  uniqueSlug,
+} from "@interestled/schemas";
 import type { UserT } from "@interestled/schemas";
 import { Prisma } from "@prisma/client";
-import { z } from "zod";
 import type { Db } from "./db";
+import { UniqueViolation } from "./errors";
 import { hashPassword, verifyPassword } from "./password";
 
 export interface AuthEnv {
-  Variables: { userId: string; defaultDepth: number };
+  /**
+   * `userSlug` is here for the same reason `defaultDepth` is: it is on the user
+   * row the session already loads, it never changes, and the alternative is a
+   * second lookup on a route that runs on every card view.
+   */
+  Variables: { userId: string; defaultDepth: number; userSlug: string };
 }
 
 /**
@@ -40,8 +53,13 @@ function issueToken(): string {
  */
 async function allocateSlug(db: Db, email: string): Promise<string> {
   const base = emailSlug(email);
+  // The stem rather than the base: uniqueSlug cuts a long base short before
+  // numbering it, so "<58 characters>-2" does not start with the 58 characters.
+  // Searching on the base would not see that row, uniqueSlug would propose the
+  // same slug again, and every attempt would lose on the unique index — leaving
+  // that address unable to register at all.
   const taken = await db.user.findMany({
-    where: { slug: { startsWith: base } },
+    where: { slug: { startsWith: slugStem(base) } },
     select: { slug: true },
   });
   return uniqueSlug(base, new Set(taken.map((row) => row.slug)));
@@ -63,7 +81,7 @@ function slugCollision(error: unknown): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
     return false;
   }
-  const target = z.object({ target: z.array(z.string()) }).safeParse(error.meta);
+  const target = UniqueViolation.safeParse(error.meta);
   return target.success && target.data.target.includes("slug");
 }
 
@@ -147,6 +165,7 @@ export function requireAuth(db: Db): MiddlewareHandler<AuthEnv> {
     }
     c.set("userId", session.userId);
     c.set("defaultDepth", session.user.defaultDepth);
+    c.set("userSlug", session.user.slug);
     await next();
   };
 }

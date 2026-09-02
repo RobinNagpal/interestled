@@ -7,6 +7,25 @@ import {
   shouldPersistQuery,
 } from "../src/queryClient";
 import type { Query } from "@tanstack/react-query";
+import {
+  CardAngle,
+  ContentFormat,
+  EnglishLevel,
+  ParagraphLength,
+  TechnicalDetail,
+} from "@interestled/schemas";
+
+/** What a plain open of a three-minute node is written to. */
+const settings = {
+  depth: 2,
+  minutes: 3,
+  englishLevel: EnglishLevel.Medium,
+  technicalDetail: TechnicalDetail.Medium,
+  format: ContentFormat.Prose,
+  paragraphLength: ParagraphLength.Medium,
+  angle: CardAngle.Base,
+  instructions: "",
+};
 
 /**
  * The cache policy is what keeps the phone and the website showing the same
@@ -48,7 +67,7 @@ describe("createAppQueryClient", () => {
   it("asks again for a recording's link, which is signed and expires", () => {
     // Not generated content, despite what it points at: what this key holds is
     // a URL with an hour on it, and the audio itself is in the bucket.
-    expect(client.getQueryDefaults(keys.audio("node"))).toEqual({});
+    expect(client.getQueryDefaults(keys.audio("node", settings))).toEqual({});
   });
 });
 
@@ -59,7 +78,7 @@ describe("shouldPersistQuery", () => {
   }
 
   it("keeps the signed link off disk, so a launch never paints a dead one", () => {
-    expect(shouldPersistQuery(settled(keys.audio("node")))).toBe(false);
+    expect(shouldPersistQuery(settled(keys.audio("node", settings)))).toBe(false);
   });
 
   it("writes everything else, which is what opening on the app rather than a spinner needs", () => {

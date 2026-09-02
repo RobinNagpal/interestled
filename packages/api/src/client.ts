@@ -257,14 +257,14 @@ export interface ApiClient {
    * Cheap — no model call and nothing written — but never cached for long: the
    * URL it carries is signed and expires.
    */
-  getNodeAudio(nodeId: string): Promise<NodeAudioT | null>;
+  getNodeAudio(nodeId: string, settings: CardSettingsT): Promise<NodeAudioT | null>;
   /**
    * Read this card out and keep it. The most expensive call in the product, so
    * it is a mutation the learner sets off by pressing a button and nothing can
    * refetch. A card already recorded comes back from the bucket rather than
    * being made again.
    */
-  createNodeAudio(nodeId: string): Promise<NodeAudioT>;
+  createNodeAudio(nodeId: string, settings: CardSettingsT): Promise<NodeAudioT>;
   getDrill(nodeId: string, kind?: DrillKind): Promise<DrillT>;
   submitAttempt(input: AttemptInputT): Promise<AttemptResultT>;
   setNodeStatus(nodeId: string, status: NodeStatus): Promise<LearningNodeT>;
@@ -281,6 +281,27 @@ export interface ApiClient {
     draft: string;
     lastThought: string;
   }): Promise<void>;
+}
+
+/**
+ * Which card a recording is of, as the card route answered it.
+ *
+ * Every field, unlike the card query, which sends only what the learner
+ * overrode: this is not asking for a card to be written to some settings, it is
+ * naming the one already on screen, and a field left out would name a different
+ * one. `instructions` is absent because it is not in the cache key — the server
+ * reads it off the node.
+ */
+function audioQuery(settings: CardSettingsT): string {
+  return new URLSearchParams({
+    depth: String(settings.depth),
+    minutes: String(settings.minutes),
+    englishLevel: settings.englishLevel,
+    technicalDetail: settings.technicalDetail,
+    format: settings.format,
+    paragraphLength: settings.paragraphLength,
+    angle: settings.angle,
+  }).toString();
 }
 
 export function createApiClient(config: ClientConfig): ApiClient {
@@ -377,10 +398,10 @@ export function createApiClient(config: ClientConfig): ApiClient {
     listQuestions: (nodeId) => get(`/api/nodes/${nodeId}/questions`, z.array(CardQuestion)),
     askQuestion: (nodeId, question) =>
       post(`/api/nodes/${nodeId}/questions`, CardQuestion, { question }),
-    getNodeAudio: async (nodeId) =>
-      (await get(`/api/nodes/${nodeId}/audio`, NodeAudioView)).audio,
-    createNodeAudio: async (nodeId) =>
-      (await post(`/api/nodes/${nodeId}/audio`, NodeAudioResult)).audio,
+    getNodeAudio: async (nodeId, settings) =>
+      (await get(`/api/nodes/${nodeId}/audio?${audioQuery(settings)}`, NodeAudioView)).audio,
+    createNodeAudio: async (nodeId, settings) =>
+      (await post(`/api/nodes/${nodeId}/audio?${audioQuery(settings)}`, NodeAudioResult)).audio,
     getDrill: (nodeId, kind) =>
       get(`/api/nodes/${nodeId}/drill${kind === undefined ? "" : `?kind=${kind}`}`, Drill),
     submitAttempt: (input) => post("/api/nodes/attempts", AttemptResult, input),

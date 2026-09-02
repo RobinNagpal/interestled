@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useNodeAudio, useReadCardAloud } from "@interestled/api";
+import { isLoadedRecordingCurrent } from "@interestled/domain";
+import type { LoadedRecording } from "@interestled/domain";
+import type { NodeAudioT, CardSettingsT } from "@interestled/schemas";
 import { ErrorState } from "@interestled/ui";
 import { messageOf } from "../lib/errors";
 
@@ -15,14 +18,23 @@ import { messageOf } from "../lib/errors";
  * button, what it will cost beside it, and nothing that has to be understood
  * before it can be pressed.
  *
- * The first press is a model call and a synthesis — half a minute, and the most
- * expensive thing the product does — so the line under the button says so
- * before it is pressed. After that the recording is in the bucket and a press
- * is a download.
+ * The first press is a model call and a synthesis, so the line under the button
+ * says roughly how long before it is pressed. After that the recording is in the
+ * bucket and a press is a download.
  */
-export function CardAudio({ nodeId }: { nodeId: string }): ReactElement {
-  const audio = useNodeAudio(nodeId);
-  const read = useReadCardAloud(nodeId);
+export function CardAudio({
+  nodeId,
+  settings,
+}: {
+  nodeId: string;
+  /**
+   * What the card on screen was written to. It is what names the recording:
+   * a node has one per card, and the button is on exactly one of them.
+   */
+  settings: CardSettingsT;
+}): ReactElement {
+  const audio = useNodeAudio(nodeId, settings);
+  const read = useReadCardAloud(nodeId, settings);
   // One player for the life of this card, fed by `replace` rather than by a
   // source prop. useAudioPlayer builds a new player whenever the source it is
   // given changes and releases the old one — so passing state into it and
@@ -30,12 +42,17 @@ export function CardAudio({ nodeId }: { nodeId: string }): ReactElement {
   // press that started the audio would be the one that stopped it.
   const player = useAudioPlayer();
   const status = useAudioPlayerStatus(player);
-  // What is loaded, which is not simply the URL the query holds: that link is
-  // signed and expires in an hour, so the query is asked again on every mount
-  // and every return to the foreground and answers with a new one each time.
-  // Reloading on each of those would lose the position on the very trip that
-  // was meant to keep it.
-  const [loaded, setLoaded] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<LoadedRecording | null>(null);
+  // A recording takes half a minute to make, which is long enough to leave the
+  // card. React Query still runs this call's onSuccess, and playing through a
+  // player expo-audio released on unmount is a native error.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   // The screen keeps the card on screen while the next one loads, so this can
   // be handed a different node without unmounting. The last node's recording
@@ -47,18 +64,24 @@ export function CardAudio({ nodeId }: { nodeId: string }): ReactElement {
     };
   }, [nodeId, player]);
 
-  const play = (url: string): void => {
-    player.replace(url);
+  const load = (made: NodeAudioT): void => {
+    player.replace(made.url);
     player.play();
-    setLoaded(url);
+    setLoaded({ madeAt: made.madeAt.getTime(), expiresAt: made.expiresAt.getTime() });
   };
+
+  const recorded = audio.data ?? null;
+  // Whether pressing play should resume what is loaded or fetch it again. The
+  // rule is in the domain package rather than here because getting it wrong
+  // reads the wrong card out at somebody — see isLoadedRecordingCurrent.
+  const current = isLoadedRecordingCurrent(loaded, recorded);
 
   const press = (): void => {
     if (status.playing) {
       player.pause();
       return;
     }
-    if (loaded !== null) {
+    if (current) {
       // At the end the head is already past everything, and pressing play does
       // nothing at all — which reads as a broken button rather than a finished
       // one. So it starts again.
@@ -68,21 +91,27 @@ export function CardAudio({ nodeId }: { nodeId: string }): ReactElement {
       player.play();
       return;
     }
-    const existing = audio.data ?? null;
-    if (existing !== null) {
-      play(existing.url);
+    if (recorded !== null) {
+      load(recorded);
       return;
     }
-    read.mutate(undefined, { onSuccess: (made) => play(made.url) });
+    read.mutate(undefined, {
+      onSuccess: (made) => {
+        if (alive.current) {
+          load(made);
+        }
+      },
+    });
   };
 
-  const recorded = audio.data ?? null;
   // The stored length until there is a file to ask, because the button says how
   // long before anything has been downloaded.
-  const seconds = loaded === null ? (recorded?.seconds ?? 0) : Math.round(status.duration);
-  // Downloading is a wait too, and a shorter one than making it — but a button
-  // that does nothing for four seconds is the same button either way.
-  const busy = read.isPending || (loaded !== null && !status.isLoaded) || status.isBuffering;
+  const seconds = current ? Math.round(status.duration) : (recorded?.seconds ?? 0);
+  // Buffering is deliberately not in here. It goes true whenever the player is
+  // waiting on the next stretch of an 11 MB file, which on mobile data is most
+  // of the playback — and a disabled button then is a pause control that cannot
+  // be pressed for the length of the recording.
+  const busy = read.isPending || (loaded !== null && !status.isLoaded);
 
   return (
     <View className="gap-2">
@@ -107,9 +136,18 @@ export function CardAudio({ nodeId }: { nodeId: string }): ReactElement {
           )}
         </Pressable>
         <View className="flex-1 gap-0.5">
-          <Text className="text-sm font-medium text-ink">{title(recorded !== null, read.isPending, status.playing)}</Text>
+          <Text className="text-sm font-medium text-ink">
+            {title(recorded !== null, read.isPending, status.playing)}
+          </Text>
           <Text className="text-xs text-ink-soft">
-            {note(recorded !== null, read.isPending, seconds, status.currentTime, status.playing)}
+            {note({
+              recorded: recorded !== null,
+              making: read.isPending,
+              minutes: settings.minutes,
+              seconds,
+              currentTime: status.currentTime,
+              playing: status.playing,
+            })}
           </Text>
         </View>
       </View>
@@ -135,26 +173,42 @@ function clock(seconds: number): string {
 }
 
 /**
+ * Roughly how long making one takes, which is not a constant: the script is a
+ * model call and the synthesis is minutes of speech, so a ten-minute card is a
+ * long wait where a three-minute one is not. W3 only works while the estimates
+ * are true, so this scales with the card rather than always saying half a
+ * minute.
+ */
+function wait(minutes: number): string {
+  return minutes <= 3 ? "about half a minute" : `up to a minute or two for a ${minutes}-minute card`;
+}
+
+/**
  * The line under the button. It says one thing at a time, and the thing it says
  * is whatever the reader has not been told yet: what the press will cost before
  * it is pressed, how long the recording runs once there is one, and where it has
  * got to while it plays.
  */
-function note(
-  recorded: boolean,
-  making: boolean,
-  seconds: number,
-  currentTime: number,
-  playing: boolean,
-): string {
-  if (making) {
-    return "Writing what to say, then saying it. About half a minute.";
+function note(state: {
+  recorded: boolean;
+  making: boolean;
+  minutes: number;
+  seconds: number;
+  currentTime: number;
+  playing: boolean;
+}): string {
+  if (state.making) {
+    return `Writing what to say, then saying it. ${sentenceCase(wait(state.minutes))}.`;
   }
-  if (!recorded) {
-    return "Someone explaining the card, not reading it out. Half a minute to make, once.";
+  if (!state.recorded) {
+    return `Someone explaining the card, not reading it out. Made once, in ${wait(state.minutes)}.`;
   }
-  if (playing) {
-    return `${clock(currentTime)} of ${clock(seconds)}`;
+  if (state.playing) {
+    return `${clock(state.currentTime)} of ${clock(state.seconds)}`;
   }
-  return seconds > 0 ? `${clock(seconds)} long` : "Ready to play";
+  return state.seconds > 0 ? `${clock(state.seconds)} long` : "Ready to play";
+}
+
+function sentenceCase(text: string): string {
+  return `${text.slice(0, 1).toUpperCase()}${text.slice(1)}`;
 }

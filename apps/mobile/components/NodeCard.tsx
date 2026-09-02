@@ -180,7 +180,7 @@ export function NodeCard({
           reading is a decision made before starting rather than after finishing.
           It reads the card that is on screen, so it belongs to the card rather
           than to the panel of controls at the bottom. */}
-      <CardAudio nodeId={node.id} />
+      <CardAudio nodeId={node.id} settings={settings} />
 
       {/* Advisory, not a gate. A live question is the strongest motivation the
           learner will ever have, and a lock spends it. */}

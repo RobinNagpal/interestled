@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { CARD_MINUTES_MAX, CardMinutes } from "./cards";
-import { Id } from "./ids";
 
 /**
  * Which generation of the narration prompt made a stored recording.
@@ -107,27 +106,6 @@ export function narrationKey(input: {
 }
 
 /**
- * A card read aloud: the script it was made from, and where the audio sits.
- *
- * The script is kept as well as the audio because it is the expensive half —
- * making it is a model call against the whole card, where saying it again is
- * not — and because it is the only readable record of what a recording
- * contains.
- */
-export const CardNarration = z.object({
-  id: Id,
-  cardId: Id,
-  script: z.string().min(1).max(NARRATION_SCRIPT_MAX),
-  objectKey: z.string().min(1).max(1024),
-  seconds: z.number().int().min(0),
-  bytes: z.number().int().min(0),
-  voice: z.string().min(1).max(64),
-  createdAt: z.coerce.date(),
-});
-
-export type CardNarrationT = z.infer<typeof CardNarration>;
-
-/**
  * What the app is given: somewhere to play from, and how long it runs.
  *
  * The URL is signed and short-lived rather than public, because a recording is
@@ -140,6 +118,16 @@ export const NodeAudio = z.object({
   expiresAt: z.coerce.date(),
   seconds: z.number().int().min(0),
   voice: z.string().min(1).max(64),
+  /**
+   * When this recording was made, which is what identifies it.
+   *
+   * Neither the URL nor the object key can do that job: the URL is signed fresh
+   * on every read, and the key is stable across a re-recording on purpose, so
+   * the object overwrites its own. This moves every time the words change — so
+   * a player holding a loaded file can tell whether it is still the recording
+   * the server has, or one of a card that has since been written again.
+   */
+  madeAt: z.coerce.date(),
 });
 
 /** Null before anything has been recorded for the card on screen. */
