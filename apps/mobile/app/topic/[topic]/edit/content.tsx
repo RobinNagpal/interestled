@@ -8,7 +8,7 @@ import {
   Button,
   ErrorState,
   ENGLISH_COPY,
-  FormScroll,
+  Screen,
   ENGLISH_OPTIONS,
   FORMAT_COPY,
   FORMAT_OPTIONS,
@@ -133,7 +133,7 @@ function ContentForm({
   };
 
   return (
-    <FormScroll contentContainerClassName="gap-5 p-4">
+    <Screen contentContainerClassName="gap-5 p-4">
       {/* Two questions where there was one, because the old single chip could
           not say "everyday words, all the terminology". */}
       <View className="gap-2">
@@ -227,6 +227,6 @@ function ContentForm({
       {save.isError ? <ErrorState message={messageOf(save.error)} /> : null}
 
       <Button label={save.isPending ? "Saving…" : "Save"} onPress={submit} busy={save.isPending} />
-    </FormScroll>
+    </Screen>
   );
 }

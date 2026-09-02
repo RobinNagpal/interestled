@@ -34,7 +34,7 @@ export type { BadgeProps, ButtonProps, InputProps, LabelProps, TextProps, Textar
 export * from "./components/Button";
 export * from "./components/HeaderButton";
 export * from "./components/Sheet";
-export * from "./components/FormScroll";
+export * from "./components/Screen";
 export * from "./keyboard";
 export * from "./components/Input";
 export * from "./components/States";

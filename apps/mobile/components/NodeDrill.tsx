@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useDrill, useSaveResume, useSubmitAttempt } from "@interestled/api";
@@ -8,7 +8,7 @@ import {
   Button,
   Card,
   ErrorState,
-  FormScroll,
+  Screen,
   InlineMarkdown,
   Input,
   LoadingContent,
@@ -85,7 +85,7 @@ export function NodeDrill({ topic, node }: { topic: TopicT; node: LearningNodeT 
 
   if (verdict !== null) {
     return (
-      <ScrollView contentContainerClassName="gap-5 p-4">
+      <Screen contentContainerClassName="gap-5 p-4">
         <SectionTitle>{verdict.passed ? "That holds up" : "Close — here is the gap"}</SectionTitle>
         {/* The diff, right things first, so the rest gets read. */}
         <Card>
@@ -108,12 +108,12 @@ export function NodeDrill({ topic, node }: { topic: TopicT; node: LearningNodeT 
             }}
           />
         )}
-      </ScrollView>
+      </Screen>
     );
   }
 
   return (
-    <FormScroll contentContainerClassName="gap-5 p-4">
+    <Screen contentContainerClassName="gap-5 p-4">
       {/* Predict drills say so explicitly: the commitment is the point, and
           nothing here is scored. */}
       {isPredict ? (
@@ -164,7 +164,7 @@ export function NodeDrill({ topic, node }: { topic: TopicT; node: LearningNodeT 
         busy={submit.isPending}
         disabled={response.trim().length === 0}
       />
-    </FormScroll>
+    </Screen>
   );
 }
 

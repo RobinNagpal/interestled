@@ -1,7 +1,10 @@
+// A sheet is not a screen: it scrolls inside its own card, and it is mounted
+// outside the root view, so it carries the keyboard inset itself below.
+// eslint-disable-next-line no-restricted-imports
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 import { Text } from "../ui/text";
-import { useKeyboardInset } from "./FormScroll";
+import { useKeyboardInset } from "./Screen";
 
 /**
  * A question asked in front of the screen it belongs to, rather than on a screen

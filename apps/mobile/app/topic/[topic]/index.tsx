@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useRegenerateTopic, useSetNodeStatus, useTopic } from "@interestled/api";
@@ -18,11 +18,12 @@ import {
   GroupCard,
   HeaderButton,
   InlineMarkdown,
+  LoadingContent,
   MapRow,
   Minutes,
   NodeStatusDot,
+  Screen,
   SectionTitle,
-  LoadingContent,
   statusLabel,
 } from "@interestled/ui";
 import { NodeStatus, TopicStatus, mapShapeOf } from "@interestled/schemas";
@@ -166,7 +167,7 @@ export default function TopicScreen(): ReactElement {
   };
 
   return (
-    <ScrollView contentContainerClassName="gap-5 p-4">
+    <Screen contentContainerClassName="gap-5 p-4">
       {header}
       <View className="gap-1">
         {/* Progress as ability, never as a percentage of an unseen total. */}
@@ -214,7 +215,7 @@ export default function TopicScreen(): ReactElement {
           onPress={() => router.push(nodeHref(topicSlug, next.path))}
         />
       )}
-    </ScrollView>
+    </Screen>
   );
 }
 

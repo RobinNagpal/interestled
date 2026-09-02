@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useTopic, useUpdateTopicInfo } from "@interestled/api";
 import { editHref } from "@interestled/domain";
-import { Button, ErrorState, FormScroll, Input, LoadingContent } from "@interestled/ui";
+import { Button, ErrorState, Screen, Input, LoadingContent } from "@interestled/ui";
 import type { TopicT } from "@interestled/schemas";
 import { messageOf } from "../../../../lib/errors";
 import { backHeader, goBack } from "../../../../lib/nav";
@@ -74,7 +74,7 @@ function GoalsForm({ topicSlug, topic }: { topicSlug: string; topic: TopicT }): 
   };
 
   return (
-    <FormScroll contentContainerClassName="gap-5 p-4">
+    <Screen contentContainerClassName="gap-5 p-4">
       <Input label="What you are learning" value={title} onChangeText={setTitle} maxLength={120} />
       <Input
         label="One line about it"
@@ -115,6 +115,6 @@ function GoalsForm({ topicSlug, topic }: { topicSlug: string; topic: TopicT }): 
         busy={save.isPending}
         disabled={title.trim().length < 2}
       />
-    </FormScroll>
+    </Screen>
   );
 }

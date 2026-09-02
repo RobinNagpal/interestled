@@ -5,7 +5,7 @@ import {
   Button,
   Card,
   ErrorState,
-  FormScroll,
+  Screen,
   Input,
 } from "@interestled/ui";
 import { useAuth } from "../lib/auth";
@@ -37,7 +37,7 @@ export function AuthScreen(): ReactElement {
   };
 
   return (
-    <FormScroll contentContainerClassName="flex-1 justify-center gap-6 bg-surface-sunken p-6">
+    <Screen contentContainerClassName="flex-1 justify-center gap-6 bg-surface-sunken p-6">
       <View className="gap-2">
         <Text className="text-3xl font-bold text-ink">Interest Led</Text>
         <Text className="text-base text-ink-soft">
@@ -71,6 +71,6 @@ export function AuthScreen(): ReactElement {
           }}
         />
       </Card>
-    </FormScroll>
+    </Screen>
   );
 }

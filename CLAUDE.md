@@ -416,18 +416,37 @@ holds only what this product composes on top of them.
   there is no such rule the vendored component is exported straight — `Card` is
   the whole of `Card`. A wrapper that only renames a variant is one more thing to
   keep in step.
-- **A screen with a field on it is a `FormScroll`, never a bare `ScrollView`.**
-  Neither mobile browser shrinks the page when the keyboard opens — the layout
-  viewport keeps its height and the keys are drawn over the bottom of it — so a
-  screen that is one full-height scrolling box has a dead band at the bottom that
-  no amount of scrolling can lift a field out of. `FormScroll` shrinks the box by
-  `keyboardOverlap`, the difference between the layout viewport and the visual
-  one, and then puts what is focused back in the middle of what is left. It also
-  carries the props that only ever have one right answer on a form:
-  `keyboardShouldPersistTaps="handled"`, so the button under the keyboard takes
-  one tap rather than two, and iOS's own `automaticallyAdjustKeyboardInsets`.
-  `Sheet` does the same to itself, because a sheet opens against the bottom edge
-  and is the thing a keyboard covers most completely.
+- **The keyboard is handled once, above every screen.** Neither mobile browser
+  shrinks the page when the keyboard opens — the layout viewport keeps its
+  height and the keys are drawn over the bottom of it — so a screen that is one
+  full-height scrolling box has a dead band at the bottom that no amount of
+  scrolling can lift a field out of. `KeyboardInset` wraps the navigator in
+  `app/_layout.tsx` and shrinks the whole app by `keyboardOverlap`, the
+  difference between the layout viewport and the visual one, then puts what is
+  focused back in the middle of what is left. It reads the focused element off
+  the document rather than being told where to look, which is what lets one copy
+  serve everything. Per-screen was the obvious way to write this and the wrong
+  one: "which screens have a field" gets a different answer every time somebody
+  adds one, and the screen that gets missed is found by a learner typing into a
+  box they cannot see. `Sheet` carries the inset a second time, and is the only
+  thing that has to — a modal is mounted outside the root view on the web.
+- **Every screen is a `Screen`, never a bare `ScrollView`** — the ones with no
+  field on them today included, because that is what stops the question being
+  asked again when one is added. It is a `ScrollView` carrying the props that
+  have one right answer with a keyboard up: `keyboardShouldPersistTaps="handled"`,
+  so the button under the keyboard takes one tap rather than two, and iOS's own
+  `automaticallyAdjustKeyboardInsets`, which does the inset and the scroll
+  natively there. `no-restricted-imports` in the shared ESLint config is what
+  holds the rule, since a screen written the old way looks right until somebody
+  is typing into it on a phone. Three files disable it and say why: `Screen`
+  itself, `Sheet`, and the sideways scroller `Markdown` puts a wide fenced block
+  in.
+- **`keyboardDismissMode="on-drag"` is native-only.** react-native-web hangs it
+  off every scroll event rather than a drag, so on the web it blurs the field on
+  the very scroll that reveals it — the keyboard closes as you tap into the box.
+  A screenshot does not show it: the field is where it should be, and only the
+  focus is gone. It was found by checking `document.activeElement` after the
+  reveal, which is worth doing again to anything else that scrolls a form.
 - **`cn` is what makes an override work**, and it has to be taught anything
   Tailwind did not ship: `rounded-card` is registered on its border-radius theme,
   or `cn("rounded-md", "rounded-card")` emits both and the winner is whichever

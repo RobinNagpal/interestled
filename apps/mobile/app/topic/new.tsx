@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { router } from "expo-router";
 import { useCreateTopic, useMapQuestions } from "@interestled/api";
 import { topicHref } from "@interestled/domain";
-import { Button, ErrorState, FormScroll, Input, Sheet } from "@interestled/ui";
+import { Button, ErrorState, Screen, Input, Sheet } from "@interestled/ui";
 import { MapShapeInput } from "@interestled/schemas";
 import type { MapAnswerT, MapPlanViewT, MapShapeT } from "@interestled/schemas";
 import { messageOf } from "../../lib/errors";
@@ -73,7 +73,7 @@ export default function NewTopicScreen(): ReactElement {
   const busy = questions.isPending || create.isPending;
 
   return (
-    <FormScroll contentContainerClassName="gap-5 p-4">
+    <Screen contentContainerClassName="gap-5 p-4">
       <Input
         label="What do you want to learn?"
         value={title}
@@ -162,6 +162,6 @@ export default function NewTopicScreen(): ReactElement {
           </>
         )}
       </Sheet>
-    </FormScroll>
+    </Screen>
   );
 }
