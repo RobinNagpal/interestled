@@ -939,8 +939,13 @@ describe("card generation", () => {
 describe("card questions", () => {
   const ANSWER = JSON.stringify({ answer: "Because the actual state keeps changing under it." });
 
-  function questionDb(): { db: Db; created: object[] } {
+  function questionDb(): { db: Db; created: object[]; answers: string[] } {
+    // What was written when the row was reserved, copied rather than shared:
+    // the update below fills the same row in, and a reference here would show
+    // the answer on the record of the call that happened before it existed.
     const created: object[] = [];
+    const answers: string[] = [];
+    const rows = new Map<string, { id: string; question: string; answer: string }>();
     const node = {
       id: "n2",
       topicId: "t1",
@@ -999,13 +1004,22 @@ describe("card questions", () => {
             createdAt: new Date(),
           },
         ]),
-        create: vi.fn(async ({ data }: { data: object }) => {
-          created.push(data);
-          return { ...data, createdAt: new Date() };
+        // The row is reserved before the model is called, so this is the empty
+        // one, and the update below is what fills it in.
+        create: vi.fn(async ({ data }: { data: { id: string; question: string; answer: string } }) => {
+          created.push({ ...data });
+          rows.set(data.id, { ...data });
+          return { ...data, nodeId: "n2", createdAt: new Date() };
+        }),
+        update: vi.fn(async ({ where, data }: { where: { id: string }; data: { answer: string } }) => {
+          const row = { ...rows.get(where.id)!, ...data };
+          rows.set(where.id, row);
+          answers.push(data.answer);
+          return { ...row, nodeId: "n2", createdAt: new Date() };
         }),
       },
     };
-    return { db: db as unknown as Db, created };
+    return { db: db as unknown as Db, created, answers };
   }
 
   const ask = (db: Db, provider: (task: LlmTask) => LlmProvider, question: string) =>
@@ -1031,7 +1045,7 @@ describe("card questions", () => {
   }
 
   it("answers against the card the learner has, and keeps the question", async () => {
-    const { db, created } = questionDb();
+    const { db, created, answers } = questionDb();
     const { provider, prompts } = recording(ANSWER);
     const response = await ask(db, provider, "What happens if two controllers disagree?");
 
@@ -1049,13 +1063,49 @@ describe("card questions", () => {
     expect(prompts[0]).toContain("Q: Why forever?");
     // One paragraph, the length the card's paragraphs are.
     expect(prompts[0]).toContain("4-5 sentences");
+    // Reserved empty, before the call, and filled in after it — which is what
+    // makes the hourly ceiling count a question the model then fails to answer.
     expect(created).toEqual([
       expect.objectContaining({
         nodeId: "n2",
         question: "What happens if two controllers disagree?",
-        answer: "Because the actual state keeps changing under it.",
+        answer: "",
       }),
     ]);
+    expect(answers).toEqual(["Because the actual state keeps changing under it."]);
+    // The earlier questions sent to the model exclude rows nothing answered,
+    // which is also what excludes the row reserved for this very question.
+    const asked = (db as unknown as { cardQuestion: { findMany: ReturnType<typeof vi.fn> } })
+      .cardQuestion.findMany.mock.calls[0]?.[0] as { where: object } | undefined;
+    expect(asked?.where).toMatchObject({ answer: { not: "" } });
+  });
+
+  it("counts a question whose answer failed, so a failing press is not unbounded", async () => {
+    // generateJson retries once and then throws, so a question the model cannot
+    // answer in the required shape costs two calls and returns a 502. Writing
+    // the row only on success would leave that press repeatable for ever, and
+    // registration is open.
+    const { db, created, answers } = questionDb();
+    const { provider, prompts } = recording("not json at all");
+    const response = await ask(db, provider, "Why?");
+
+    expect(response.status).toBe(502);
+    expect(prompts).toHaveLength(2);
+    // Counted: the row is there, and stays empty, so nothing ever reads it back.
+    expect(created).toEqual([expect.objectContaining({ question: "Why?", answer: "" })]);
+    expect(answers).toEqual([]);
+  });
+
+  it("never lists or sends a question nothing answered", async () => {
+    const { db } = questionDb();
+    const { provider } = recording(ANSWER);
+    await createApp(db, { provider }).request("/api/nodes/n2/questions", {
+      headers: { Authorization: "Bearer good" },
+    });
+    const stub = db as unknown as { cardQuestion: { findMany: ReturnType<typeof vi.fn> } };
+    expect(stub.cardQuestion.findMany.mock.calls[0]?.[0]).toMatchObject({
+      where: { answer: { not: "" } },
+    });
   });
 
   it("lists what was asked, oldest first", async () => {

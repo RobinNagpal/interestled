@@ -142,8 +142,14 @@ export const CardView = z.object({
    * What a plain open of this node writes to now. Where it differs from
    * `settings`, the settings have moved since this card was written — and
    * nothing is written again until the learner asks.
+   *
+   * Optional for the deploy gap described on LearningNode.cardInstructions: an
+   * API that predates this field answers without it, and the screens fall back
+   * to `settings`, which reads as "nothing has moved" — the behaviour they had
+   * before any of this existed. A required field here would blank the card
+   * screen for the seconds between the web deploy and the API restart.
    */
-  defaults: CardSettings,
+  defaults: CardSettings.optional(),
   content: CardContent,
   missingPrerequisites: z.array(NodeRef),
 });

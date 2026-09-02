@@ -25,6 +25,7 @@ import {
 import type { LearningNodeT } from "@interestled/schemas";
 import { messageOf } from "../../../lib/errors";
 import { backHeader } from "../../../lib/nav";
+import { AskSheet } from "../../../components/CardQuestions";
 import { NodeCard } from "../../../components/NodeCard";
 import { NodeDrill } from "../../../components/NodeDrill";
 
@@ -55,8 +56,11 @@ export default function NodePathScreen(): ReactElement {
   const nodePath = (isDrill ? segments.slice(0, -1) : segments).join("/");
   // The question sheet, opened from the bar. Held here rather than in the card
   // because the bar is set by this screen, and the bar is where the button is:
-  // a card is read top to bottom, and a question comes up anywhere in it.
+  // a card is read top to bottom, and a question comes up anywhere in it. The
+  // sheet is rendered here too, so the button works while the card is still
+  // being written rather than opening by itself once it lands.
   const [asking, setAsking] = useState(false);
+  const [latestQuestionId, setLatestQuestionId] = useState<string | null>(null);
 
   // The map is fetched rather than the node: the same query already backs the
   // topic screen, so arriving from it costs nothing, and a cold link pays one
@@ -142,8 +146,13 @@ export default function NodePathScreen(): ReactElement {
         topic={topic.data.topic}
         node={node}
         nodes={nodes}
-        asking={asking}
-        onAskingChange={setAsking}
+        latestQuestionId={latestQuestionId}
+      />
+      <AskSheet
+        nodeId={node.id}
+        visible={asking}
+        onClose={() => setAsking(false)}
+        onAnswered={setLatestQuestionId}
       />
     </>
   );

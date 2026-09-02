@@ -42,6 +42,13 @@ import { loadProfile } from "./profile";
 import { assertQuestionBudget, assertRewriteBudget } from "./topics";
 import { toCardQuestion, toDrill, toNode, toTopic } from "./rows";
 
+/**
+ * A question that was actually answered. A row is written before the model is
+ * called, so an empty answer is a generation that failed — counted by the
+ * budget, and never shown to anybody or sent to the model as context.
+ */
+const ANSWERED = { answer: { not: "" } } as const;
+
 async function loadNode(
   db: Db,
   userId: string,
@@ -373,7 +380,7 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
     const userId = c.get("userId");
     const { node } = await loadNode(db, userId, c.req.param("id"));
     const rows = await db.cardQuestion.findMany({
-      where: { nodeId: node.id },
+      where: { nodeId: node.id, ...ANSWERED },
       orderBy: { createdAt: "asc" },
     });
     return c.json(rows.map(toCardQuestion));
@@ -391,6 +398,16 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
     await assertQuestionBudget(db, userId);
     const { question } = c.req.valid("json");
 
+    // The row is written before the model is called, not after, and that is
+    // what makes the ceiling above a ceiling. Counting only answers that came
+    // back would leave the failures uncounted — and a question whose answer
+    // overruns the schema costs two calls (generateJson retries once), fails,
+    // and writes nothing, so the same press repeats without bound. Registration
+    // is open, so "without bound" is the whole model bill.
+    const reserved = await db.cardQuestion.create({
+      data: { id: newId(), nodeId: node.id, question, answer: "" },
+    });
+
     const content = provider(LlmTask.Content);
     const [card, earlier, profile, rows] = await Promise.all([
       cardFor(
@@ -403,9 +420,10 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
         CardLookup.Written,
       ),
       // Newest first off the index, then turned round: the prompt reads them in
-      // the order they were asked.
+      // the order they were asked. Answered ones only, which also excludes the
+      // row reserved just above for this very question.
       db.cardQuestion.findMany({
-        where: { nodeId: node.id },
+        where: { nodeId: node.id, ...ANSWERED },
         orderBy: { createdAt: "desc" },
         take: EARLIER_QUESTIONS,
       }),
@@ -422,10 +440,14 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
       earlier: earlier.reverse().map(toCardQuestion),
       profile,
     });
-    const created = await db.cardQuestion.create({
-      data: { id: newId(), nodeId: node.id, question, answer },
+    // The reservation, filled in. A row still empty is one whose generation
+    // failed: it is never read back — every query here asks for answered rows —
+    // and it stays as the record of a call that was paid for.
+    const answered = await db.cardQuestion.update({
+      where: { id: reserved.id },
+      data: { answer },
     });
-    return c.json(toCardQuestion(created), 201);
+    return c.json(toCardQuestion(answered), 201);
   });
 
   /** A drill of the requested kind, generated once per node and then reused. */

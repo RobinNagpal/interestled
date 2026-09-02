@@ -1,14 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 import { router } from "expo-router";
-import {
-  useAskQuestion,
-  useCard,
-  useQuestions,
-  useRewriteCard,
-  useSaveCardInstructions,
-} from "@interestled/api";
+import { useCard, useRewriteCard, useSaveCardInstructions } from "@interestled/api";
 import { defaultCardSettings, drillHref, nodeHref, sameCardSettings } from "@interestled/domain";
 import {
   ANGLE_OPTIONS,
@@ -32,19 +26,13 @@ import {
   Screen,
   SectionTitle,
   settingsSummary,
-  Sheet,
   TECHNICAL_COPY,
   TECHNICAL_OPTIONS,
 } from "@interestled/ui";
-import {
-  CARD_INSTRUCTIONS_MAX,
-  CardDepth,
-  CardMinutes,
-  DEFAULT_CARD_DEPTH,
-  QUESTION_MAX,
-} from "@interestled/schemas";
+import { CARD_INSTRUCTIONS_MAX, CardDepth, CardMinutes, DEFAULT_CARD_DEPTH } from "@interestled/schemas";
 import type { CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
 import { ChipRow } from "./ChipRow";
+import { QuestionList } from "./CardQuestions";
 import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
 
@@ -58,16 +46,18 @@ export function NodeCard({
   topic,
   node,
   nodes,
-  asking,
-  onAskingChange,
+  latestQuestionId,
 }: {
   topicSlug: string;
   topic: TopicT;
   node: LearningNodeT;
   nodes: readonly LearningNodeT[];
-  /** The question sheet is open. Owned by the screen, because the bar's button opens it. */
-  asking: boolean;
-  onAskingChange: (open: boolean) => void;
+  /**
+   * The answer just asked for, which opens on arrival. The sheet that asks is
+   * the screen's, because the button that opens it is in the top bar and this
+   * component does not exist while the card is being written.
+   */
+  latestQuestionId: string | null;
 }): ReactElement {
   // Two states, not one. `applied` is what the card on screen was asked for —
   // an empty object is the card as the topic is written, which is what a fresh
@@ -85,6 +75,22 @@ export function NodeCard({
   const rewrite = useRewriteCard(node.id);
   const saveInstructions = useSaveCardInstructions(topicSlug, node.id);
   const { user } = useAuth();
+
+  // What the server says this node's instructions are. The card answers with
+  // them, and the map carries them too, so the value can change under this
+  // screen — the same text edited on the website while the phone is open on it.
+  const saved = card.data?.defaults?.instructions ?? node.cardInstructions;
+  // Whether the box has been typed in since it was last saved. Without it the
+  // box is a copy taken once at mount, and pressing Regenerate would write that
+  // stale copy back over an edit made anywhere else — the same rule, and the
+  // same reason, as SeededInstructions.
+  const edited = useRef(false);
+  useEffect(() => {
+    if (!edited.current) {
+      setInstructions(saved);
+    }
+    // On the saved value alone: this must not fire on every keystroke.
+  }, [saved]);
 
   if (card.isPending) {
     // The same rule the server writes to, so the wait names the card that
@@ -110,7 +116,11 @@ export function NodeCard({
     );
   }
 
-  const { content, missingPrerequisites, settings, defaults } = card.data;
+  const { content, missingPrerequisites, settings } = card.data;
+  // Absent only from an API that predates it, for the seconds between the web
+  // deploy and the API restart. Falling back to what the card was written to
+  // says "nothing has moved", which is how this screen read before any of it.
+  const defaults = card.data.defaults ?? settings;
   // What this open asked for: the node's own settings now, with whatever the
   // controls overrode on top. The server answers with the card it has rather
   // than writing one, so the card on screen can be written to something else —
@@ -160,7 +170,14 @@ export function NodeCard({
       });
     };
     if (instructionsChanged) {
-      saveInstructions.mutate(instructions, { onSuccess: write });
+      saveInstructions.mutate(instructions, {
+        onSuccess: () => {
+          // Saved, so the box is the server's again and a later edit from
+          // another device flows back into it.
+          edited.current = false;
+          write();
+        },
+      });
     } else {
       write();
     }
@@ -242,7 +259,7 @@ export function NodeCard({
 
       <JargonList terms={content.jargon} />
 
-      <Questions nodeId={node.id} asking={asking} onAskingChange={onAskingChange} />
+      <QuestionList nodeId={node.id} latestId={latestQuestionId} />
 
       <CardControls
         settings={chosen}
@@ -254,6 +271,7 @@ export function NodeCard({
         onInstructionsChange={(text) => {
           rewrite.reset();
           saveInstructions.reset();
+          edited.current = true;
           setInstructions(text);
         }}
         onRegenerate={regenerate}
@@ -268,82 +286,13 @@ export function NodeCard({
         // screen is still the one that was written until the button is pressed.
         onReset={() => {
           setDraft(defaults);
+          edited.current = defaults.instructions !== saved;
           setInstructions(defaults.instructions);
         }}
       />
 
       <Button label="Now prove it" onPress={() => router.push(drillHref(topicSlug, node.path))} />
     </Screen>
-  );
-}
-
-/**
- * What was asked on this card, and the sheet that asks the next one.
- *
- * The questions sit on the card rather than on a screen of their own, and each
- * answer is folded behind its question: the question is what the reader will
- * recognise, and a column of answers is a second card under the first. The
- * newest one opens on arrival, because it is the one just asked.
- */
-function Questions({
-  nodeId,
-  asking,
-  onAskingChange,
-}: {
-  nodeId: string;
-  asking: boolean;
-  onAskingChange: (open: boolean) => void;
-}): ReactElement {
-  const questions = useQuestions(nodeId);
-  const ask = useAskQuestion(nodeId);
-  const [question, setQuestion] = useState("");
-  const [latestId, setLatestId] = useState<string | null>(null);
-  const asked = questions.data ?? [];
-
-  return (
-    <>
-      {asked.length === 0 ? null : (
-        <View className="gap-2">
-          <SectionTitle>What you asked</SectionTitle>
-          {asked.map((entry) => (
-            <Disclosure key={entry.id} title={entry.question} defaultOpen={entry.id === latestId}>
-              <Markdown text={entry.answer} />
-            </Disclosure>
-          ))}
-        </View>
-      )}
-
-      <Sheet
-        visible={asking}
-        title="Ask about this card"
-        body="One paragraph back, written the way this card is. It is kept here with the card."
-        onClose={() => (ask.isPending ? undefined : onAskingChange(false))}
-      >
-        <Input
-          label="Your question"
-          value={question}
-          onChangeText={setQuestion}
-          multiline
-          autoFocus
-          maxLength={QUESTION_MAX}
-          placeholder={"Why does that happen?\nWhat if the other case is true?"}
-        />
-        {ask.isError ? <ErrorState message={messageOf(ask.error)} /> : null}
-        <Button
-          label={ask.isPending ? "Answering…" : "Ask"}
-          busy={ask.isPending}
-          onPress={() =>
-            ask.mutate(question, {
-              onSuccess: (answered) => {
-                setQuestion("");
-                setLatestId(answered.id);
-                onAskingChange(false);
-              },
-            })
-          }
-        />
-      </Sheet>
-    </>
   );
 }
 

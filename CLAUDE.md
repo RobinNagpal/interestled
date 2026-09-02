@@ -385,8 +385,21 @@ card the learner is reading (the *Written* lookup, never a fresh one), the map w
 node marked, and the last `EARLIER_QUESTIONS` asked on that card, so a follow-up
 follows. The row is kept (`card_questions`, gone with its node) and listed on the card,
 answers folded behind their questions. It is a model call per press, so it is inside
-`assertQuestionBudget`, which counts those rows by the hour. The answer is never cached:
-the same words twice is the learner asking again.
+`assertQuestionBudget`, which counts those rows by the hour — and **the row is written
+before the model is called, not after**. A budget counting only the answers that came
+back is not a ceiling: a question whose answer overruns the schema costs two calls
+(`generateJson` retries once), fails, and writes nothing, so the same press repeats for
+ever against an open registration. An empty answer is that failed attempt; every query
+asks for answered rows only, so it is counted and never read. The answer is never
+cached: the same words twice is the learner asking again.
+
+**A response field added and made required is an outage, not a field.** The deploy syncs
+the web export to S3 and invalidates CloudFront *before* it migrates and restarts the
+API, so for those seconds the new app parses responses from the old one — and
+`PERSISTED_CACHE_VERSION`, which a shape change is supposed to move, has just discarded
+the cache that would have covered it. So `LearningNode.cardInstructions` defaults and
+`CardView.defaults` is optional, with the card screen falling back to what the card was
+written to. `packages/api/test/deployGap.test.ts` pins both.
 
 **A card is written to the learner's read time, not to a constant.** `CARD_MINUTES_MAX`
 is the ceiling one card can hold, and `CardContent`'s limits are the outer bound of a

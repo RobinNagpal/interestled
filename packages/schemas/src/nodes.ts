@@ -72,8 +72,16 @@ export const LearningNode = z.object({
    * topic's standing instructions whenever the card is written. On the node
    * rather than on the card, so it survives the card being written again — it
    * is what the next writing is asked to honour, not a fact about the last one.
+   *
+   * Defaulted rather than required, for the deploy gap: the web bundle reaches
+   * CloudFront before the API restarts, so for those seconds the new app is
+   * parsing responses from the old one, which names no such field. Required
+   * here would fail that parse on the map, every node and every card at once —
+   * and the persisted cache cannot cover it, because a response shape change
+   * is exactly when PERSISTED_CACHE_VERSION discards it. The column is NOT
+   * NULL, so the default is never what the server's own reads use.
    */
-  cardInstructions: CardInstructions,
+  cardInstructions: CardInstructions.default(""),
   createdAt: z.coerce.date(),
 });
 
