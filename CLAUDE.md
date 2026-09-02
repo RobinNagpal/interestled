@@ -157,9 +157,8 @@ schema through `generateJson`, which validates and retries once with the validat
 errors named, and logs both attempts when it gives up — the 502 is a sentence for the
 learner, so without that log a failed generation leaves nothing on the box to read.
 
-**Two models, chosen by what the call is for, never by where it is called from.**
-`LlmTask` has two members and `createProvider(task)` is the only place a model name is
-resolved:
+**Three models, chosen by what the call is for, never by where it is called from.**
+`LlmTask` has three members and `modelFor` is the only place a model name is resolved:
 
 - `LlmTask.Map` — the map, the seven choices in front of it, and one group rebuilt.
   `LLM_MODEL`, a reasoning model. A map is generated once and everything hangs off it:
@@ -169,8 +168,18 @@ resolved:
   fast one. These are written many times per map, each already scoped by the map above
   it, and each cheap to write again — the controls under a card do exactly that.
 
+- `LlmTask.Speech` — a card read out. `LLM_AUDIO_MODEL`, a TTS model. It is in the same
+  enum because it answers the same question — which model runs this call — and behind a
+  different interface, because a TTS name does not answer `:generateContent` with prose
+  and a text name does not answer with audio. `TextTask` is the union of the other two,
+  and it is what `createProvider` takes: `createProvider(LlmTask.Speech)` does not
+  compile, and `createSpeechProvider()` is the way to the third.
+
 An unset `LLM_CONTENT_MODEL` falls back to its own default rather than to `LLM_MODEL`,
-so a deployment that names only the map model still gets the cheap one for content.
+so a deployment that names only the map model still gets the cheap one for content. The
+audio model has no fallback at all worth having, which is why it is its own variable:
+falling back to the content model would produce a call that fails at runtime with a
+message about the wrong thing.
 
 **A reasoning model spends its thinking from `maxOutputTokens`.** Gemini 3 Pro cannot be
 told not to think, and a budget sized for the reply alone is eaten by the reasoning:
@@ -388,6 +397,47 @@ answers folded behind their questions. It is a model call per press, so it is in
 `assertQuestionBudget`, which counts those rows by the hour. The answer is never cached:
 the same words twice is the learner asking again.
 
+**A card can be played, and what plays is not the card read out.** `POST
+/nodes/:id/audio` writes a script with the content model and says it with the speech
+one; `GET` answers whether there is one already and costs a signature. The point of the
+script is the half a card cannot survive being spoken: `narration.md` says never to
+read a symbol out and never to read a line of code out, and to point at them instead —
+*the formula under 'How the rate compounds'*, *the second line of the snippet*. It is
+also the one prompt that turns off a `SYSTEM` rule, because "every string you write is
+rendered as Markdown" read aloud is a machine saying "asterisk". Both halves are covered
+by tests.
+
+- **The recording is of a card, not of a node.** `card_narrations.card_id` is unique,
+  and the card it names is the one `CardLookup.Written` would answer with — the card on
+  the screen the button is on. A rewrite replaces that card's text in place, so the
+  route deletes the row with it and makes nothing in its place: pressing *write it
+  again* is not asking to be read to.
+- **The bucket is laid out by slug, and the key is the card's identity.**
+  `narrationKey` builds `<user>/<topic>/<node path>/n<rev>-d<depth>-<variant>.wav`, so a
+  card rewritten at the same settings overwrites its own object and one written at other
+  settings gets its own. `users.slug` is allocated at registration from the address —
+  `emailSlug` then `uniqueSlug`, because two accounts at two providers can hold the same
+  local part and their folders must not be the same folder — and never changed, because
+  changing it orphans everything already recorded.
+- **`NARRATION_PROMPT_REVISION` retires every recording**, the same way
+  `CARD_PROMPT_REVISION` retires every card. It travels in the key, and the row stores
+  the key it was written to, so a bump makes every stored row miss its own lookup. No
+  migration, nothing to delete.
+- **Gemini answers with raw PCM and no container**, so `pcmToWav` puts a 44-byte RIFF
+  header in front of it. Nothing plays headerless samples. WAV rather than MP3 because
+  there is no encoder on the shared host and shipping one would be a third application
+  on it — the cost is size, about 48 KB a second, which is why the object is made once
+  and played from the bucket after that.
+- **It is the most expensive press in the product**, so it has the tightest ceiling
+  (`assertNarrationBudget`) and the POST is idempotent: a row already at the key it
+  would write is answered rather than remade.
+- **The signed URL is never cached and never persisted.** It expires in an hour, so the
+  query takes the default policy and `shouldPersistQuery` keeps it off disk — a launch
+  that painted a restored link would paint a dead one.
+- **Everything about it is optional in `env.ts`.** A deployment with no `AUDIO_BUCKET`
+  serves every other route and fails only the press, with a sentence naming the variable
+  that is missing.
+
 **A card is written to the learner's read time, not to a constant.** `CARD_MINUTES_MAX`
 is the ceiling one card can hold, and `CardContent`'s limits are the outer bound of a
 card that long — not the size of an ordinary one, which is the minutes in the settings.
@@ -459,6 +509,11 @@ of one query cache with one policy, in `createAppQueryClient` in `packages/api`,
   them right. The signed-in user is stored beside the token for the same reason: with
   both on disk the app opens on the app, and the `me()` round trip confirms them behind
   the first screen rather than in front of it.
+- **One key is deliberately never written to disk.** A card's recording is answered as a
+  signed URL with an hour on it, so `shouldPersistQuery` drops `keys.audio` out of what
+  is persisted: restoring it on the next launch paints a button pointing at a link the
+  bucket has stopped honouring, which is exactly the press the persisted cache existed
+  to make instant.
 - **Bump `PERSISTED_CACHE_VERSION` when a response shape changes.** A restore does not
   parse what it reads back, so a field added to `TopicDetail` is `undefined` off a
   cache written by the previous build until the refetch lands. Moving the version
@@ -557,6 +612,8 @@ These are load-bearing. Breaking one is a bug, not a trade-off:
   right" is the normal case after reading it, and an edit mode whose only answer is
   regenerating everything throws away every node already verified.
 - **Timers only on retrieval.** Never on a card, an explain-back, or an apply drill.
+- **A card read aloud is somebody explaining it, never the text spoken.** A machine
+  reading a formula or a snippet out says every symbol, which is worse than silence.
 - **No effort language in generated copy** — that ban lives in the `SYSTEM` prompt and
   is covered by a test.
 - **A topic's content settings never reach the grader.** Style, read time and the
@@ -592,6 +649,14 @@ That the host is shared is the thing to remember when changing anything runtime-
 - The bundle stays **CommonJS** and ships the `debian-openssl-3.0.x` Prisma engine
   beside it, because the generated client requires its engine at runtime from its own
   directory. A top-level `await` in `src/index.ts` would force ESM and break that.
+
+**The API has AWS credentials of its own, and they are not the deployer's.** The audio
+bucket is the only thing in the account the running process touches, so
+`interestled-api` is a second IAM user with put and get on that bucket and nothing else
+— the box is shared with courtpot, and the blast radius of a key on it is worth keeping
+small. Both keys reach the env file through `API_AWS_ACCESS_KEY_ID` and
+`API_AWS_SECRET_ACCESS_KEY`, which are different secrets from the ones
+`configure-aws-credentials` uses for the web sync.
 
 **`/etc/interestled-api.env` is rewritten whole on every deploy** from repository
 secrets and variables. Nothing set by hand on the box survives, which is the point —

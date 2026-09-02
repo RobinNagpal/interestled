@@ -18,6 +18,14 @@ datasource db {
 model User {
   id           String        @id
   email        String        @unique
+  // The top folder of every audio object this learner owns. Allocated from the
+  // address at registration (emailSlug + uniqueSlug in packages/schemas), never
+  // by the learner, and unique because two accounts at two providers can hold
+  // the same local part — and their recordings must not be the same object.
+  // The default is the deploy gap described on Topic.slug: for the seconds
+  // between the migration and the new bundle, the old code registers users
+  // naming no slug. Drop it in the next schema change.
+  slug         String        @unique @default(dbgenerated("md5((random())::text)"))
   // scrypt output, "scrypt$N$r$p$salt$hash". Excluded globally via the Prisma
   // client's `omit` config so it can never reach an API response.
   passwordHash String        @map("password_hash")
@@ -253,9 +261,50 @@ model ConceptCard {
   content      Json
   createdAt    DateTime     @default(now()) @map("created_at")
   node         LearningNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  // At most one recording per card, and it goes when the card's node does.
+  narration    CardNarration?
 
   @@unique([nodeId, depth, variant])
   @@map("concept_cards")
+}
+
+/**
+ * One card read aloud: the spoken script, and where the audio object sits in
+ * the audio bucket.
+ *
+ * Keyed on the card rather than the node, because a recording is of one
+ * writing of one card — a node has a card per settings, and the learner may be
+ * reading any of them. A rewrite replaces the card's content in place, so the
+ * route deletes the row with it: the recording would otherwise be of text that
+ * no longer exists anywhere.
+ *
+ * The script is kept as well as the audio because it is the expensive half. It
+ * is also the only readable record of what a recording says.
+ *
+ * Rows in the last hour are the budget counter for the call that makes them —
+ * a model call plus a synthesis per press, and nothing else counts it. See
+ * assertNarrationBudget in src/topics.ts.
+ */
+model CardNarration {
+  id        String      @id
+  cardId    String      @unique @map("card_id")
+  script    String
+  // Built by narrationKey in packages/schemas from the learner's slug, the
+  // topic's, the node's path and what the card was written to. Stored rather
+  // than recomputed on read, so a row can be compared against the key it would
+  // have now: they differ only when NARRATION_PROMPT_REVISION has moved, which
+  // is what retires every recording in one line.
+  objectKey String      @map("object_key")
+  seconds   Int
+  bytes     Int
+  // The prebuilt voice that spoke it, so a row can still say which one after
+  // NARRATION_VOICE has moved on.
+  voice     String
+  createdAt DateTime    @default(now()) @map("created_at")
+  card      ConceptCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@map("card_narrations")
 }
 
 /**

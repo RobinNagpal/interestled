@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { LlmProviderId } from "@interestled/schemas";
-import { createGeminiProvider } from "../src/llm/gemini";
+import { createGeminiProvider, createGeminiSpeech } from "../src/llm/gemini";
 import { generateJson, stripFence } from "../src/llm/json";
 import type { LlmProvider } from "../src/llm/types";
 import { GenerationError } from "../src/errors";
@@ -191,5 +191,63 @@ describe("gemini provider", () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     await expect(provider.complete({ system: "s", prompt: "p" })).rejects.toThrow("no usable candidate");
+  });
+});
+
+/** A reply shaped the way the TTS models answer: one inline part, base64 PCM. */
+function speechReply(audio: Buffer, mimeType = "audio/L16;codec=pcm;rate=24000"): string {
+  return JSON.stringify({
+    candidates: [{ content: { parts: [{ inlineData: { mimeType, data: audio.toString("base64") } }] } }],
+  });
+}
+
+describe("createGeminiSpeech", () => {
+  function fetchStub(body: string, status = 200): typeof fetch & { calls: RequestInit[] } {
+    const calls: RequestInit[] = [];
+    const impl = (async (_url: string, init?: RequestInit) => {
+      calls.push(init ?? {});
+      return new Response(body, { status, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch & { calls: RequestInit[] };
+    impl.calls = calls;
+    return impl;
+  }
+
+  it("asks for audio in the named voice, and sends the words alone", async () => {
+    const fetchImpl = fetchStub(speechReply(Buffer.from([1, 2, 3, 4])));
+    const speech = createGeminiSpeech({ apiKey: "k", model: "tts", fetchImpl });
+    const result = await speech.speak({ text: "Say this.", voice: "Kore" });
+
+    expect(result.audio).toEqual(Buffer.from([1, 2, 3, 4]));
+    expect(result.mimeType).toBe("audio/L16;codec=pcm;rate=24000");
+
+    const sent: unknown = JSON.parse(String(fetchImpl.calls[0]?.body));
+    expect(sent).toMatchObject({
+      contents: [{ role: "user", parts: [{ text: "Say this." }] }],
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
+      },
+    });
+    // No system slot and no JSON asked for: a speech model handed instructions
+    // as well as words reads the instructions out.
+    expect(sent).not.toHaveProperty("systemInstruction");
+  });
+
+  it("names the ceiling when the reply was cut off, rather than 'no audio'", async () => {
+    const truncated = JSON.stringify({ candidates: [{ finishReason: "MAX_TOKENS" }] });
+    const speech = createGeminiSpeech({ apiKey: "k", model: "tts", fetchImpl: fetchStub(truncated) });
+    await expect(speech.speak({ text: "x", voice: "Kore" })).rejects.toThrow(/output tokens/);
+  });
+
+  it("says which finish reason came back when there is no audio and no ceiling", async () => {
+    const blocked = JSON.stringify({ candidates: [{ finishReason: "SAFETY" }] });
+    const speech = createGeminiSpeech({ apiKey: "k", model: "tts", fetchImpl: fetchStub(blocked) });
+    await expect(speech.speak({ text: "x", voice: "Kore" })).rejects.toThrow(/SAFETY/);
+  });
+
+  it("passes the provider's own error through rather than a status code", async () => {
+    const error = JSON.stringify({ error: { message: "models/tts is not found" } });
+    const speech = createGeminiSpeech({ apiKey: "k", model: "tts", fetchImpl: fetchStub(error, 404) });
+    await expect(speech.speak({ text: "x", voice: "Kore" })).rejects.toThrow("models/tts is not found");
   });
 });

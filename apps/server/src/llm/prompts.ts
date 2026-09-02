@@ -9,6 +9,7 @@ import {
   MECHANISM_SECTION_WORDS,
   MECHANISM_SHARE,
   MapDepth,
+  narrationWords,
   PARAGRAPH_SENTENCES,
   mapShapeOf,
   totalMinutes,
@@ -563,6 +564,52 @@ export function questionPrompt(input: {
     // learner may have rewritten those and dropped the line that says it.
     sentences: PARAGRAPH_SENTENCES[input.settings.paragraphLength],
     question: input.question,
+  });
+}
+
+/**
+ * The card, said out loud.
+ *
+ * It is given the card and nothing else of the map: a recording is of what is
+ * on the screen in front of the learner, so the whole outline would only invite
+ * it to mention nodes they cannot see. What it does need is the register — a
+ * card written in simple English is not read out in dense English — and the
+ * learner's standing instructions, which hold for everything this topic
+ * produces and do not stop holding because the output is audio.
+ *
+ * The shape is forced to prose whatever the topic is set to. Speech has no
+ * other shape: reference notes are a thing you scan, and "the rule, the exact
+ * conditions, the real values, each stated flat with no linking sentences" read
+ * aloud is a list of facts nobody can follow without the page.
+ *
+ * The length is stated in words and in minutes, because the model can count one
+ * and the learner only cares about the other.
+ */
+export function narrationPrompt(input: {
+  topic: TopicT;
+  node: LearningNodeT;
+  card: CardContentT;
+  /** What the card on screen was written to, which is what it is said in. */
+  settings: CardSettingsT;
+}): string {
+  const minutes = cardMinutes(input.settings.minutes);
+  return render(promptFile("narration"), {
+    topic: input.topic.title,
+    node: input.node.title,
+    card: cardProse(input.card),
+    contentRules: contentRulesBlock(
+      {
+        paragraphLength: input.settings.paragraphLength,
+        englishLevel: input.settings.englishLevel,
+        technicalDetail: input.settings.technicalDetail,
+        format: ContentFormat.Prose,
+        contentInstructions: input.topic.contentInstructions,
+        averageReadTime: minutes,
+      },
+      input.settings.instructions,
+    ),
+    words: String(narrationWords(minutes)),
+    minutes: minutesText(minutes),
   });
 }
 

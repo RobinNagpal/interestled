@@ -62,6 +62,24 @@ export function slugify(text: string, fallback = "item"): SlugT {
   return slug === "" ? fallback : slug;
 }
 
+/**
+ * The learner's own slug, from the address they signed up with.
+ *
+ * It is the top folder of every audio object they own, so it wants to be a name
+ * rather than an id: `robin/kubernetes/scheduling/taints/…` is a path somebody
+ * can find a file down, and an account id is not. The part before the @ is the
+ * closest thing an email holds to a username, and slugifying it is the same
+ * rule every other slug here follows.
+ *
+ * Uniqueness is not this function's job — two accounts can hold the same
+ * address at two providers, and their folders must not be the same folder. Pass
+ * the result through `uniqueSlug` against the slugs already handed out, exactly
+ * as a node title is.
+ */
+export function emailSlug(email: string): SlugT {
+  return slugify(email.split("@")[0] ?? "", "learner");
+}
+
 /** How many suffixes to try before giving up on a readable slug. */
 const MAX_SUFFIX = 200;
 

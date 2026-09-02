@@ -23,7 +23,7 @@ import {
   newId,
   parseCardVariant,
 } from "@interestled/schemas";
-import type { CardContentT, CardSettingsT, LearningNodeT, TopicT } from "@interestled/schemas";
+import type { CardContentT, CardSettingsT, LearningNodeT, TextTask, TopicT } from "@interestled/schemas";
 import {
   advance,
   cardMinutes,
@@ -37,9 +37,11 @@ import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
 import { generateAnswer, generateAtoms, generateCard, generateDrill, gradeAttempt } from "./llm";
 import { EARLIER_QUESTIONS } from "./llm/prompts";
-import type { LlmProvider } from "./llm";
+import type { LlmProvider, SpeechProvider } from "./llm";
 import { loadProfile } from "./profile";
-import { assertQuestionBudget, assertRewriteBudget } from "./topics";
+import { readNarration, writeNarration } from "./narration";
+import type { ObjectStore } from "./storage";
+import { assertNarrationBudget, assertQuestionBudget, assertRewriteBudget } from "./topics";
 import { toCardQuestion, toDrill, toNode, toTopic } from "./rows";
 
 async function loadNode(
@@ -201,7 +203,7 @@ async function cardFor(
   // with the content, because it is what the rewrite budget counts and a row
   // that keeps its original date is a rewrite the ceiling never sees. The
   // instructions move with it too: they are what this writing was asked for.
-  await db.conceptCard.upsert({
+  const saved = await db.conceptCard.upsert({
     where: { nodeId_depth_variant: key },
     create: { id: newId(), ...key, instructions: settings.instructions, content },
     update:
@@ -209,6 +211,13 @@ async function cardFor(
         ? { content, instructions: settings.instructions, createdAt: new Date() }
         : {},
   });
+  if (lookup === CardLookup.Rewrite) {
+    // A rewrite replaces the card's text in place, so anything made from that
+    // text is now of words nobody can read. The recording goes with it rather
+    // than being re-made here: making one is the most expensive call in the
+    // product, and nobody asked for a second one by pressing Regenerate.
+    await db.cardNarration.deleteMany({ where: { cardId: saved.id } });
+  }
   return { content, settings };
 }
 
@@ -286,7 +295,17 @@ function lookupFor(query: CardQueryT): CardLookup {
  * a card, a drill, a verdict, a review item — so every one of them asks for the
  * content model.
  */
-export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider): Hono<AuthEnv> {
+export function learningRouter(
+  db: Db,
+  provider: (task: TextTask) => LlmProvider,
+  /**
+   * Both lazy, and both only ever reached by the two audio routes: a deployment
+   * with no bucket and no speech model still serves every other route here, and
+   * the press that needs them is the one that says so.
+   */
+  speech: () => SpeechProvider,
+  objects: () => ObjectStore,
+): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
 
   /**
@@ -426,6 +445,48 @@ export function learningRouter(db: Db, provider: (task: LlmTask) => LlmProvider)
       data: { id: newId(), nodeId: node.id, question, answer },
     });
     return c.json(toCardQuestion(created), 201);
+  });
+
+  /**
+   * Whether the card on screen has been read out, and where to play it from.
+   *
+   * A query rather than part of the card, because it is not part of the card:
+   * the signed link expires, so this is asked again on every mount and every
+   * return to the foreground, and folding it into the card route would put a
+   * one-hour expiry inside a response cached for a day. Null is every kind of
+   * "not yet", and all of them mean the same thing to the button.
+   */
+  router.get("/:id/audio", async (c) => {
+    const userId = c.get("userId");
+    const { node, topic } = await loadNode(db, userId, c.req.param("id"));
+    await refuseGroup(db, node);
+    return c.json({ audio: await readNarration(db, objects(), userId, topic, node) });
+  });
+
+  /**
+   * Read this card out and keep the recording.
+   *
+   * The most expensive press in the product — a model call for the script and
+   * then minutes of synthesis — so it is inside its own hourly ceiling, and it
+   * answers a card already recorded from the bucket rather than making a second
+   * one. It is a POST because it writes: the recording outlives the press, and
+   * a GET that costs money is a GET something will eventually retry.
+   */
+  router.post("/:id/audio", async (c) => {
+    const userId = c.get("userId");
+    const { node, topic } = await loadNode(db, userId, c.req.param("id"));
+    await refuseGroup(db, node);
+    await assertNarrationBudget(db, userId);
+    const audio = await writeNarration(
+      db,
+      provider(LlmTask.Content),
+      speech(),
+      objects(),
+      userId,
+      topic,
+      node,
+    );
+    return c.json({ audio }, 201);
   });
 
   /** A drill of the requested kind, generated once per node and then reused. */

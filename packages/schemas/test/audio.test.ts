@@ -1,0 +1,109 @@
+import { describe, expect, it } from "vitest";
+import {
+  CARD_MINUTES_MAX,
+  NARRATION_PROMPT_REVISION,
+  NARRATION_SCRIPT_MAX,
+  NarrationScript,
+  SPOKEN_WORDS_PER_MINUTE,
+  cardVariant,
+  narrationKey,
+  narrationWords,
+} from "../src";
+import { CardAngle } from "../src/cards";
+import { ContentFormat, EnglishLevel, ParagraphLength, TechnicalDetail } from "../src/topics";
+
+const settings = {
+  depth: 2,
+  minutes: 3,
+  englishLevel: EnglishLevel.Medium,
+  technicalDetail: TechnicalDetail.Medium,
+  format: ContentFormat.Prose,
+  paragraphLength: ParagraphLength.Medium,
+  angle: CardAngle.Base,
+  instructions: "",
+};
+
+describe("narrationKey", () => {
+  it("lays the bucket out by the slugs the URLs are laid out by", () => {
+    const key = narrationKey({
+      userSlug: "robin",
+      topicSlug: "kubernetes",
+      nodePath: "scheduling/taints",
+      depth: settings.depth,
+      variant: cardVariant(settings),
+    });
+    expect(key.startsWith("robin/kubernetes/scheduling/taints/")).toBe(true);
+    expect(key.endsWith(".wav")).toBe(true);
+  });
+
+  it("gives two accounts two folders, whatever the topic is called", () => {
+    const shared = { topicSlug: "kubernetes", nodePath: "pods", depth: 2, variant: "v" };
+    expect(narrationKey({ ...shared, userSlug: "robin" })).not.toBe(
+      narrationKey({ ...shared, userSlug: "robin-2" }),
+    );
+  });
+
+  it("names the card in the file, so two settings never share one recording", () => {
+    const shared = { userSlug: "robin", topicSlug: "kubernetes", nodePath: "pods" };
+    const base = narrationKey({ ...shared, depth: 2, variant: cardVariant(settings) });
+    // The depth is its own column on the card, so it is its own piece of the name.
+    expect(narrationKey({ ...shared, depth: 4, variant: cardVariant(settings) })).not.toBe(base);
+    // And everything else the card was written to travels in the variant.
+    expect(
+      narrationKey({
+        ...shared,
+        depth: 2,
+        variant: cardVariant({ ...settings, englishLevel: EnglishLevel.Simple }),
+      }),
+    ).not.toBe(base);
+  });
+
+  it("is stable for the same card, so a recording overwrites its own object", () => {
+    const input = { userSlug: "robin", topicSlug: "k8s", nodePath: "pods", depth: 2, variant: "v" };
+    expect(narrationKey(input)).toBe(narrationKey(input));
+  });
+
+  it("carries the narration revision, which is what retires every recording", () => {
+    const key = narrationKey({
+      userSlug: "robin",
+      topicSlug: "k8s",
+      nodePath: "pods",
+      depth: 2,
+      variant: cardVariant(settings),
+    });
+    expect(key).toContain(`/n${NARRATION_PROMPT_REVISION}-d2-`);
+  });
+
+  it("writes a key with nothing in it that needs escaping", () => {
+    const key = narrationKey({
+      userSlug: "robin",
+      topicSlug: "k8s",
+      nodePath: "scheduling/taints",
+      depth: 5,
+      variant: cardVariant({ ...settings, angle: CardAngle.MoreConcrete, format: ContentFormat.ReferenceNotes }),
+    });
+    // The variant's own separator is a pipe, which is legal in a key and
+    // unreadable in one; everything left is a slug, a digit or a hyphen.
+    expect(key).not.toContain("|");
+    expect(/^[a-z0-9/_.-]+$/.test(key)).toBe(true);
+  });
+});
+
+describe("narrationWords", () => {
+  it("asks for as many minutes of speech as the card asks for of reading", () => {
+    expect(narrationWords(3)).toBe(3 * SPOKEN_WORDS_PER_MINUTE);
+  });
+
+  it("leaves room in the schema for the longest card it can be asked for", () => {
+    // The cap is the outer bound of the longest card, not the size of an
+    // ordinary one — the same relationship CardContent has to the read time. A
+    // script the prompt asks for must never be one the schema refuses.
+    const longest = "word ".repeat(narrationWords(CARD_MINUTES_MAX));
+    expect(longest.length).toBeLessThanOrEqual(NARRATION_SCRIPT_MAX);
+    expect(NarrationScript.safeParse({ script: longest }).success).toBe(true);
+  });
+
+  it("refuses a reply with nothing in it to say", () => {
+    expect(NarrationScript.safeParse({ script: "" }).success).toBe(false);
+  });
+});

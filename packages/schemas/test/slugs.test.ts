@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   NodePath,
+  emailSlug,
   RESERVED_SLUGS,
   SLUG_MAX_LENGTH,
   Slug,
@@ -89,5 +90,31 @@ describe("paths", () => {
   it("refuses a path that is not slugs joined by slashes", () => {
     expect(NodePath.safeParse("Scheduling/Taints").success).toBe(false);
     expect(NodePath.safeParse("scheduling//taints").success).toBe(false);
+  });
+});
+
+describe("emailSlug", () => {
+  it("takes the part before the @, which is the closest thing to a username", () => {
+    expect(emailSlug("robin@gmail.com")).toBe("robin");
+    expect(emailSlug("Robin.Nagpal+news@gmail.com")).toBe("robin-nagpal-news");
+  });
+
+  it("falls back rather than producing a folder with no name", () => {
+    // Not a hypothetical: the local part only has to be non-empty, so "..@x.com"
+    // is a valid address that slugifies to nothing.
+    expect(emailSlug("..@weird.example")).toBe("learner");
+  });
+
+  it("does not decide uniqueness, which is uniqueSlug's job", () => {
+    // Two providers, one local part. The folders must not be the same folder,
+    // and this function is not what stops that happening.
+    expect(emailSlug("robin@gmail.com")).toBe(emailSlug("robin@outlook.com"));
+    expect(uniqueSlug(emailSlug("robin@outlook.com"), new Set(["robin"]))).toBe("robin-2");
+  });
+
+  it("stays inside what the Slug schema accepts, however long the address", () => {
+    const slug = emailSlug(`${"a".repeat(120)}@example.com`);
+    expect(slug.length).toBeLessThanOrEqual(SLUG_MAX_LENGTH);
+    expect(Slug.safeParse(slug).success).toBe(true);
   });
 });

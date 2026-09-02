@@ -14,6 +14,8 @@
     "db:push": "prisma db push"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.902.0",
+    "@aws-sdk/s3-request-presigner": "^3.902.0",
     "@hono/node-server": "^1.19.1",
     "@hono/zod-validator": "^0.7.2",
     "@interestled/domain": "workspace:*",

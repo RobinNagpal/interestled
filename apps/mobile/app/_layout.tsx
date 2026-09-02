@@ -8,6 +8,7 @@ import {
   PERSISTED_CACHE_VERSION,
   QUERY_GC_MS,
   createAppQueryClient,
+  shouldPersistQuery,
 } from "@interestled/api";
 import { KeyboardInset, LoadingState } from "@interestled/ui";
 import { AuthProvider, useAuth } from "../lib/auth";
@@ -26,6 +27,8 @@ const persistOptions = {
   persister: queryPersister,
   maxAge: QUERY_GC_MS,
   buster: PERSISTED_CACHE_VERSION,
+  // One entry is deliberately not written: see shouldPersistQuery.
+  dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
 };
 
 function Gate({ children }: { children: ReactNode }): ReactElement {

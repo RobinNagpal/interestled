@@ -51,16 +51,55 @@ export const EnvSchema = z.object({
    * that only names the map model still gets the cheap one for content.
    */
   LLM_CONTENT_MODEL: unsetWhenEmpty(z.string().min(1).default("gemini-3.7-flash")),
+  /**
+   * The model that reads a card out. Its own variable because the TTS models
+   * are a separate line from the ones that write text — a name that works on
+   * :generateContent for prose is not a name that answers with audio — and
+   * because they are all preview-only, so this is the one most likely to need
+   * moving. gemini-2.5-flash-preview-tts is the cheaper predecessor if it does.
+   *
+   * What it costs is worth knowing before turning it on: a card read aloud is
+   * minutes of speech, billed per audio token, where the script in front of it
+   * is a few hundred words of text. The synthesis is the expensive half.
+   */
+  LLM_AUDIO_MODEL: unsetWhenEmpty(z.string().min(1).default("gemini-3.1-flash-tts-preview")),
   GEMINI_API_KEY: unsetWhenEmpty(z.string().min(1).optional()),
+  /**
+   * Where recordings are kept. Optional, and unset is a deployment with the
+   * feature off rather than a broken one: nothing else in the product touches
+   * S3, so the play button is the only thing that fails, and it says so.
+   */
+  AUDIO_BUCKET: unsetWhenEmpty(z.string().min(1).optional()),
+  AWS_REGION: unsetWhenEmpty(z.string().min(1).default("us-east-1")),
+  /**
+   * The API's own credentials, which are not the deployer's: the deployer can
+   * write the web bucket and invalidate the distribution, and this user can put
+   * and get objects in the audio bucket and nothing else. Read here rather than
+   * left to the SDK's own environment lookup so a missing key fails with a
+   * sentence naming it, the same as GEMINI_API_KEY above.
+   */
+  AWS_ACCESS_KEY_ID: unsetWhenEmpty(z.string().min(1).optional()),
+  AWS_SECRET_ACCESS_KEY: unsetWhenEmpty(z.string().min(1).optional()),
   OPENAI_API_KEY: unsetWhenEmpty(z.string().min(1).optional()),
   ANTHROPIC_API_KEY: unsetWhenEmpty(z.string().min(1).optional()),
 });
 
 export type EnvT = z.infer<typeof EnvSchema>;
 
-/** The model each job runs on. One place, so a new task cannot silently pick one. */
+/**
+ * The model each job runs on. One place, so a new task cannot silently pick one
+ * — and a switch rather than a ternary, so adding a member to LlmTask fails the
+ * build here rather than quietly running on the content model.
+ */
 export function modelFor(env: EnvT, task: LlmTask): string {
-  return task === LlmTask.Map ? env.LLM_MODEL : env.LLM_CONTENT_MODEL;
+  switch (task) {
+    case LlmTask.Map:
+      return env.LLM_MODEL;
+    case LlmTask.Content:
+      return env.LLM_CONTENT_MODEL;
+    case LlmTask.Speech:
+      return env.LLM_AUDIO_MODEL;
+  }
 }
 
 let parsed: EnvT | null = null;

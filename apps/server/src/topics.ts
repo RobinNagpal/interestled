@@ -26,6 +26,7 @@ import {
 import type {
   AnsweredQuestionT,
   GeneratedMapT,
+  TextTask,
   LearningNodeT,
   MapAnswersT,
   MapPlanViewT,
@@ -119,6 +120,30 @@ export async function assertRewriteBudget(db: Db, userId: string): Promise<void>
   if (recent >= MAX_CARDS_WRITTEN_PER_HOUR) {
     throw new ConflictError(
       "That is a lot of card writing in one hour — the limit resets shortly.",
+    );
+  }
+}
+
+/**
+ * Recordings a learner may have made in an hour.
+ *
+ * The tightest of these ceilings, because it is the most expensive press in the
+ * product: a model call to write the script and then minutes of synthesised
+ * speech, billed by the second of audio rather than by the token of text. Low
+ * enough that a press held down cannot run up a bill, high enough that an hour
+ * of listening through a topic never reaches it — a card is recorded once and
+ * answered from the bucket after that, so this only binds on new ones.
+ */
+const MAX_NARRATIONS_PER_HOUR = 20;
+
+export async function assertNarrationBudget(db: Db, userId: string): Promise<void> {
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const recent = await db.cardNarration.count({
+    where: { card: { node: { topic: { userId } } }, createdAt: { gte: hourAgo } },
+  });
+  if (recent >= MAX_NARRATIONS_PER_HOUR) {
+    throw new ConflictError(
+      "That is a lot of cards read out in one hour — the limit resets shortly.",
     );
   }
 }
@@ -384,7 +409,7 @@ async function linkPlan(
  * Every model call in this file builds map structure — the seven choices, the
  * whole map, and one group of it — so every one of them asks for the map model.
  */
-export function topicsRouter(db: Db, provider: (task: LlmTask) => LlmProvider): Hono<AuthEnv> {
+export function topicsRouter(db: Db, provider: (task: TextTask) => LlmProvider): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
 
   router.get("/", async (c) => {

@@ -8,11 +8,19 @@
 #
 # Needs (created by deployment/terraform and .../shared-host, values in outputs):
 #   secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  (the interestled-deployer user)
+#            API_AWS_ACCESS_KEY_ID, API_AWS_SECRET_ACCESS_KEY
+#                                                      (the interestled-api user, which can
+#                                                       only read and write the audio bucket)
 #            SSH_PRIVATE_KEY                           (the shared host's deploy user)
 #            DATABASE_URL                              (same Postgres the API uses)
 #            GEMINI_API_KEY                             (the model provider's key)
 #   vars:    S3_BUCKET, CLOUDFRONT_DISTRIBUTION_ID, DEPLOY_HOST, SSH_HOST_KEY,
-#            SITE_URL, LLM_PROVIDER, LLM_MODEL, LLM_CONTENT_MODEL
+#            SITE_URL, LLM_PROVIDER, LLM_MODEL, LLM_CONTENT_MODEL, LLM_AUDIO_MODEL,
+#            AUDIO_BUCKET
+#
+# The audio half is optional: with AUDIO_BUCKET and the API_AWS_* secrets unset,
+# every route still serves and the only thing that fails is the play button on a
+# card, which says which variable is missing.
 name: Deploy
 
 on:
@@ -141,6 +149,12 @@ jobs:
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           LLM_CONTENT_MODEL: ${{ vars.LLM_CONTENT_MODEL }}
+          LLM_AUDIO_MODEL: ${{ vars.LLM_AUDIO_MODEL }}
+          AUDIO_BUCKET: ${{ vars.AUDIO_BUCKET }}
+          # The API's own key, not the deployer's above: it can put and get
+          # objects in the audio bucket and nothing else in the account.
+          API_AWS_ACCESS_KEY_ID: ${{ secrets.API_AWS_ACCESS_KEY_ID }}
+          API_AWS_SECRET_ACCESS_KEY: ${{ secrets.API_AWS_SECRET_ACCESS_KEY }}
         run: |
           ssh_opts=(
             -i "$HOME/.ssh/id_deploy"
@@ -162,7 +176,12 @@ jobs:
             "LLM_PROVIDER=$LLM_PROVIDER" \
             "LLM_MODEL=$LLM_MODEL" \
             "LLM_CONTENT_MODEL=$LLM_CONTENT_MODEL" \
+            "LLM_AUDIO_MODEL=$LLM_AUDIO_MODEL" \
             "GEMINI_API_KEY=$GEMINI_API_KEY" \
+            "AUDIO_BUCKET=$AUDIO_BUCKET" \
+            "AWS_REGION=$AWS_REGION" \
+            "AWS_ACCESS_KEY_ID=$API_AWS_ACCESS_KEY_ID" \
+            "AWS_SECRET_ACCESS_KEY=$API_AWS_SECRET_ACCESS_KEY" \
             | ssh "${ssh_opts[@]}" "deploy@$DEPLOY_HOST" "umask 077 && cat > /etc/$APP-api.env"
 
           ssh "${ssh_opts[@]}" "deploy@$DEPLOY_HOST" "

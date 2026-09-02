@@ -43,5 +43,13 @@ export const keys = {
    * is asked for again on every open.
    */
   questions: (nodeId: string) => ["questions", nodeId] as const,
+  /**
+   * The recording of a node's card, if it has one. Learner state rather than
+   * generated content, and deliberately so: what it carries is a signed link
+   * with an hour on it, so it has to be asked for again on every mount and
+   * every return to the foreground. The generated half — the script and the
+   * audio — is in the bucket, and this key never holds it.
+   */
+  audio: (nodeId: string) => ["audio", nodeId] as const,
   review: ["review"] as const,
 };

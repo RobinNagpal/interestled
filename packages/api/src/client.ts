@@ -8,6 +8,8 @@ import {
   Drill,
   LearningNode,
   MapPlanView,
+  NodeAudioResult,
+  NodeAudioView,
   NodeStatusSchema,
   Profile,
   ResumePoint,
@@ -28,6 +30,7 @@ import type {
   LoginInputT,
   MapPlanViewT,
   MoveDirection,
+  NodeAudioT,
   NodeStatus,
   ProfileT,
   ProfileUpdateInputT,
@@ -249,6 +252,19 @@ export interface ApiClient {
   listQuestions(nodeId: string): Promise<CardQuestionT[]>;
   /** One question, answered against the card the learner is reading, and kept. */
   askQuestion(nodeId: string, question: string): Promise<CardQuestionT>;
+  /**
+   * The recording of the card on screen, or null when there is not one yet.
+   * Cheap — no model call and nothing written — but never cached for long: the
+   * URL it carries is signed and expires.
+   */
+  getNodeAudio(nodeId: string): Promise<NodeAudioT | null>;
+  /**
+   * Read this card out and keep it. The most expensive call in the product, so
+   * it is a mutation the learner sets off by pressing a button and nothing can
+   * refetch. A card already recorded comes back from the bucket rather than
+   * being made again.
+   */
+  createNodeAudio(nodeId: string): Promise<NodeAudioT>;
   getDrill(nodeId: string, kind?: DrillKind): Promise<DrillT>;
   submitAttempt(input: AttemptInputT): Promise<AttemptResultT>;
   setNodeStatus(nodeId: string, status: NodeStatus): Promise<LearningNodeT>;
@@ -361,6 +377,10 @@ export function createApiClient(config: ClientConfig): ApiClient {
     listQuestions: (nodeId) => get(`/api/nodes/${nodeId}/questions`, z.array(CardQuestion)),
     askQuestion: (nodeId, question) =>
       post(`/api/nodes/${nodeId}/questions`, CardQuestion, { question }),
+    getNodeAudio: async (nodeId) =>
+      (await get(`/api/nodes/${nodeId}/audio`, NodeAudioView)).audio,
+    createNodeAudio: async (nodeId) =>
+      (await post(`/api/nodes/${nodeId}/audio`, NodeAudioResult)).audio,
     getDrill: (nodeId, kind) =>
       get(`/api/nodes/${nodeId}/drill${kind === undefined ? "" : `?kind=${kind}`}`, Drill),
     submitAttempt: (input) => post("/api/nodes/attempts", AttemptResult, input),

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { keys } from "../src/keys";
-import { CONTENT_STALE_MS, QUERY_GC_MS, createAppQueryClient } from "../src/queryClient";
+import {
+  CONTENT_STALE_MS,
+  QUERY_GC_MS,
+  createAppQueryClient,
+  shouldPersistQuery,
+} from "../src/queryClient";
+import type { Query } from "@tanstack/react-query";
 
 /**
  * The cache policy is what keeps the phone and the website showing the same
@@ -37,5 +43,33 @@ describe("createAppQueryClient", () => {
     const drill = client.getQueryDefaults(keys.drill("node", null));
     expect(drill.staleTime).toBe(Infinity);
     expect(drill.refetchOnWindowFocus).toBe(false);
+  });
+
+  it("asks again for a recording's link, which is signed and expires", () => {
+    // Not generated content, despite what it points at: what this key holds is
+    // a URL with an hour on it, and the audio itself is in the bucket.
+    expect(client.getQueryDefaults(keys.audio("node"))).toEqual({});
+  });
+});
+
+describe("shouldPersistQuery", () => {
+  /** A settled query, which is the only kind the default would write anyway. */
+  function settled(queryKey: readonly unknown[]): Query {
+    return { queryKey, state: { status: "success" } } as unknown as Query;
+  }
+
+  it("keeps the signed link off disk, so a launch never paints a dead one", () => {
+    expect(shouldPersistQuery(settled(keys.audio("node")))).toBe(false);
+  });
+
+  it("writes everything else, which is what opening on the app rather than a spinner needs", () => {
+    expect(shouldPersistQuery(settled(keys.topics))).toBe(true);
+    expect(shouldPersistQuery(settled(keys.topic("kubernetes")))).toBe(true);
+    expect(shouldPersistQuery(settled(keys.card("node", { depth: 2 })))).toBe(true);
+  });
+
+  it("still refuses what the default refuses", () => {
+    const pending = { queryKey: keys.topics, state: { status: "pending" } } as unknown as Query;
+    expect(shouldPersistQuery(pending)).toBe(false);
   });
 });

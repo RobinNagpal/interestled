@@ -1,18 +1,20 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { Prisma } from "@prisma/client";
-import type { LlmTask } from "@interestled/schemas";
+import type { TextTask } from "@interestled/schemas";
 import { z } from "zod";
 import { authRouter, requireAuth, sessionRouter } from "./auth";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { ConflictError, GenerationError, NotFoundError } from "./errors";
 import { learningRouter } from "./learning";
-import { createProvider } from "./llm";
-import type { LlmProvider } from "./llm";
+import { createProvider, createSpeechProvider } from "./llm";
+import type { LlmProvider, SpeechProvider } from "./llm";
 import { profileRouter } from "./profile";
 import { reviewRouter } from "./review";
 import { sessionsRouter } from "./sessions";
+import { createObjectStore } from "./storage";
+import type { ObjectStore } from "./storage";
 import { topicsRouter } from "./topics";
 
 /** P2002 reports the columns that collided; naming them beats guessing. */
@@ -46,15 +48,29 @@ export interface AppOptions {
    * needed the model, not stop the server from serving anything at all. The task
    * is what picks the model, so a map and a card can be answered by two.
    */
-  provider?: (task: LlmTask) => LlmProvider;
+  provider?: (task: TextTask) => LlmProvider;
+  /**
+   * The one that reads a card out, and the bucket the recording goes in. Both
+   * lazy for the same reason and one more: neither is configured on a local
+   * checkout, and a deployment with no AUDIO_BUCKET is one with the play button
+   * off rather than one that cannot start.
+   */
+  speech?: () => SpeechProvider;
+  objects?: () => ObjectStore;
+}
+
+/** Built on the first call that needs it, and kept for the rest of the process. */
+function once<T>(build: () => T): () => T {
+  let value: T | null = null;
+  return () => (value ??= build());
 }
 
 export function createApp(db: Db, options: AppOptions = {}): Hono {
   const app = new Hono();
-  const cached = new Map<LlmTask, LlmProvider>();
+  const cached = new Map<TextTask, LlmProvider>();
   const provider =
     options.provider ??
-    ((task: LlmTask): LlmProvider => {
+    ((task: TextTask): LlmProvider => {
       const existing = cached.get(task);
       if (existing !== undefined) {
         return existing;
@@ -63,6 +79,8 @@ export function createApp(db: Db, options: AppOptions = {}): Hono {
       cached.set(task, built);
       return built;
     });
+  const speech = options.speech ?? once(createSpeechProvider);
+  const objects = options.objects ?? once(createObjectStore);
 
   const origins = allowedOrigins();
   app.use("*", cors({ origin: (origin) => (origins.includes(origin) ? origin : null) }));
@@ -75,7 +93,7 @@ export function createApp(db: Db, options: AppOptions = {}): Hono {
   authed.route("/auth/session", sessionRouter(db));
   authed.route("/profile", profileRouter(db));
   authed.route("/topics", topicsRouter(db, provider));
-  authed.route("/nodes", learningRouter(db, provider));
+  authed.route("/nodes", learningRouter(db, provider, speech, objects));
   authed.route("/review", reviewRouter(db));
   authed.route("/sessions", sessionsRouter(db));
   app.route("/api", authed);
