@@ -523,8 +523,15 @@ formula under 'How the rate compounds' — the balance times one plus r, all to 
 n.* *The second line of the snippet is where the lock is taken.* The card stays on
 screen, and the words point at it.
 
-That costs two model calls, so it happens once. The script and the audio are kept
-together, keyed on the card they were made from — not on the node, because a node has a
+That costs two model calls and a stretch of synthesis, which is far too long to keep
+anybody waiting on a request — so the press starts it and says so, the button spins,
+and the screen keeps working while it runs. It goes green when there is something to
+play, and red with the reason when it stops. Once there is a recording the row becomes a
+player: a bar showing how long it runs and where you are in it, fifteen seconds back or
+forward, and a speed control for the dense minute you want to hear twice at 0.75 or the
+one you want to skim at 2.
+
+The script and the audio are kept together, keyed on the card they were made from — not on the node, because a node has a
 card per setting and the recording is of the one being read, which is why the play
 button says which card it is on rather than letting the server guess. The file goes into
 a bucket under a path built from the same slugs the URLs are built from:
@@ -537,7 +544,9 @@ through the old recording stops offering to resume it — reading out words that
 longer on the screen is the one thing this feature must never do.
 
 - *Covers:* W5 (a different channel for the same content), W8 (hands free while it
-  plays), A1 (a card that reads as a wall can be listened to instead).
+  plays), A1 (a card that reads as a wall can be listened to instead), A10 (the wait
+  is never dead time — the press answers at once and the card stays readable while
+  the recording is made).
 
 ### Asking about a card
 
@@ -1113,7 +1122,7 @@ the design, not an acceptable gap.
 | A7 | Notes are not the activity | The system writes the notes; learner effort goes into explain-back |
 | A8 | Do not rely on them returning | A scheduled nudge that names the next node and opens straight into it |
 | A9 | No streaks | Cumulative session count only; missed days are unmarked |
-| A10 | No dead time | Streaming with skeletons; speculative pre-generation; no spinner over finished content; a settings change never rewrites a card on the next open — the card that exists is shown, and writing it again is one deliberate press |
+| A10 | No dead time | Streaming with skeletons; speculative pre-generation; no spinner over finished content; a settings change never rewrites a card on the next open — the card that exists is shown, and writing it again is one deliberate press; asking for a card to be read aloud answers immediately and the recording is made behind the screen, which stays readable |
 | A11 | Not several instructions at once | One instruction per screen; multi-step tasks render as a checklist |
 | A12 | Nothing carried across screens | Values repeated at the point of use; jargon defined on hover in place; the map's edit screen states the shape and the instruction lines the map was built to, so what was chosen at build time is read rather than remembered; a question asked on a card is answered and kept on that card, and the panel under a card states both what it was written to and what the node now asks for |
 | A13 | No clutter | One visual per card; groups on the map collapse, so a wide subject is still one screen; chrome hidden during drills; no badges or notifications mid-session |

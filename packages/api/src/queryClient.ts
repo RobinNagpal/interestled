@@ -18,6 +18,17 @@ export const QUERY_GC_MS = 24 * 60 * 60 * 1000;
 export const CONTENT_STALE_MS = 5 * 60 * 1000;
 
 /**
+ * How often the app asks whether a recording it started has finished.
+ *
+ * Making one takes half a minute to a couple of minutes, so this is not a
+ * progress bar — it is how long the button can be wrong for. Three seconds is
+ * short enough that "ready" arrives while the learner is still looking at it,
+ * and long enough that a two-minute generation is forty cheap requests rather
+ * than four hundred. Polling stops the moment the row settles.
+ */
+export const NARRATION_POLL_MS = 3000;
+
+/**
  * Bump this when the shape of a response changes. What is on disk was parsed
  * by the schema of the build that wrote it, and a restore does not parse it
  * again — so a field added to `TopicDetail` reads as `undefined` off a cache

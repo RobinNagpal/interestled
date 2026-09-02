@@ -1,6 +1,11 @@
 import {
   CardContent,
+  NARRATION_ERROR_MAX,
+  NARRATION_TIMED_OUT,
+  NARRATION_TIMEOUT_MS,
   NARRATION_VOICE,
+  NarrationStatus,
+  NarrationStatusSchema,
   cardVariant,
   narrationKey,
   newId,
@@ -43,6 +48,9 @@ export interface NarrationTarget {
   settings: CardSettingsT;
 }
 
+/** Where work that outlives its request goes. See AppOptions in app.ts. */
+export type Background = (task: Promise<void>) => void;
+
 /** The one writing of the card the button sits on, or null if there is none. */
 async function cardBeingRead(
   db: Db,
@@ -83,8 +91,10 @@ function keyFor(target: NarrationTarget): string {
   });
 }
 
-/** The columns a stored recording has to say whether it is still the right one. */
+/** The columns a stored recording has to say what it is and where it got to. */
 interface NarrationRow {
+  status: string;
+  error: string;
   objectKey: string;
   cardWrittenAt: Date;
   seconds: number;
@@ -104,31 +114,64 @@ function isCurrent(row: NarrationRow, key: string, cardWrittenAt: Date): boolean
   return row.objectKey === key && row.cardWrittenAt.getTime() === cardWrittenAt.getTime();
 }
 
-/** A stored row as the app sees it: somewhere to play from, and for how long. */
-async function playable(store: ObjectStore, row: NarrationRow): Promise<NodeAudioT> {
-  return {
-    url: await store.signedUrl(row.objectKey, AUDIO_URL_TTL_SECONDS),
-    expiresAt: new Date(Date.now() + AUDIO_URL_TTL_SECONDS * 1000),
-    seconds: row.seconds,
-    voice: row.voice,
-    // What identifies this recording to a player that has already loaded one.
-    madeAt: row.createdAt,
-  };
+/**
+ * Where a row has actually got to, which is not always what its column says.
+ *
+ * The run happens in this process, so a deploy or a crash mid-synthesis leaves a
+ * row reading `pending` with nothing coming. Read as pending forever, that is a
+ * spinner the learner watches until they give up; read as failed, it is a button
+ * they can press again. Nothing writes the timeout down — the next claim
+ * overwrites the row anyway, and a sweeper would be a second thing to keep
+ * running for a case that resolves itself.
+ */
+function statusOf(row: NarrationRow, now: Date): NarrationStatus {
+  const status = NarrationStatusSchema.parse(row.status);
+  const abandoned = now.getTime() - row.createdAt.getTime() >= NARRATION_TIMEOUT_MS;
+  return status === NarrationStatus.Pending && abandoned ? NarrationStatus.Failed : status;
 }
 
 /**
- * The recording of the card on screen, if there is one. Two queries and, only
- * when there is something to point at, one signature — no model call, no
- * synthesis, and nothing written.
+ * A stored row as the app sees it.
  *
- * The store is a factory rather than a store for that last reason: building it
- * needs AUDIO_BUCKET, and a deployment that has not set one is supposed to
- * serve every route and fail only the press. Built eagerly, this route would
- * answer 502 on every card open instead.
+ * The store is a factory rather than a store because only one of the three
+ * states needs it: building it needs AUDIO_BUCKET, and a deployment without one
+ * is supposed to serve every route and fail only the press.
+ */
+async function viewOf(
+  objects: () => ObjectStore,
+  row: NarrationRow,
+  now: Date,
+): Promise<NodeAudioT> {
+  switch (statusOf(row, now)) {
+    case NarrationStatus.Pending:
+      return { status: NarrationStatus.Pending, startedAt: row.createdAt };
+    case NarrationStatus.Failed:
+      // A row that ran out of time never got to write its own reason.
+      return {
+        status: NarrationStatus.Failed,
+        error: row.error === "" ? NARRATION_TIMED_OUT : row.error,
+      };
+    case NarrationStatus.Ready:
+      return {
+        status: NarrationStatus.Ready,
+        url: await objects().signedUrl(row.objectKey, AUDIO_URL_TTL_SECONDS),
+        expiresAt: new Date(now.getTime() + AUDIO_URL_TTL_SECONDS * 1000),
+        seconds: row.seconds,
+        voice: row.voice,
+        // What identifies this recording to a player that has already loaded one.
+        madeAt: row.createdAt,
+      };
+  }
+}
+
+/**
+ * Where the card on screen has got to, if anywhere. Two queries and — only for a
+ * recording there is something to play — one signature. It never reaches a
+ * model and never writes.
  *
- * Null is every kind of "not yet" — no card, no recording, one of a card since
- * rewritten, one from an older narration prompt. They all mean the same thing
- * to the button, which is that pressing it will make one.
+ * Null is every kind of "nothing has been asked for": no card, no row, or a row
+ * about a card that has since been written again. They all mean the same thing
+ * to the button, which is that pressing it starts one.
  */
 export async function readNarration(
   db: Db,
@@ -143,29 +186,130 @@ export async function readNarration(
   if (row === null || !isCurrent(row, keyFor(target), card.writtenAt)) {
     return null;
   }
-  return playable(objects(), row);
+  return viewOf(objects, row, new Date());
 }
 
 /**
- * Make the recording, and keep it.
+ * Take the run, or find that somebody else has it.
  *
- * Two calls to the provider: the content model turns the card into something
- * worth hearing, and the speech model says it. The script is the cheap half and
- * the synthesis is the expensive one, which is why the row keeps both — a voice
- * changed later is a synthesis, not a re-reading of the card.
- *
- * Idempotent by design: a second press while the first is still in flight, or
- * one right after it, finds the row already current and answers with it rather
- * than paying for the same card twice. That check runs before the budget, so a
- * press that would have cost nothing is never the one refused — including the
- * retry after a slow first press timed out at the edge with the work already
- * done and the row already written.
+ * Two presses a moment apart must not both pay for the same card, and the
+ * read-then-write this replaced could not promise that. The insert is
+ * `skipDuplicates`, so exactly one of two concurrent presses creates the row;
+ * the update names the states it is allowed to take over from, so exactly one
+ * takes over an existing row. Either way the loser is told to look at what is
+ * there rather than starting a second run.
  */
-export async function writeNarration(
+async function claimRun(
+  db: Db,
+  cardId: string,
+  row: { objectKey: string; cardWrittenAt: Date; createdAt: Date },
+): Promise<boolean> {
+  const claimed = {
+    status: NarrationStatus.Pending,
+    error: "",
+    script: "",
+    seconds: 0,
+    bytes: 0,
+    voice: NARRATION_VOICE,
+    ...row,
+  };
+  const created = await db.cardNarration.createMany({
+    data: [{ id: newId(), cardId, ...claimed }],
+    skipDuplicates: true,
+  });
+  if (created.count === 1) {
+    return true;
+  }
+  // Something is already there: a finished recording of other text, a failure,
+  // or a run whose process went away. Never a run still under way.
+  const abandoned = new Date(row.createdAt.getTime() - NARRATION_TIMEOUT_MS);
+  const taken = await db.cardNarration.updateMany({
+    where: {
+      cardId,
+      OR: [{ status: { not: NarrationStatus.Pending } }, { createdAt: { lt: abandoned } }],
+    },
+    data: claimed,
+  });
+  return taken.count === 1;
+}
+
+/**
+ * Write the script, say it, and put it in the bucket — behind the response that
+ * started it.
+ *
+ * Every failure lands on the row rather than on a request nobody is holding any
+ * more, because the row is the only thing the learner can still see. The message
+ * is the model's own where there is one, the same rule a failed map build
+ * follows: those are written to be read by a person.
+ */
+async function runNarration(
+  db: Db,
+  provider: LlmProvider,
+  speech: SpeechProvider,
+  store: ObjectStore,
+  target: NarrationTarget,
+  card: { id: string; content: CardContentT },
+  key: string,
+): Promise<void> {
+  try {
+    const { script } = await generateNarration(provider, {
+      topic: target.topic,
+      node: target.node,
+      card: card.content,
+      settings: target.settings,
+    });
+    const spoken = await speech.speak({ text: script, voice: NARRATION_VOICE });
+    const rate = sampleRateOf(spoken.mimeType);
+    const wav = pcmToWav(spoken.audio, rate);
+
+    // The object first, the row second. The other order marks a recording ready
+    // while it points at nothing, which the player meets as a broken link; this
+    // order can leave an object no row names, which nobody meets at all and the
+    // next run overwrites — the key is the card's identity, so a re-recording
+    // lands on top of what it replaces rather than beside it.
+    await store.put(key, wav, AUDIO_CONTENT_TYPE);
+    await db.cardNarration.update({
+      where: { cardId: card.id },
+      data: {
+        status: NarrationStatus.Ready,
+        error: "",
+        script,
+        seconds: pcmSeconds(spoken.audio.length, rate),
+        bytes: wav.length,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Reading this card out failed.";
+    await db.cardNarration
+      .update({
+        where: { cardId: card.id },
+        data: { status: NarrationStatus.Failed, error: message.slice(0, NARRATION_ERROR_MAX) },
+      })
+      // The row can be gone: deleting the node, or rebuilding the map, takes it
+      // with the card while the run is still going. Nothing to record it on.
+      .catch(() => undefined);
+  }
+}
+
+/**
+ * Start reading this card out, and answer with where it has got to.
+ *
+ * The press is not the recording. Making one is two model calls and minutes of
+ * synthesis, and the edge gives an origin sixty seconds — so this claims the
+ * run, hands it to `background`, and answers immediately. The app polls the read
+ * above until the row settles.
+ *
+ * Nothing here is paid for twice. A recording already made is answered from the
+ * bucket, a run already under way is answered as itself, and the budget is
+ * checked only once past both — so a press that would have cost nothing is never
+ * the one refused.
+ */
+export async function startNarration(
   db: Db,
   provider: LlmProvider,
   speech: SpeechProvider,
   objects: () => ObjectStore,
+  background: Background,
   target: NarrationTarget,
 ): Promise<NodeAudioT> {
   const card = await cardBeingRead(db, target);
@@ -175,44 +319,35 @@ export async function writeNarration(
     throw new ConflictError("Open this card first — there is nothing to read out yet.");
   }
   const key = keyFor(target);
-  const existing = await db.cardNarration.findUnique({ where: { cardId: card.id } });
+  // Before the claim, so a deployment with no bucket still fails the press at
+  // once and names the variable, rather than answering "working on it" and
+  // failing out of sight a moment later.
   const store = objects();
+  const now = new Date();
+
+  const existing = await db.cardNarration.findUnique({ where: { cardId: card.id } });
   if (existing !== null && isCurrent(existing, key, card.writtenAt)) {
-    return playable(store, existing);
+    const status = statusOf(existing, now);
+    if (status === NarrationStatus.Ready || status === NarrationStatus.Pending) {
+      return viewOf(objects, existing, now);
+    }
   }
   await assertNarrationBudget(db, target.userId);
 
-  const { script } = await generateNarration(provider, {
-    topic: target.topic,
-    node: target.node,
-    card: card.content,
-    settings: target.settings,
-  });
-  const spoken = await speech.speak({ text: script, voice: NARRATION_VOICE });
-  const rate = sampleRateOf(spoken.mimeType);
-  const wav = pcmToWav(spoken.audio, rate);
-
-  // The object first, the row second. The other order leaves a row pointing at
-  // nothing, which the player meets as a broken link; this order can leave an
-  // object nothing points at, which nobody meets at all and the next press
-  // overwrites — the key is the card's identity, so a re-recording lands on top
-  // of what it replaces rather than beside it.
-  await store.put(key, wav, AUDIO_CONTENT_TYPE);
-  const row = {
-    script,
+  const claimed = await claimRun(db, card.id, {
     objectKey: key,
     cardWrittenAt: card.writtenAt,
-    seconds: pcmSeconds(spoken.audio.length, rate),
-    bytes: wav.length,
-    voice: NARRATION_VOICE,
-  };
-  const saved = await db.cardNarration.upsert({
-    where: { cardId: card.id },
-    create: { id: newId(), cardId: card.id, ...row },
-    // createdAt moves with the content, because it is what the budget counts, a
-    // row keeping its original date is a recording the ceiling never sees, and
-    // it is what tells a player already holding one that this is a new one.
-    update: { ...row, createdAt: new Date() },
+    createdAt: now,
   });
-  return playable(store, saved);
+  if (!claimed) {
+    // Another press got there between the read above and here. Whatever it
+    // claimed is what this one is waiting for too.
+    const current = await db.cardNarration.findUnique({ where: { cardId: card.id } });
+    return current === null
+      ? { status: NarrationStatus.Failed, error: "That recording could not be started." }
+      : viewOf(objects, current, now);
+  }
+
+  background(runNarration(db, provider, speech, store, target, card, key));
+  return { status: NarrationStatus.Pending, startedAt: now };
 }

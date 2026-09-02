@@ -23,6 +23,13 @@ const line = { DEFAULT: "#e5e7eb", strong: "#d1d5db" };
 const accent = { DEFAULT: "#2563eb", soft: "#dbeafe", tint: "#eef4ff" };
 const good = "#059669";
 const warn = "#d97706";
+/**
+ * Something failed and is not going to fix itself. Distinct from `warn`, which
+ * is the caution colour: a shaky node needs another look, where a recording
+ * that stopped needs the button pressed again and says why. Two states that are
+ * not the same thing should not be the same colour.
+ */
+const bad = "#dc2626";
 
 module.exports = {
   theme: {
@@ -35,6 +42,7 @@ module.exports = {
         accent,
         good,
         warn,
+        bad,
 
         background: surface.DEFAULT,
         foreground: ink.DEFAULT,
@@ -43,7 +51,11 @@ module.exports = {
         primary: { DEFAULT: accent.DEFAULT, foreground: "#ffffff" },
         secondary: { DEFAULT: surface.sunken, foreground: ink.DEFAULT },
         muted: { DEFAULT: surface.sunken, foreground: ink.soft },
-        destructive: { DEFAULT: warn, foreground: "#ffffff" },
+        // shadcn's "destructive" means danger, which is what `bad` is. It pointed
+        // at the amber while there was no red to point at; nothing in the app
+        // renders the variant (Button deliberately does not expose it), so this
+        // only ever affected a vendored component nobody had reached for yet.
+        destructive: { DEFAULT: bad, foreground: "#ffffff" },
         border: line.DEFAULT,
         input: line.DEFAULT,
         ring: accent.DEFAULT,

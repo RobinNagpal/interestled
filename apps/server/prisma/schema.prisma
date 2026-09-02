@@ -287,7 +287,7 @@ model ConceptCard {
 model CardNarration {
   id        String      @id
   cardId    String      @unique @map("card_id")
-  script    String
+  script    String      @default("")
   // Built by narrationKey in packages/schemas from the learner's slug, the
   // topic's, the node's path and what the card was written to. Stored rather
   // than recomputed on read, so a row can be compared against the key it would
@@ -304,11 +304,20 @@ model CardNarration {
   // is one a learner can empty, and rewrite-then-play in a loop would then cost
   // nothing against the tightest ceiling in the product.
   cardWrittenAt DateTime @map("card_written_at")
-  seconds   Int
+  // NarrationStatus, as a plain string. A row exists from the moment the press
+  // claims it, so most of the columns below are empty until the run finishes —
+  // this is what says which. `createdAt` is when the run was claimed, so a row
+  // still `pending` long past NARRATION_TIMEOUT_MS is a run whose process went
+  // away, and is read as failed.
+  status    String      @default("ready")
+  // What to tell the learner when the status is failed. "" otherwise. Written
+  // to be shown, the same way topics.error is.
+  error     String      @default("")
+  seconds   Int         @default(0)
   // Nothing reads this. It is here so the size of the bucket can be read off
   // the table rather than out of S3, which is the question asked when the bill
   // arrives.
-  bytes     Int
+  bytes     Int         @default(0)
   // The prebuilt voice that spoke it, so a row can still say which one after
   // NARRATION_VOICE has moved on.
   voice     String

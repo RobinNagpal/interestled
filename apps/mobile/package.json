@@ -17,6 +17,7 @@
     "@interestled/schemas": "workspace:*",
     "@interestled/ui": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/slider": "5.0.1",
     "@tanstack/query-async-storage-persister": "^5.102.8",
     "@tanstack/react-query": "^5.90.2",
     "@tanstack/react-query-persist-client": "^5.102.8",

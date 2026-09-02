@@ -31,8 +31,8 @@ takes about as long to listen to as to read.
 ## The two routes
 
 ```
-GET  /api/nodes/:id/audio?<the seven card settings>   is there one, and where
-POST /api/nodes/:id/audio?<the seven card settings>   make one, and keep it
+GET  /api/nodes/:id/audio?<the seven card settings>   where it has got to
+POST /api/nodes/:id/audio?<the seven card settings>   start it
 ```
 
 The settings are **required and are what the card route answered**. They are the
@@ -40,17 +40,62 @@ only thing that says which of a node's cards the button is on: moving a chip
 writes a second card and moving it back serves the first again, so "the newest
 card this node has" is the one the reader navigated away from.
 
-`GET` costs two queries and — only when there is a row to point at — one
-signature. It never reaches a model, never writes, and **must not build the
+`GET` costs two queries and — only for a recording there is something to play —
+one signature. It never reaches a model, never writes, and **must not build the
 object store until it has something to sign**: it runs on every card mount and
 every return to the foreground, so building it eagerly would make a deployment
 with no `AUDIO_BUCKET` answer 502 on every card open.
 
-`POST` is idempotent. A row already current is answered from the bucket, and the
-budget is checked *after* that decision, so a press that would cost nothing is
-never the one refused.
+`POST` answers `202` and `pending` almost always — see the next section. A
+recording already made comes back `200`, which is the one case that costs
+nothing. Both are idempotent, and the budget is checked only once past that, so
+a press that would cost nothing is never the one refused.
+
+## The press is not the recording
+
+A script and minutes of synthesis take far longer than the sixty seconds
+CloudFront gives an origin. So the press claims a row, hands the work to
+`background`, and answers; the app polls `GET` until the row settles.
+
+`NarrationStatus` is a TS enum over a plain `TEXT` column, like every other
+status in the product:
+
+| Status | Means | What the app shows |
+|---|---|---|
+| `pending` | Claimed and running | Spinner, and it keeps polling |
+| `ready` | The object is in the bucket and is of the words on the card | A green button and a scrubber |
+| `failed` | It stopped; `error` says what to tell the learner | A red button and the message |
+
+Three things hold this together:
+
+- **The claim is atomic.** `claimRun` inserts with `skipDuplicates`, so exactly
+  one of two simultaneous presses creates the row; if one is already there it
+  updates only from the states it may take over from, so exactly one takes it
+  over. The loser is told to look at what is there rather than starting a second
+  run. Two presses a moment apart must never both pay.
+- **A run whose process went away is read as failed.** The work happens in the
+  API process, so a deploy mid-synthesis leaves a row saying `pending` with
+  nothing coming — read literally, that is a spinner the learner watches until
+  they give up. `statusOf` treats a `pending` row older than
+  `NARRATION_TIMEOUT_MS` as failed. Nothing writes the timeout down: the next
+  claim overwrites the row anyway, and a sweeper would be a second thing to keep
+  running for a case that resolves itself.
+- **Failures land on the row, not on a request nobody is holding.** `runNarration`
+  catches everything and writes the message, the same rule a failed map build
+  follows — those messages are written to be read by a person.
+
+The one thing that stays synchronous is building the object store. A deployment
+with no `AUDIO_BUCKET` fails the press at once and names the variable, rather
+than answering "working on it" and failing out of sight a moment later.
+
+`background` is a seam on `AppOptions`. The default drops the promise on the
+event loop with a catch — an unhandled rejection on a host shared with another
+application is a two-application outage — and a test passes a collector so it can
+await the run it just started.
 
 ## How a recording is made
+
+All of this runs behind the response, on the row the press claimed.
 
 1. `generateNarration` — the content model turns the card into a script.
 2. `speech.speak` — the speech model says it. Gemini answers with **raw PCM and
@@ -59,9 +104,9 @@ never the one refused.
    samples, and a header written against the wrong rate plays at the wrong speed
    rather than failing — which is why `sampleRateOf` reads the rate rather than
    assuming it.
-4. The object goes to the bucket, then the row is written. That order can leave
-   an object nothing points at; the other order leaves a row pointing at nothing,
-   which the player meets as a broken link.
+4. The object goes to the bucket, then the row is marked `ready`. That order can
+   leave an object no row names; the other order marks a recording playable
+   while it points at nothing, which the player meets as a broken link.
 
 WAV rather than MP3 because there is no encoder on the shared host and shipping
 one would be a third application on it. The cost is size — about 48 KB a second —
@@ -104,7 +149,39 @@ against the tightest budget in the product.
 
 ## The player
 
-`apps/mobile/components/CardAudio.tsx`, on `expo-audio`.
+`apps/mobile/components/CardAudio.tsx`, on `expo-audio` and
+`@react-native-community/slider`.
+
+**No player library.** `expo-audio` already has the whole playback side —
+`seekTo`, `setPlaybackRate`, `playbackRate`, `currentTime`, `duration`, `volume`,
+`muted`, `loop` — and supports web, which is the gate here: the same codebase is
+the website. `react-native-track-player` is the usual suggestion and solves a
+different problem (queues, lock-screen controls, background playback) at the cost
+of replacing expo-audio and risking the web build. The only piece actually
+missing was a slider, and `@react-native-community/slider` is the standard one
+with a real web implementation.
+
+What the controls are:
+
+- **A scrubber**, showing the length before anything is downloaded (from the
+  row's `seconds`) and the real position after. It is disabled until a file is
+  loaded, because there is nothing to seek in — but it is still drawn, since
+  "how long is this" is a question worth answering before pressing play.
+  While a finger is on it, `scrubbing` holds the thumb: the status keeps
+  reporting the real position four times a second, and letting that drive the
+  slider makes the thumb fight the finger.
+- **−15s and +15s**, clamped to the recording. The podcast default, and muscle
+  memory.
+- **One speed control**, cycling 1× → 1.25× → 1.5× → 2× → 0.75×. A cycle rather
+  than a menu: a menu is a second surface to open on a control most people press
+  once. It is re-applied after every `replace`, because a new source starts at
+  normal speed and the choice would otherwise spring back on each reload. Pitch
+  correction is on — 2× speech without it is a chipmunk.
+
+The button's colour is the whole of what it says at a glance: **accent** when
+there is no recording and pressing makes one, **green** when there is one to
+play, **red** when the last attempt stopped and the reason is underneath. Pending
+keeps the accent and shows a spinner.
 
 One player for the life of the card, fed by `replace()` — `useAudioPlayer(source)`
 builds a *new* player whenever the source changes and releases the old one, so
@@ -114,15 +191,19 @@ mid-press.
 `isLoadedRecordingCurrent` in `packages/domain/src/audio.ts` decides resume
 against reload, and lives in the domain package with tests because getting it
 wrong reads the wrong card out at somebody. What is loaded stops being current
-when:
-
-- the server's recording has a different `madeAt` (the card was written again), or
-- the signed link has passed its hour — a recording is streamed, so an expired
-  URL stops it partway through rather than failing on the press.
+when the server has a different `madeAt` (the card was written again), when the
+server has nothing ready (it is being made again, or it failed), or when the
+signed link has passed its hour — a recording is streamed, so an expired URL
+stops it partway through rather than failing on the press.
 
 `status.isBuffering` is deliberately **not** part of the disabled state: an 11 MB
 WAV rebuffers through most of a playback on mobile data, and a disabled button
 there is a pause control that ignores taps.
+
+When a run finishes while the card is still on screen and it was this press that
+started it, the player tries to play. Attempted rather than assumed: a browser
+may refuse to play outside the gesture that asked, and the green button behind it
+is the answer when it does.
 
 ## Costs and limits
 
@@ -130,11 +211,9 @@ The most expensive press in the product — a model call plus minutes of
 synthesised speech billed by the audio second. `assertNarrationBudget` is the
 tightest ceiling there is.
 
-The known limit is **CloudFront's 60s origin read timeout**: a ten-minute card is
-a script plus minutes of synthesis in one request. The server finishes and writes
-the row even when the edge gives up, so a failed press marks the query stale and
-the app goes and looks rather than paying again. Solving it properly means
-`202`-plus-poll.
+CloudFront's 60s origin read timeout used to be the limit here, and is why the
+press and the run are now separate: nothing holds a request open for a
+generation any more.
 
 **Nothing deletes an object.** A re-recording overwrites its own key, but a
 deleted node, a rebuilt map and a bumped revision all leave objects behind. There
@@ -162,7 +241,7 @@ See `deployment/terraform/audio.tf`.
 ## Where to look
 
 ```
-apps/server/src/narration.ts                 the orchestration and the staleness rule
+apps/server/src/narration.ts                 the claim, the run, and the staleness rules
 apps/server/src/audio/wav.ts                 PCM → WAV
 apps/server/src/storage.ts                   the ObjectStore seam and the S3 one
 apps/server/src/llm/speech.ts                the SpeechProvider interface
@@ -170,5 +249,6 @@ apps/server/src/llm/gemini.ts                createGeminiSpeech
 apps/server/src/llm/prompts/narration.md
 packages/schemas/src/audio.ts                the key, the revision, NodeAudio
 packages/domain/src/audio.ts                 isLoadedRecordingCurrent
-apps/mobile/components/CardAudio.tsx
+packages/api/src/hooks.ts                    useNodeAudio, and the polling while pending
+apps/mobile/components/CardAudio.tsx         the player and its controls
 ```

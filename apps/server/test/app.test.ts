@@ -10,7 +10,10 @@ import {
   MAP_QUESTION_KINDS,
   MapPlanView,
   MapQuestionKind,
+  NARRATION_TIMED_OUT,
+  NARRATION_TIMEOUT_MS,
   NARRATION_VOICE,
+  NarrationStatus,
   NodeStatus,
   ParagraphLength,
   TechnicalDetail,
@@ -1519,12 +1522,13 @@ describe("map plans", () => {
 /**
  * The card, read out.
  *
- * Two calls to two different models and an object in a bucket, which is the
- * most expensive press in the product — so what these are here to catch is the
- * paths that make it cost twice or cost the wrong thing: a second press paying
- * for the same card again, a recording served for text that has been replaced,
- * a recording made of a card the reader is not looking at, and a plain GET
- * writing or signing anything at all.
+ * Two model calls, minutes of synthesis and an object in a bucket, which is the
+ * most expensive press in the product — and now the press and the run are
+ * separate, because the work takes far longer than an origin request may. So
+ * what these are here to catch is the paths that make it cost twice or cost the
+ * wrong thing: two presses both paying, a run started for a card the reader is
+ * not looking at, a failure nobody is told about, and a plain GET doing anything
+ * at all.
  */
 describe("reading a card out", () => {
   const SCRIPT = "So a pod is the unit of scheduling. Look at the section called What schedules a pod.";
@@ -1571,36 +1575,79 @@ describe("reading a card out", () => {
     variant: cardVariant(cardSettings),
   });
 
+  /** The row shape the stub keeps, which is the columns narration.ts reads. */
+  interface StoredNarration {
+    status: string;
+    error: string;
+    objectKey: string;
+    cardWrittenAt: Date;
+    script: string;
+    seconds: number;
+    bytes: number;
+    voice: string;
+    createdAt: Date;
+  }
+
   interface AudioStub {
     db: Db;
     /** Everything written to the bucket, in order. */
     put: { key: string; body: Buffer; contentType: string }[];
-    /** Every row the narration table was asked to write. */
-    saved: object[];
     /** What was actually sent to the speech model. */
     spoken: { text: string; voice: string }[];
     /** How many times the bucket was reached for at all. */
-    stores: number;
-    /** Which card rows were looked up, so a test can prove which card was read. */
-    looked: object[];
+    stores: () => number;
+    /** The one row, as it stands. */
+    row: () => StoredNarration | null;
+    /** Wait for every run the presses started. */
+    settle: () => Promise<void>;
+    /** Let a held run past the speech model. */
+    release: () => void;
     speech: () => SpeechProvider;
     objects: () => ObjectStore;
+    background: (task: Promise<void>) => void;
   }
 
   function audioStub(
     options: {
       card?: object | null;
-      narration?: object | null;
+      narration?: Partial<StoredNarration> | null;
       /** Recordings made in the last hour, against the ceiling. */
       recent?: number;
       children?: number;
+      /** Make the speech model fail, so the run has something to record. */
+      speechFails?: string;
+      /**
+       * Hold the run at the speech model until `release`. Nothing here touches a
+       * network, so an unheld run finishes on the microtask queue before the
+       * response it started behind is even read — which is the one state these
+       * tests cannot otherwise observe.
+       */
+      hold?: boolean;
     } = {},
   ): AudioStub {
     const put: { key: string; body: Buffer; contentType: string }[] = [];
-    const saved: object[] = [];
     const spoken: { text: string; voice: string }[] = [];
-    const looked: object[] = [];
-    const stub: { stores: number } = { stores: 0 };
+    const tasks: Promise<void>[] = [];
+    const counters = { stores: 0 };
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let row: StoredNarration | null =
+      options.narration === undefined || options.narration === null
+        ? null
+        : {
+            status: NarrationStatus.Ready,
+            error: "",
+            objectKey: KEY,
+            cardWrittenAt: WRITTEN_AT,
+            script: SCRIPT,
+            seconds: 91,
+            bytes: 4_400_000,
+            voice: NARRATION_VOICE,
+            createdAt: new Date("2026-09-01T10:05:00.000Z"),
+            ...options.narration,
+          };
     const card =
       options.card === undefined
         ? {
@@ -1613,6 +1660,7 @@ describe("reading a card out", () => {
             createdAt: WRITTEN_AT,
           }
         : options.card;
+
     const db = {
       authSession: {
         findUnique: vi.fn(async () => ({
@@ -1644,40 +1692,81 @@ describe("reading a card out", () => {
         })),
         count: vi.fn(async () => options.children ?? 0),
       },
-      conceptCard: {
-        findUnique: vi.fn(async (args: object) => {
-          looked.push(args);
-          return card;
-        }),
-      },
+      conceptCard: { findUnique: vi.fn(async () => card) },
+      // A one-row table rather than a set of spies, because what these tests are
+      // about is which press wins the claim — and a spy cannot answer that.
       cardNarration: {
-        findUnique: vi.fn(async () => options.narration ?? null),
+        findUnique: vi.fn(async () => row),
         count: vi.fn(async () => options.recent ?? 0),
-        upsert: vi.fn(async ({ create }: { create: object }) => {
-          saved.push(create);
-          return { ...create, createdAt: new Date() };
+        createMany: vi.fn(async ({ data }: { data: (StoredNarration & { id: string })[] }) => {
+          if (row !== null) {
+            return { count: 0 };
+          }
+          row = { ...data[0]! };
+          return { count: 1 };
+        }),
+        // Mirrors the guard in claimRun: take the row only when it is not a run
+        // already under way, or is one that ran out of time.
+        updateMany: vi.fn(
+          async ({
+            where,
+            data,
+          }: {
+            where: { OR: { status?: { not: string }; createdAt?: { lt: Date } }[] };
+            data: Partial<StoredNarration>;
+          }) => {
+            const held = row;
+            if (held === null) {
+              return { count: 0 };
+            }
+            const claimable = where.OR.some((guard) =>
+              guard.status !== undefined
+                ? held.status !== guard.status.not
+                : held.createdAt.getTime() < guard.createdAt!.lt.getTime(),
+            );
+            if (!claimable) {
+              return { count: 0 };
+            }
+            row = { ...held, ...data };
+            return { count: 1 };
+          },
+        ),
+        update: vi.fn(async ({ data }: { data: Partial<StoredNarration> }) => {
+          row = row === null ? null : { ...row, ...data };
+          return row;
         }),
       },
     };
+
     return {
       db: db as unknown as Db,
       put,
-      saved,
       spoken,
-      looked,
-      get stores() {
-        return stub.stores;
+      stores: () => counters.stores,
+      row: () => row,
+      settle: async () => {
+        await Promise.all(tasks);
+      },
+      release: () => release(),
+      background: (task) => {
+        tasks.push(task);
       },
       speech: () => ({
         id: LlmProviderId.Gemini,
         model: "tts",
         speak: async (request) => {
+          if (options.hold === true) {
+            await held;
+          }
           spoken.push(request);
+          if (options.speechFails !== undefined) {
+            throw new GenerationError(options.speechFails);
+          }
           return { audio: PCM, mimeType: "audio/L16;codec=pcm;rate=24000" };
         },
       }),
       objects: () => {
-        stub.stores += 1;
+        counters.stores += 1;
         return {
           put: async (key, body, contentType) => {
             put.push({ key, body, contentType });
@@ -1696,29 +1785,23 @@ describe("reading a card out", () => {
 
   const authed = { Authorization: "Bearer good" };
 
-  /** A stored recording of the card above, current unless a test says otherwise. */
-  function narrationRow(overrides: object = {}): object {
-    return {
-      objectKey: KEY,
-      cardWrittenAt: WRITTEN_AT,
-      seconds: 91,
-      voice: NARRATION_VOICE,
-      createdAt: new Date("2026-09-01T10:05:00.000Z"),
-      ...overrides,
-    };
-  }
-
   function app(stub: AudioStub) {
     return createApp(stub.db, {
       provider: audioProvider,
       speech: stub.speech,
       objects: stub.objects,
+      background: stub.background,
     });
   }
 
+  const get = (stub: AudioStub) =>
+    app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+  const post = (stub: AudioStub) =>
+    app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { method: "POST", headers: authed });
+
   it("answers a node with no recording with null, and writes nothing", async () => {
     const stub = audioStub({ narration: null });
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+    const response = await get(stub);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ audio: null });
@@ -1726,7 +1809,6 @@ describe("reading a card out", () => {
     // there is a recording, and being asked cannot be what makes one.
     expect(stub.spoken).toHaveLength(0);
     expect(stub.put).toHaveLength(0);
-    expect(stub.saved).toHaveLength(0);
   });
 
   it("does not even build the bucket when there is nothing to point at", async () => {
@@ -1734,16 +1816,14 @@ describe("reading a card out", () => {
     // one that 502s on every card open — and this route runs on every mount and
     // every return to the foreground.
     const stub = audioStub({ narration: null });
-    await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
-    expect(stub.stores).toBe(0);
+    await get(stub);
+    expect(stub.stores()).toBe(0);
   });
 
-  it("answers a node with no card at all with null rather than writing one", async () => {
+  it("answers a node with no card at all with null rather than starting anything", async () => {
     const stub = audioStub({ card: null });
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
-
-    expect(await response.json()).toEqual({ audio: null });
-    expect(stub.stores).toBe(0);
+    expect(await (await get(stub)).json()).toEqual({ audio: null });
+    expect(stub.stores()).toBe(0);
   });
 
   it("reads the card the button is on, not the newest one the node has", async () => {
@@ -1751,9 +1831,11 @@ describe("reading a card out", () => {
     // navigated away from. The settings the card route answered are the only
     // thing that says which card is on screen.
     const stub = audioStub();
-    await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+    await get(stub);
 
-    expect(stub.looked[0]).toEqual({
+    const looked = (stub.db as unknown as { conceptCard: { findUnique: ReturnType<typeof vi.fn> } })
+      .conceptCard.findUnique.mock.calls[0]?.[0];
+    expect(looked).toEqual({
       where: {
         nodeId_depth_variant: {
           nodeId: "n2",
@@ -1770,22 +1852,32 @@ describe("reading a card out", () => {
     expect(response.status).toBe(400);
   });
 
-  it("writes the script, says it, and puts one playable object in the bucket", async () => {
-    const stub = audioStub();
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
-      method: "POST",
-      headers: authed,
-    });
+  it("answers the press at once and does the work behind it", async () => {
+    // The whole point of the change: a script plus minutes of synthesis is far
+    // longer than the sixty seconds an origin gets, so the press cannot be the
+    // thing that waits.
+    const stub = audioStub({ narration: null, hold: true });
+    const response = await post(stub);
 
-    expect(response.status).toBe(201);
-    expect(await response.json()).toMatchObject({
-      audio: { url: `https://bucket.example/${KEY}?expires=3600`, seconds: 1, voice: NARRATION_VOICE },
-    });
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ audio: { status: NarrationStatus.Pending } });
+    // Claimed before anything was said, so a second press finds it.
+    expect(stub.row()).toMatchObject({ status: NarrationStatus.Pending, objectKey: KEY });
+    expect(stub.spoken).toHaveLength(0);
 
-    // The words the model wrote, in the voice the product uses — and nothing
-    // else: a speech model handed instructions as well as words reads the
-    // instructions out.
+    stub.release();
+    await stub.settle();
+
     expect(stub.spoken).toEqual([{ text: SCRIPT, voice: NARRATION_VOICE }]);
+    expect(stub.row()).toMatchObject({
+      status: NarrationStatus.Ready,
+      error: "",
+      script: SCRIPT,
+      objectKey: KEY,
+      cardWrittenAt: WRITTEN_AT,
+      seconds: 1,
+      voice: NARRATION_VOICE,
+    });
 
     // Raw PCM is not something a browser or a phone will play, so what lands in
     // the bucket has a RIFF header on it and says it is a WAV.
@@ -1794,75 +1886,147 @@ describe("reading a card out", () => {
     expect(object?.contentType).toBe("audio/wav");
     expect(object?.body.subarray(0, 4).toString("ascii")).toBe("RIFF");
     expect(object?.body.length).toBe(PCM.length + 44);
+  });
 
-    // The script is kept beside the audio: it is the only readable record of
-    // what a recording says, and re-saying it must not mean writing it again.
-    // The card's own date goes with it, which is what says later whether the
-    // recording is still of the words on the card.
-    expect(stub.saved[0]).toMatchObject({
-      cardId: "c1",
-      script: SCRIPT,
-      objectKey: KEY,
-      cardWrittenAt: WRITTEN_AT,
-      seconds: 1,
-      voice: NARRATION_VOICE,
+  it("says it is still working while the run is going", async () => {
+    const stub = audioStub({ narration: null, hold: true });
+    await post(stub);
+
+    expect(await (await get(stub)).json()).toMatchObject({
+      audio: { status: NarrationStatus.Pending },
+    });
+    stub.release();
+    await stub.settle();
+    expect(await (await get(stub)).json()).toMatchObject({
+      audio: { status: NarrationStatus.Ready, seconds: 1, voice: NARRATION_VOICE },
     });
   });
 
   it("lays the bucket out by the learner, the topic and the path down the map", async () => {
-    const stub = audioStub();
-    await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { method: "POST", headers: authed });
+    const stub = audioStub({ narration: null });
+    await post(stub);
+    await stub.settle();
 
     expect(stub.put[0]?.key.startsWith("robin/kubernetes/pods/restarts/")).toBe(true);
   });
 
-  it("answers a second press from the bucket rather than paying for it twice", async () => {
-    // The one thing that must never regress: a double tap, or coming back to a
-    // card an hour later, costs a signature and nothing else.
-    const stub = audioStub({ narration: narrationRow() });
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
-      method: "POST",
-      headers: authed,
-    });
+  it("never pays twice when two presses land together", async () => {
+    // The one thing that must never regress. Both presses answer, one run.
+    const stub = audioStub({ narration: null, hold: true });
+    const [first, second] = await Promise.all([post(stub), post(stub)]);
+    stub.release();
+    await stub.settle();
 
-    expect(response.status).toBe(201);
-    expect(await response.json()).toMatchObject({ audio: { seconds: 91 } });
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(202);
+    expect(stub.spoken).toHaveLength(1);
+    expect(stub.put).toHaveLength(1);
+  });
+
+  it("answers a press on a recording already made without doing anything", async () => {
+    const stub = audioStub({ narration: {} });
+    const response = await post(stub);
+
+    // 200 rather than 202: nothing was accepted, this is what is already there.
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      audio: { status: NarrationStatus.Ready, seconds: 91 },
+    });
     expect(stub.spoken).toHaveLength(0);
     expect(stub.put).toHaveLength(0);
   });
 
-  it("answers that second press even at the ceiling, since it costs nothing", async () => {
+  it("answers that press even at the ceiling, since it costs nothing", async () => {
     // The budget is about what a press would spend. Refusing one that would
-    // have been served from the bucket turns a retry after a slow first press —
-    // which is exactly what a timeout at the edge produces — into a dead end.
-    const stub = audioStub({ narration: narrationRow(), recent: 20 });
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
-      method: "POST",
-      headers: authed,
-    });
+    // have been served from the bucket turns a retry into a dead end.
+    const stub = audioStub({ narration: {}, recent: 20 });
+    expect((await post(stub)).status).toBe(200);
+  });
 
-    expect(response.status).toBe(201);
+  it("does not start a second run while one is under way", async () => {
+    const stub = audioStub({
+      narration: { status: NarrationStatus.Pending, createdAt: new Date() },
+    });
+    const response = await post(stub);
+    await stub.settle();
+
+    expect(response.status).toBe(202);
+    expect(stub.spoken).toHaveLength(0);
+  });
+
+  it("records the failure on the row, where the learner can still see it", async () => {
+    const stub = audioStub({ narration: null, speechFails: "The speech model is not available." });
+    await post(stub);
+    await stub.settle();
+
+    expect(stub.row()).toMatchObject({
+      status: NarrationStatus.Failed,
+      error: "The speech model is not available.",
+    });
+    expect(await (await get(stub)).json()).toEqual({
+      audio: { status: NarrationStatus.Failed, error: "The speech model is not available." },
+    });
+    // Nothing half-made was left claiming to be playable.
+    expect(stub.put).toHaveLength(0);
+  });
+
+  it("lets a failed recording be started again", async () => {
+    const stub = audioStub({ narration: { status: NarrationStatus.Failed, error: "It broke." } });
+    const response = await post(stub);
+    await stub.settle();
+
+    expect(response.status).toBe(202);
+    expect(stub.row()).toMatchObject({ status: NarrationStatus.Ready, error: "" });
+  });
+
+  it("reads a run whose process went away as a failure rather than a spinner", async () => {
+    // The work happens in this process, so a deploy mid-synthesis leaves a row
+    // saying pending with nothing coming. Read as pending it is a spinner the
+    // learner watches until they give up.
+    const stub = audioStub({
+      narration: {
+        status: NarrationStatus.Pending,
+        error: "",
+        createdAt: new Date(Date.now() - NARRATION_TIMEOUT_MS - 1000),
+      },
+    });
+    expect(await (await get(stub)).json()).toEqual({
+      audio: { status: NarrationStatus.Failed, error: NARRATION_TIMED_OUT },
+    });
+  });
+
+  it("lets an abandoned run be taken over", async () => {
+    const stub = audioStub({
+      narration: {
+        status: NarrationStatus.Pending,
+        createdAt: new Date(Date.now() - NARRATION_TIMEOUT_MS - 1000),
+      },
+    });
+    await post(stub);
+    await stub.settle();
+
+    expect(stub.spoken).toHaveLength(1);
+    expect(stub.row()).toMatchObject({ status: NarrationStatus.Ready });
   });
 
   it("does not serve the recording of a card that has since been written again", async () => {
     // A rewrite replaces the card's text in place and moves its date. The row
     // stays — those rows are the ceiling — but nothing serves it.
     const stub = audioStub({
-      narration: narrationRow({ cardWrittenAt: new Date("2026-08-01T10:00:00.000Z") }),
+      narration: { cardWrittenAt: new Date("2026-08-01T10:00:00.000Z") },
     });
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
-
-    expect(await response.json()).toEqual({ audio: null });
+    expect(await (await get(stub)).json()).toEqual({ audio: null });
   });
 
   it("makes a new one for a rewritten card rather than answering with the old", async () => {
     const stub = audioStub({
-      narration: narrationRow({ cardWrittenAt: new Date("2026-08-01T10:00:00.000Z") }),
+      narration: { cardWrittenAt: new Date("2026-08-01T10:00:00.000Z") },
     });
-    await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { method: "POST", headers: authed });
+    await post(stub);
+    await stub.settle();
 
     expect(stub.spoken).toHaveLength(1);
-    expect(stub.saved[0]).toMatchObject({ cardWrittenAt: WRITTEN_AT });
+    expect(stub.row()).toMatchObject({ status: NarrationStatus.Ready, cardWrittenAt: WRITTEN_AT });
   });
 
   it("does not serve a recording made under an earlier narration prompt", async () => {
@@ -1870,58 +2034,47 @@ describe("reading a card out", () => {
     // miss its own lookup — the same trick CARD_PROMPT_REVISION plays, with no
     // migration and nothing to delete.
     const stub = audioStub({
-      narration: narrationRow({ objectKey: "robin/kubernetes/pods/restarts/n0-d2-old.wav" }),
+      narration: { objectKey: "robin/kubernetes/pods/restarts/n0-d2-old.wav" },
     });
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
-
-    expect(await response.json()).toEqual({ audio: null });
+    expect(await (await get(stub)).json()).toEqual({ audio: null });
   });
 
   it("refuses once the hour's recordings have hit the ceiling", async () => {
-    const stub = audioStub({ recent: 20 });
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
-      method: "POST",
-      headers: authed,
-    });
+    const stub = audioStub({ narration: null, recent: 20 });
+    const response = await post(stub);
 
     expect(response.status).toBe(409);
-    expect(stub.spoken).toHaveLength(0);
+    expect(stub.row()).toBeNull();
   });
 
   it("refuses a node with no card rather than writing one to read out", async () => {
     const stub = audioStub({ card: null });
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
-      method: "POST",
-      headers: authed,
-    });
-
-    expect(response.status).toBe(409);
+    expect((await post(stub)).status).toBe(409);
     expect(stub.spoken).toHaveLength(0);
   });
 
   it("refuses a group, which has no card to read out", async () => {
     const stub = audioStub({ children: 4 });
-    const response = await app(stub).request(`/api/nodes/n2/audio?${QUERY}`, {
-      method: "POST",
-      headers: authed,
-    });
-
-    expect(response.status).toBe(409);
+    expect((await post(stub)).status).toBe(409);
   });
 
-  it("says nothing about a deployment with no bucket except what is not set", async () => {
-    const stub = audioStub({ narration: narrationRow() });
+  it("fails the press itself when there is no bucket, rather than out of sight", async () => {
+    // Claiming a run that cannot possibly finish would answer "working on it"
+    // and then fail where only the row can see it. The press says so instead.
+    const stub = audioStub({ narration: null });
     const response = await createApp(stub.db, {
       provider: audioProvider,
       speech: stub.speech,
+      background: stub.background,
       objects: () => {
         throw new GenerationError(
           "Reading cards aloud is not set up on this deployment — AUDIO_BUCKET is not set",
         );
       },
-    }).request(`/api/nodes/n2/audio?${QUERY}`, { headers: authed });
+    }).request(`/api/nodes/n2/audio?${QUERY}`, { method: "POST", headers: authed });
 
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({ error: expect.stringContaining("AUDIO_BUCKET") });
+    expect(stub.row()).toBeNull();
   });
 });
