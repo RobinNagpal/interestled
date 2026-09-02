@@ -1,4 +1,7 @@
 import { Fragment } from "react";
+// The one horizontal scroller in the product: a fenced block too wide for the
+// screen scrolls sideways rather than wrapping mid-token.
+// eslint-disable-next-line no-restricted-imports
 import { Linking, Platform, ScrollView, Text, View } from "react-native";
 import type { ReactElement, ReactNode } from "react";
 import {

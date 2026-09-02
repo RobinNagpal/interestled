@@ -1,9 +1,9 @@
-import { Pressable, ScrollView, Text } from "react-native";
+import { Pressable, Text } from "react-native";
 import type { ReactElement } from "react";
 import { Link, router } from "expo-router";
 import { useReview, useTopics } from "@interestled/api";
 import { topicHref } from "@interestled/domain";
-import { Button, EmptyState, ErrorState, LoadingContent } from "@interestled/ui";
+import { Button, EmptyState, ErrorState, LoadingContent, Screen } from "@interestled/ui";
 import { TopicStatus } from "@interestled/schemas";
 import { useAuth } from "../lib/auth";
 import { messageOf } from "../lib/errors";
@@ -14,7 +14,7 @@ export default function TopicsScreen(): ReactElement {
   const { signOut } = useAuth();
 
   return (
-    <ScrollView contentContainerClassName="gap-4 p-4">
+    <Screen contentContainerClassName="gap-4 p-4">
       {/* Review comes first when something is due, and it is three items, not a
           backlog — so an absence never turns into a wall. */}
       {review.data !== undefined && review.data.atoms.length > 0 ? (
@@ -69,6 +69,6 @@ export default function TopicsScreen(): ReactElement {
         onPress={() => router.push("/profile")}
       />
       <Button label="Sign out" tone="quiet" onPress={() => void signOut()} />
-    </ScrollView>
+    </Screen>
   );
 }
