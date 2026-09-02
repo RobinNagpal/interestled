@@ -125,7 +125,11 @@ export enum NarrationStatus {
 
 export const NarrationStatusSchema = z.nativeEnum(NarrationStatus);
 
-/** Long enough for the longest card, short enough to not be a spinner forever. */
+/**
+ * The most of a failure's message that is kept and shown. Long enough for a
+ * provider's own sentence, short enough that a stack trace leaking into one
+ * cannot fill the screen under the button.
+ */
 export const NARRATION_ERROR_MAX = 500;
 
 /**

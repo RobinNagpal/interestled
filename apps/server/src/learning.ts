@@ -537,7 +537,10 @@ export function learningRouter(
       background,
       target,
     );
-    return c.json({ audio }, audio.status === NarrationStatus.Ready ? 200 : 202);
+    // 202 says "accepted, still working", which is true of exactly one of the
+    // three. A recording already made and a run that has already failed are
+    // both the current state of the resource rather than something accepted.
+    return c.json({ audio }, audio.status === NarrationStatus.Pending ? 202 : 200);
   });
 
   /** A drill of the requested kind, generated once per node and then reused. */

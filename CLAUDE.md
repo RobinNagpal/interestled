@@ -490,14 +490,24 @@ by tests.
 - **The press is not the recording.** A script and minutes of synthesis take far
   longer than the sixty seconds CloudFront gives an origin, so the press claims a row
   and answers, and the app polls until `card_narrations.status` settles on `ready` or
-  `failed`. Three things hold it up: `claimRun` is atomic (an insert with
+  `failed`. Four things hold it up: `claimRun` is atomic (an insert with
   `skipDuplicates`, then an update guarded on the states it may take over from), so two
-  presses a moment apart can never both pay; a `pending` row older than
-  `NARRATION_TIMEOUT_MS` is *read* as failed, because the run happens in this process
-  and a deploy mid-synthesis would otherwise leave a spinner nobody can clear; and
-  `runNarration` catches everything onto the row, because there is no longer a request
-  to fail. Building the object store stays synchronous, so a deployment with no
-  `AUDIO_BUCKET` still fails the press at once and names the variable.
+  presses a moment apart can never both pay; every write a run makes names the
+  `createdAt` it claimed, so a run that was declared abandoned and taken over cannot
+  land on the row that replaced it; a `pending` row older than `NARRATION_TIMEOUT_MS` is
+  *read* as failed, because the run happens in this process and a deploy mid-synthesis
+  would otherwise leave a spinner nobody can clear; and `runNarration` catches
+  everything onto the row, because there is no longer a request to fail. Building the
+  object store stays synchronous, so a deployment with no `AUDIO_BUCKET` still fails the
+  press at once and names the variable.
+- **Both routes agree that a run under way is a run under way**, whatever writing of the
+  card it was claimed for. A card rewritten mid-run leaves a recording being made of
+  replaced text: nothing can claim the row until it finishes, and the press cannot take
+  it over — so answering "nothing here" on the read while the press answers "pending" is
+  a button that flicks between a spinner and an offer and does nothing at all.
+- **The ceiling counts runs, not rows.** One row per card means a card that fails every
+  time would be retryable without limit; `attempts` is incremented on every claim and
+  summed by `assertNarrationBudget`.
 - **It is the most expensive press in the product**, so it has the tightest ceiling
   (`assertNarrationBudget`) and both routes are idempotent: a row already current is
   answered rather than remade. The ceiling is checked *after* that, so a press that

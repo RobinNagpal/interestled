@@ -18,3 +18,8 @@ ALTER TABLE "card_narrations" ADD COLUMN "error" TEXT NOT NULL DEFAULT '';
 ALTER TABLE "card_narrations" ALTER COLUMN "script" SET DEFAULT '';
 ALTER TABLE "card_narrations" ALTER COLUMN "seconds" SET DEFAULT 0;
 ALTER TABLE "card_narrations" ALTER COLUMN "bytes" SET DEFAULT 0;
+
+-- How many runs have been claimed on this row. The budget sums these rather
+-- than counting rows: there is one row per card, so a card that fails every
+-- time would otherwise be retryable without limit.
+ALTER TABLE "card_narrations" ADD COLUMN "attempts" INTEGER NOT NULL DEFAULT 1;

@@ -17,19 +17,7 @@
  * always meant the blue, where shadcn means a faint hover wash by it, so the
  * vendored files say `accent-tint` in the two places that wanted the wash.
  */
-const ink = { DEFAULT: "#111827", soft: "#4b5563", faint: "#9ca3af" };
-const surface = { DEFAULT: "#ffffff", raised: "#fafbfc", sunken: "#f3f4f6" };
-const line = { DEFAULT: "#e5e7eb", strong: "#d1d5db" };
-const accent = { DEFAULT: "#2563eb", soft: "#dbeafe", tint: "#eef4ff" };
-const good = "#059669";
-const warn = "#d97706";
-/**
- * Something failed and is not going to fix itself. Distinct from `warn`, which
- * is the caution colour: a shaky node needs another look, where a recording
- * that stopped needs the button pressed again and says why. Two states that are
- * not the same thing should not be the same colour.
- */
-const bad = "#dc2626";
+const { ink, surface, line, accent, good, warn, bad } = require("./palette");
 
 module.exports = {
   theme: {

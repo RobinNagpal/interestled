@@ -183,10 +183,20 @@ export async function readNarration(
     return null;
   }
   const row = await db.cardNarration.findUnique({ where: { cardId: card.id } });
-  if (row === null || !isCurrent(row, keyFor(target), card.writtenAt)) {
+  if (row === null) {
     return null;
   }
-  return viewOf(objects, row, new Date());
+  const now = new Date();
+  // A run under way is reported whatever writing of the card it was claimed
+  // for, because that is what is true: the machine is busy on this card and a
+  // second run cannot start until it is done. Answering null there — while the
+  // press answers `pending`, since it cannot take the run over either — is what
+  // made the button flicker between a spinner and an offer and do nothing at
+  // all for as long as the run lasted.
+  if (statusOf(row, now) !== NarrationStatus.Pending && !isCurrent(row, keyFor(target), card.writtenAt)) {
+    return null;
+  }
+  return viewOf(objects, row, now);
 }
 
 /**
@@ -214,21 +224,29 @@ async function claimRun(
     ...row,
   };
   const created = await db.cardNarration.createMany({
-    data: [{ id: newId(), cardId, ...claimed }],
+    data: [{ id: newId(), cardId, ...claimed, attempts: 1 }],
     skipDuplicates: true,
   });
   if (created.count === 1) {
     return true;
   }
   // Something is already there: a finished recording of other text, a failure,
-  // or a run whose process went away. Never a run still under way.
+  // or a run whose process went away. Never a run still under way — the caller
+  // has already answered with that one.
+  //
+  // `lte`, not `lt`, because statusOf calls a run abandoned at exactly the
+  // timeout. Two guards on the same predicate written with different
+  // comparators is a press that reports a failure and starts nothing.
   const abandoned = new Date(row.createdAt.getTime() - NARRATION_TIMEOUT_MS);
   const taken = await db.cardNarration.updateMany({
     where: {
       cardId,
-      OR: [{ status: { not: NarrationStatus.Pending } }, { createdAt: { lt: abandoned } }],
+      OR: [{ status: { not: NarrationStatus.Pending } }, { createdAt: { lte: abandoned } }],
     },
-    data: claimed,
+    // Counted rather than replaced, because the row is the budget's only record
+    // of this card: one row per card means a card that fails every time would
+    // otherwise be retryable without limit, and each retry is two model calls.
+    data: { ...claimed, attempts: { increment: 1 } },
   });
   return taken.count === 1;
 }
@@ -250,7 +268,22 @@ async function runNarration(
   target: NarrationTarget,
   card: { id: string; content: CardContentT },
   key: string,
+  /**
+   * When this run claimed the row, which is what it owns.
+   *
+   * A run declared abandoned is taken over, and the process running it may
+   * still be alive — a slow speech model finishing at minute eleven. Without a
+   * token its `update` would land on the row belonging to the run that replaced
+   * it: marking a live run failed, or marking it ready with the wrong script.
+   * Every write this function makes names the claim it is for, so a run that
+   * has lost the row writes nothing at all.
+   */
+  claimedAt: Date,
 ): Promise<void> {
+  const stillOurs = async (): Promise<boolean> => {
+    const row = await db.cardNarration.findUnique({ where: { cardId: card.id } });
+    return row !== null && row.createdAt.getTime() === claimedAt.getTime();
+  };
   try {
     const { script } = await generateNarration(provider, {
       topic: target.topic,
@@ -267,9 +300,16 @@ async function runNarration(
     // order can leave an object no row names, which nobody meets at all and the
     // next run overwrites — the key is the card's identity, so a re-recording
     // lands on top of what it replaces rather than beside it.
+    // Checked before the object as well as with the row, because the object is
+    // the one thing here that is not conditional: two runs write the same key,
+    // so a run that has already lost the row must not put its bytes under the
+    // recording that replaced it.
+    if (!(await stillOurs())) {
+      return;
+    }
     await store.put(key, wav, AUDIO_CONTENT_TYPE);
-    await db.cardNarration.update({
-      where: { cardId: card.id },
+    await db.cardNarration.updateMany({
+      where: { cardId: card.id, createdAt: claimedAt },
       data: {
         status: NarrationStatus.Ready,
         error: "",
@@ -281,8 +321,8 @@ async function runNarration(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Reading this card out failed.";
     await db.cardNarration
-      .update({
-        where: { cardId: card.id },
+      .updateMany({
+        where: { cardId: card.id, createdAt: claimedAt },
         data: { status: NarrationStatus.Failed, error: message.slice(0, NARRATION_ERROR_MAX) },
       })
       // The row can be gone: deleting the node, or rebuilding the map, takes it
@@ -326,9 +366,15 @@ export async function startNarration(
   const now = new Date();
 
   const existing = await db.cardNarration.findUnique({ where: { cardId: card.id } });
-  if (existing !== null && isCurrent(existing, key, card.writtenAt)) {
+  if (existing !== null) {
     const status = statusOf(existing, now);
-    if (status === NarrationStatus.Ready || status === NarrationStatus.Pending) {
+    // A run under way is answered as itself whatever it was claimed for — see
+    // readNarration. Waiting for it is not a wasted wait even when its result
+    // will not be served: nothing else can claim the row until it is done, and
+    // the press after it can.
+    const busy = status === NarrationStatus.Pending;
+    const made = status === NarrationStatus.Ready && isCurrent(existing, key, card.writtenAt);
+    if (busy || made) {
       return viewOf(objects, existing, now);
     }
   }
@@ -348,6 +394,6 @@ export async function startNarration(
       : viewOf(objects, current, now);
   }
 
-  background(runNarration(db, provider, speech, store, target, card, key));
+  background(runNarration(db, provider, speech, store, target, card, key, now));
   return { status: NarrationStatus.Pending, startedAt: now };
 }

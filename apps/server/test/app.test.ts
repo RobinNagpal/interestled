@@ -1579,6 +1579,7 @@ describe("reading a card out", () => {
   interface StoredNarration {
     status: string;
     error: string;
+    attempts: number;
     objectKey: string;
     cardWrittenAt: Date;
     script: string;
@@ -1598,6 +1599,8 @@ describe("reading a card out", () => {
     stores: () => number;
     /** The one row, as it stands. */
     row: () => StoredNarration | null;
+    /** Simulate another press claiming the row while a run is still going. */
+    takeOver: () => void;
     /** Wait for every run the presses started. */
     settle: () => Promise<void>;
     /** Let a held run past the speech model. */
@@ -1639,6 +1642,7 @@ describe("reading a card out", () => {
         : {
             status: NarrationStatus.Ready,
             error: "",
+            attempts: 1,
             objectKey: KEY,
             cardWrittenAt: WRITTEN_AT,
             script: SCRIPT,
@@ -1697,7 +1701,8 @@ describe("reading a card out", () => {
       // about is which press wins the claim — and a spy cannot answer that.
       cardNarration: {
         findUnique: vi.fn(async () => row),
-        count: vi.fn(async () => options.recent ?? 0),
+        // The budget sums runs started, not rows.
+        aggregate: vi.fn(async () => ({ _sum: { attempts: options.recent ?? 0 } })),
         createMany: vi.fn(async ({ data }: { data: (StoredNarration & { id: string })[] }) => {
           if (row !== null) {
             return { count: 0 };
@@ -1705,29 +1710,40 @@ describe("reading a card out", () => {
           row = { ...data[0]! };
           return { count: 1 };
         }),
-        // Mirrors the guard in claimRun: take the row only when it is not a run
-        // already under way, or is one that ran out of time.
+        // Two shapes reach this: the claim, guarded on the states it may take
+        // over from, and a run's own writes, guarded on the claim it owns.
         updateMany: vi.fn(
           async ({
             where,
             data,
           }: {
-            where: { OR: { status?: { not: string }; createdAt?: { lt: Date } }[] };
+            where: {
+              createdAt?: Date;
+              OR?: { status?: { not: string }; createdAt?: { lte: Date } }[];
+            };
             data: Partial<StoredNarration>;
           }) => {
-            const held = row;
-            if (held === null) {
+            const existing = row;
+            if (existing === null) {
               return { count: 0 };
+            }
+            if (where.OR === undefined) {
+              // A run writing its result, which lands only on its own claim.
+              if (existing.createdAt.getTime() !== where.createdAt?.getTime()) {
+                return { count: 0 };
+              }
+              row = { ...existing, ...data };
+              return { count: 1 };
             }
             const claimable = where.OR.some((guard) =>
               guard.status !== undefined
-                ? held.status !== guard.status.not
-                : held.createdAt.getTime() < guard.createdAt!.lt.getTime(),
+                ? existing.status !== guard.status.not
+                : existing.createdAt.getTime() <= guard.createdAt!.lte.getTime(),
             );
             if (!claimable) {
               return { count: 0 };
             }
-            row = { ...held, ...data };
+            row = { ...existing, ...data, attempts: existing.attempts + 1 };
             return { count: 1 };
           },
         ),
@@ -1744,6 +1760,12 @@ describe("reading a card out", () => {
       spoken,
       stores: () => counters.stores,
       row: () => row,
+      takeOver: () => {
+        row =
+          row === null
+            ? null
+            : { ...row, status: NarrationStatus.Pending, createdAt: new Date(Date.now() + 1000) };
+      },
       settle: async () => {
         await Promise.all(tasks);
       },
@@ -2007,6 +2029,95 @@ describe("reading a card out", () => {
 
     expect(stub.spoken).toHaveLength(1);
     expect(stub.row()).toMatchObject({ status: NarrationStatus.Ready });
+  });
+
+  it("says a run is under way even when it is for an older writing of the card", async () => {
+    // Pressing play, then "write it again", then play. The run in flight is of
+    // text that has been replaced, so its result will never be served — but
+    // nothing can claim the row until it is done, and the press cannot take it
+    // over. Answering null here while the press answers pending is what left
+    // the button flicking between a spinner and an offer, doing nothing.
+    const stub = audioStub({
+      narration: {
+        status: NarrationStatus.Pending,
+        cardWrittenAt: new Date("2026-08-01T10:00:00.000Z"),
+        createdAt: new Date(),
+      },
+    });
+    expect(await (await get(stub)).json()).toMatchObject({
+      audio: { status: NarrationStatus.Pending },
+    });
+
+    const response = await post(stub);
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ audio: { status: NarrationStatus.Pending } });
+    expect(stub.spoken).toHaveLength(0);
+  });
+
+  it("writes nothing once its claim has been taken from it", async () => {
+    // A run declared abandoned is taken over, and the process running it may
+    // still be alive. Without a token its write lands on the row belonging to
+    // the run that replaced it — marking a live run failed, or ready with the
+    // wrong script.
+    const stub = audioStub({ narration: null, hold: true });
+    await post(stub);
+    const claimed = stub.row()?.createdAt;
+    stub.takeOver();
+
+    stub.release();
+    await stub.settle();
+
+    // The row is still the one the second claim made, untouched.
+    expect(stub.row()).toMatchObject({ status: NarrationStatus.Pending });
+    expect(stub.row()?.createdAt).not.toEqual(claimed);
+    // And the displaced run did not put its bytes under the recording that
+    // replaced it: two runs write the same key.
+    expect(stub.put).toHaveLength(0);
+  });
+
+  it("takes over a run at exactly the moment it is called abandoned", async () => {
+    // statusOf reads a run abandoned at >= the timeout, so the claim has to be
+    // willing to take it at exactly that point. Two guards on one predicate
+    // written with different comparators is a press that reports a failure and
+    // starts nothing.
+    const stub = audioStub({
+      narration: {
+        status: NarrationStatus.Pending,
+        createdAt: new Date(Date.now() - NARRATION_TIMEOUT_MS),
+      },
+    });
+    const response = await post(stub);
+    await stub.settle();
+
+    expect(response.status).toBe(202);
+    expect(stub.row()).toMatchObject({ status: NarrationStatus.Ready });
+  });
+
+  it("counts every run against the ceiling, not every card", async () => {
+    // One row per card, so a card that fails on every press would be retryable
+    // without limit if the budget counted rows. Each retry is two model calls.
+    const stub = audioStub({ narration: { status: NarrationStatus.Failed, error: "It broke." } });
+    await post(stub);
+    await stub.settle();
+
+    expect(stub.row()?.attempts).toBe(2);
+    const summed = (stub.db as unknown as { cardNarration: { aggregate: ReturnType<typeof vi.fn> } })
+      .cardNarration.aggregate.mock.calls[0]?.[0] as { _sum: { attempts: boolean } } | undefined;
+    expect(summed?._sum.attempts).toBe(true);
+  });
+
+  it("answers a failure as the state it is, not as work accepted", async () => {
+    const stub = audioStub({
+      narration: {
+        status: NarrationStatus.Pending,
+        error: "",
+        createdAt: new Date(Date.now() - NARRATION_TIMEOUT_MS - 1000),
+      },
+    });
+    // GET reports it failed; the press is what may take it over.
+    const read = await get(stub);
+    expect(read.status).toBe(200);
+    expect(await read.json()).toMatchObject({ audio: { status: NarrationStatus.Failed } });
   });
 
   it("does not serve the recording of a card that has since been written again", async () => {

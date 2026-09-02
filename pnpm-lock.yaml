@@ -17,6 +17,9 @@ importers:
       '@interestled/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@interestled/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@interestled/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -90,9 +93,6 @@ importers:
       '@babel/core':
         specifier: ^7.25.2
         version: 7.29.7
-      '@interestled/config':
-        specifier: workspace:*
-        version: link:../../packages/config
       '@types/react':
         specifier: ~19.1.10
         version: 19.1.17

@@ -310,6 +310,11 @@ model CardNarration {
   // still `pending` long past NARRATION_TIMEOUT_MS is a run whose process went
   // away, and is read as failed.
   status    String      @default("ready")
+  // How many runs have been claimed on this row. Summed rather than counted by
+  // assertNarrationBudget: one row per card means a card retried after every
+  // failure would otherwise cost two model calls a press against a ceiling that
+  // could never grow.
+  attempts  Int         @default(1)
   // What to tell the learner when the status is failed. "" otherwise. Written
   // to be shown, the same way topics.error is.
   error     String      @default("")

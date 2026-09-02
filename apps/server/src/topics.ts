@@ -138,10 +138,17 @@ const MAX_NARRATIONS_PER_HOUR = 20;
 
 export async function assertNarrationBudget(db: Db, userId: string): Promise<void> {
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const recent = await db.cardNarration.count({
+  // Runs started, not rows. There is one row per card, and a card that fails
+  // every time is taken over again on each press — counting rows, a learner
+  // holding down retry on a broken card would never reach the ceiling while
+  // spending two model calls a press. `attempts` on a row claimed inside the
+  // hour may include presses from before it, which over-counts slightly and in
+  // the safe direction.
+  const recent = await db.cardNarration.aggregate({
     where: { card: { node: { topic: { userId } } }, createdAt: { gte: hourAgo } },
+    _sum: { attempts: true },
   });
-  if (recent >= MAX_NARRATIONS_PER_HOUR) {
+  if ((recent._sum.attempts ?? 0) >= MAX_NARRATIONS_PER_HOUR) {
     throw new ConflictError(
       "That is a lot of cards read out in one hour — the limit resets shortly.",
     );

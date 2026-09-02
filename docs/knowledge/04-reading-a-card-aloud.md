@@ -73,6 +73,20 @@ Three things hold this together:
   updates only from the states it may take over from, so exactly one takes it
   over. The loser is told to look at what is there rather than starting a second
   run. Two presses a moment apart must never both pay.
+- **A run owns its claim.** Every write `runNarration` makes names the
+  `createdAt` it claimed, and it re-checks before putting the object. A run
+  declared abandoned is taken over while its process may still be alive — a slow
+  speech model finishing at minute eleven — and without the token its write
+  would land on the row belonging to the run that replaced it: marking a live
+  run failed, or ready with the wrong script. Two runs also write the same key,
+  which is why the check is before the put and not only with the row.
+- **A run under way is reported as itself, whatever writing it was claimed
+  for.** Both routes agree on this. A card rewritten mid-run leaves a recording
+  being made of text that has been replaced — its result will never be served,
+  but nothing can claim the row until it is done and the press cannot take it
+  over either. `GET` answering "nothing" there while `POST` answered "pending"
+  is what left the button flicking between a spinner and an offer, doing nothing
+  for as long as the run lasted.
 - **A run whose process went away is read as failed.** The work happens in the
   API process, so a deploy mid-synthesis leaves a row saying `pending` with
   nothing coming — read literally, that is a spinner the learner watches until
@@ -209,7 +223,11 @@ is the answer when it does.
 
 The most expensive press in the product — a model call plus minutes of
 synthesised speech billed by the audio second. `assertNarrationBudget` is the
-tightest ceiling there is.
+tightest ceiling there is, and it counts **runs started rather than rows**:
+there is one row per card, so a card that failed on every press would otherwise
+be retryable without limit against a counter that could never grow. Each claim
+increments `attempts`, and the budget sums those over rows claimed inside the
+hour.
 
 CloudFront's 60s origin read timeout used to be the limit here, and is why the
 press and the run are now separate: nothing holds a request open for a

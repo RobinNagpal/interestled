@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type { ReactElement } from "react";
 import Slider from "@react-native-community/slider";
+import { good, line } from "@interestled/config/palette";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useNodeAudio, useReadCardAloud } from "@interestled/api";
 import { isLoadedRecordingCurrent } from "@interestled/domain";
 import type { LoadedRecording } from "@interestled/domain";
-import { NarrationStatus } from "@interestled/schemas";
+import { NarrationStatus, cardVariant } from "@interestled/schemas";
 import type { CardSettingsT, NodeAudioReadyT } from "@interestled/schemas";
 import { ErrorState } from "@interestled/ui";
 import { messageOf } from "../lib/errors";
@@ -24,9 +25,15 @@ const SKIP_SECONDS = 15;
  */
 const RATES = [1, 1.25, 1.5, 2, 0.75] as const;
 
-/** The palette's own colours. Slider takes props, not classes. */
-const TRACK_DONE = "#059669";
-const TRACK_LEFT = "#d1d5db";
+type Rate = (typeof RATES)[number];
+
+/**
+ * Slider takes colours as props rather than classes, so these are the one place
+ * in a screen that names a value. Imported rather than written out: a hex here
+ * would stay on the old green after the palette moved, with nothing failing.
+ */
+const TRACK_DONE = good;
+const TRACK_LEFT = line.strong;
 
 /**
  * The card, read out.
@@ -66,23 +73,17 @@ export function CardAudio({
   // real position four times a second, and letting that drive the slider during
   // a drag makes the thumb fight the finger.
   const [scrubbing, setScrubbing] = useState<number | null>(null);
-  const [rate, setRate] = useState<number>(RATES[0]);
-  // Whether the press that started the run being waited on happened here. A
-  // recording takes a minute or two, which is long enough to leave the card;
-  // React Query still delivers the result, and playing through a player
-  // expo-audio released on unmount is a native error.
+  const [rate, setRate] = useState<Rate>(RATES[0]);
+  // Whether the press that started the run being waited on happened here, and
+  // on this card. Without it, arriving at a card that already has a recording
+  // would play it unasked.
   const started = useRef(false);
-  const alive = useRef(true);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
 
-  // The screen keeps the card on screen while the next one loads, so this can
-  // be handed a different node without unmounting. The last node's recording
-  // must not still be playing over this one's card.
+  // Which card this is. Not the node: the screen keeps the card on screen while
+  // the next one is fetched and swaps the settings under this component without
+  // remounting it, so a chip moved to a variant that is already cached changes
+  // what the button is on while everything here carries on.
+  const cardKey = `${nodeId}:${settings.depth}:${cardVariant(settings)}`;
   useEffect(() => {
     return () => {
       player.pause();
@@ -90,7 +91,7 @@ export function CardAudio({
       setScrubbing(null);
       started.current = false;
     };
-  }, [nodeId, player]);
+  }, [cardKey, player]);
 
   const recorded = audio.data ?? null;
   const ready = recorded?.status === NarrationStatus.Ready ? recorded : null;
@@ -98,6 +99,18 @@ export function CardAudio({
   // rule is in the domain package rather than here because getting it wrong
   // reads the wrong card out at somebody — see isLoadedRecordingCurrent.
   const current = isLoadedRecordingCurrent(loaded, recorded);
+
+  // The card underneath a playing recording can be replaced — pressing "write it
+  // again" retires it server-side while the audio is streaming. Declining to
+  // *resume* is not enough there: what is already playing has to stop, or the
+  // reader hears words that are no longer on the screen, which is the one thing
+  // this feature must never do.
+  useEffect(() => {
+    if (loaded !== null && !current) {
+      player.pause();
+      setLoaded(null);
+    }
+  }, [current, loaded, player]);
 
   const load = (made: NodeAudioReadyT): void => {
     player.replace(made.url);
@@ -113,7 +126,7 @@ export function CardAudio({
   // outside the gesture that asked, and the green button behind this is the
   // answer when it does.
   useEffect(() => {
-    if (ready !== null && started.current && alive.current) {
+    if (ready !== null && started.current) {
       started.current = false;
       load(ready);
     }
@@ -127,7 +140,7 @@ export function CardAudio({
       player.pause();
       return;
     }
-    if (current && ready !== null) {
+    if (current) {
       // At the end the head is already past everything, and pressing play does
       // nothing at all — which reads as a broken button rather than a finished
       // one. So it starts again.
@@ -142,7 +155,11 @@ export function CardAudio({
       return;
     }
     started.current = true;
-    read.mutate();
+    read.mutate(undefined, {
+      onError: () => {
+        started.current = false;
+      },
+    });
   };
 
   const skip = (by: number): void => {
@@ -151,7 +168,7 @@ export function CardAudio({
   };
 
   const cycleRate = (): void => {
-    const next = RATES[(RATES.indexOf(rate as (typeof RATES)[number]) + 1) % RATES.length] ?? 1;
+    const next = RATES[(RATES.indexOf(rate) + 1) % RATES.length] ?? RATES[0];
     setRate(next);
     player.setPlaybackRate(next, "high");
   };
