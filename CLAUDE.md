@@ -6,6 +6,47 @@ The design that this code implements is in [docs/ux/README.md](docs/ux/README.md
 and the constraints it must satisfy are in
 [docs/ux/adhd-learning-guidelines.md](docs/ux/adhd-learning-guidelines.md).
 
+## Start here: the knowledge base
+
+**[docs/knowledge/](docs/knowledge/README.md) describes every feature of the
+product and how it is built.** One document per area, each saying what the
+learner sees, what happens when they use it, and which files to open.
+
+| Document | Covers |
+|---|---|
+| [1. Topics and the map](docs/knowledge/01-topics-and-the-map.md) | Creating a topic, the seven questions, the node tree, editing and rebuilding a map |
+| [2. Cards and writing settings](docs/knowledge/02-cards-and-writing-settings.md) | The concept card, its slots, the cache, the controls under it, questions asked on it |
+| [3. Drills, progress and review](docs/knowledge/03-drills-progress-and-review.md) | The status ladder, grading, spaced review, study sessions |
+| [4. Reading a card aloud](docs/knowledge/04-reading-a-card-aloud.md) | The play button, narration scripts, speech synthesis, the audio bucket |
+| [5. Accounts, ownership and budgets](docs/knowledge/05-accounts-ownership-and-budgets.md) | Registration, sessions, the authorisation model, every generation ceiling |
+| [6. LLM providers and prompts](docs/knowledge/06-llm-providers-and-prompts.md) | Which model answers which call, structured generation, the prompt files |
+| [7. The app shell and caching](docs/knowledge/07-the-app-shell-and-caching.md) | Routing, the query cache and what is persisted, the component set |
+
+### Two rules about it, and they matter more than most of what follows
+
+**Read the relevant document before starting any task.** Not after getting
+stuck, and not instead of reading the code — before opening the first file.
+Almost everything in this codebase that looks like it could be simplified is
+load-bearing, and the knowledge base is where the shape of each feature is
+written down in one place. Ten minutes there is what stops a change that
+compiles, passes the tests, and quietly breaks a rule the product rests on. If
+the area you are about to touch has no document, read the nearest one and the
+rest of this file.
+
+**Update it in the same change that makes it wrong.** A knowledge base nobody
+trusts is worse than none, because it is read as current and is not. So:
+
+- Adding a feature means adding its document, and its row both in the table above
+  and in [docs/knowledge/README.md](docs/knowledge/README.md).
+- Changing how something works means editing the document that describes it, in
+  the same commit — not a follow-up.
+- Removing something means removing what says it exists.
+- The documents name files, routes, columns and constants. When you rename one,
+  `grep docs/knowledge` for the old name before you finish.
+
+The same applies to this file and to the coverage table in
+[docs/ux/README.md](docs/ux/README.md): if you add a feature, add its row.
+
 ## Git identity
 
 Always commit as the **robinnagpal.tiet@gmail.com** GitHub account
