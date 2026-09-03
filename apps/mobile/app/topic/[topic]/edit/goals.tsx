@@ -7,7 +7,7 @@ import { editHref } from "@interestled/domain";
 import { Button, ErrorState, Screen, Input, LoadingContent } from "@interestled/ui";
 import type { TopicT } from "@interestled/schemas";
 import { messageOf } from "../../../../lib/errors";
-import { backHeader, goBack } from "../../../../lib/nav";
+import { backHeader, goBack, useHardwareBack } from "../../../../lib/nav";
 
 /**
  * The create screen's answers, after the fact. They were asked once and then
@@ -24,6 +24,8 @@ export default function EditGoalsScreen(): ReactElement {
   const { topic: slug } = useLocalSearchParams<{ topic: string }>();
   const topicSlug = slug ?? "";
   const topic = useTopic(topicSlug);
+  // Android's own back button, saying what the bar says.
+  useHardwareBack(editHref(topicSlug));
 
   const header = (
     <Stack.Screen

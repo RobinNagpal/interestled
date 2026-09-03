@@ -301,23 +301,22 @@ describe("the generated map shapes", () => {
   });
 
   it("flattens a three-level map to three depths", () => {
+    // Three areas, because a map's top level is held to the same count at both
+    // level counts — the bounds here are the settings the learner is offered,
+    // so a shape they can choose is never one the parse refuses.
+    const area = (key: string, sections: ReturnType<typeof section>[]) => ({
+      key,
+      title: "Area",
+      claim: "c",
+      capability: "do the area",
+      sections,
+    });
     const map = {
       archetype: TopicArchetype.Tool,
       areas: [
-        {
-          key: "area1",
-          title: "Area",
-          claim: "c",
-          capability: "do the area",
-          sections: [section("s1", ["a", "b"]), section("s2", ["c", "d"])],
-        },
-        {
-          key: "area2",
-          title: "Area",
-          claim: "c",
-          capability: "do the area",
-          sections: [section("s3", ["e", "f"]), section("s4", ["g", "h"])],
-        },
+        area("area1", [section("s1", ["a", "b"]), section("s2", ["c", "d"])]),
+        area("area2", [section("s3", ["e", "f"]), section("s4", ["g", "h"])]),
+        area("area3", [section("s5", ["i", "j"]), section("s6", ["k", "l"])]),
       ],
     };
     expect(GeneratedThreeLevelMap.safeParse(map).success).toBe(true);

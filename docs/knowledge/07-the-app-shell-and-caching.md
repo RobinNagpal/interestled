@@ -33,6 +33,34 @@ Editing is three screens under one address rather than one screen with three
 sections, because they are three different questions and a link should land on
 the one being talked about.
 
+## Going back
+
+Every URL here can be opened cold — from a link, a restored session, or the
+address bar — so a screen with nothing under it in the stack is an ordinary
+state. "Back" therefore means **up one level**, never "undo the last push":
+`goBack(fallback)` in `apps/mobile/lib/nav.tsx` pops when there is something to
+pop and replaces with the parent when there is not.
+
+There are two back buttons, and they must agree:
+
+| Button | Wired by | On |
+|---|---|---|
+| The one in the bar | `backHeader(fallback)` | every platform |
+| Android's own | `useHardwareBack(fallback)` | Android |
+
+Without the hook, Android's press falls through to the system and **closes the
+app** whenever the stack has nothing to pop — which on a cold-opened card is
+every time. The hook takes the press whatever the stack holds, so the two buttons
+cannot drift apart, and it is registered through `useFocusEffect` so the screens
+still mounted underneath do not answer for the one on top. A sheet open over a
+screen never reaches it: a modal takes the press itself and closes.
+
+Every screen that shows the bar's back button calls the hook with the same
+fallback. `index.tsx` is the one screen that does neither, deliberately — back
+from the topics list is leaving the app. On `[...path].tsx` the fallback is
+worked out from the address rather than from the loaded node (`upHref`), because
+both buttons have to answer while the screen is still a skeleton.
+
 ## The API client
 
 `packages/api/src/client.ts` is every call the app can make, in one interface, so
@@ -160,6 +188,7 @@ also button labels and screen titles.
 
 ```
 apps/mobile/app/_layout.tsx        the navigator, the persister, the keyboard inset
+apps/mobile/lib/nav.tsx            back: the bar's button and Android's own
 apps/mobile/lib/auth.tsx           the session, and what a sign-in/out does to the cache
 apps/mobile/lib/focus.ts           AppState → focusManager
 packages/api/src/queryClient.ts    the whole cache policy

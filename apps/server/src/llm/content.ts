@@ -4,11 +4,17 @@ import {
   CardContent,
   GeneratedAtom,
   GeneratedLeafChildren,
+  GeneratedSectionChildren,
+  GeneratedThreeLevelMap,
   GeneratedTwoLevelMap,
+  MapLevels,
   MapQuestionSet,
   NarrationScript,
+  SubtreeShape,
   Verdict,
   flattenLeafChildren,
+  flattenSectionChildren,
+  flattenThreeLevelMap,
   flattenTwoLevelMap,
 } from "@interestled/schemas";
 import type {
@@ -126,20 +132,23 @@ export async function generateMapQuestions(
 }
 
 /**
- * The map: headings, and the nodes under each. One shape rather than two — the
- * heading counts say how wide and how many, which is what the level count used
- * to be gesturing at, and a schema per level count was a second place for the
- * same question to be answered differently.
+ * The map: headings, the nodes under each, and — at three levels — a row of
+ * headings in between.
+ *
+ * A schema per level count rather than one that nests optionally, because the
+ * two are different documents and a model given an optional level will produce
+ * whichever it feels like. The prompt is chosen by the same setting a line
+ * apart, so the shape asked for and the shape parsed cannot drift; both are
+ * flattened to the same rows the moment they arrive.
  */
 export async function generateMap(provider: LlmProvider, input: MapInput): Promise<GeneratedMapT> {
-  return flattenTwoLevelMap(
-    await generateJson(provider, {
-      system: SYSTEM,
-      prompt: mapPrompt(input),
-      schema: GeneratedTwoLevelMap,
-      maxOutputTokens: MAP_OUTPUT_TOKENS,
-    }),
-  );
+  const call = { system: SYSTEM, prompt: mapPrompt(input), maxOutputTokens: MAP_OUTPUT_TOKENS };
+  if (input.shape.levels === MapLevels.Three) {
+    return flattenThreeLevelMap(
+      await generateJson(provider, { ...call, schema: GeneratedThreeLevelMap }),
+    );
+  }
+  return flattenTwoLevelMap(await generateJson(provider, { ...call, schema: GeneratedTwoLevelMap }));
 }
 
 export interface SubtreeInput {
@@ -150,12 +159,17 @@ export interface SubtreeInput {
   siblingTitles: readonly string[];
   profile: ProfileT;
   instructions: string;
+  /** What hangs under this group today, which is what it gets back. */
+  shape: SubtreeShape;
 }
 
 /**
- * The nodes under one heading, rebuilt. Returned flat and relative to the
- * parent, with depths already set, so the caller only has to attach it. A map is
- * two levels, so what hangs under a heading is always nodes.
+ * What sits under one heading, rebuilt. Returned flat and relative to the
+ * parent, with depths already set, so the caller only has to attach it.
+ *
+ * A group one level above the leaves gets nodes; the top of a three-level map
+ * gets groups with their nodes inside them. Which one is a fact about the group
+ * being rebuilt rather than about the topic — see subtreeShapeOf.
  */
 export async function generateSubtree(
   provider: LlmProvider,
@@ -163,13 +177,16 @@ export async function generateSubtree(
   parentKey: string,
   childDepth: number,
 ): Promise<GeneratedMapNodeT[]> {
+  const call = { system: SYSTEM, prompt: subtreePrompt(input), maxOutputTokens: MAP_OUTPUT_TOKENS };
+  if (input.shape === SubtreeShape.Sections) {
+    return flattenSectionChildren(
+      await generateJson(provider, { ...call, schema: GeneratedSectionChildren }),
+      parentKey,
+      childDepth,
+    );
+  }
   return flattenLeafChildren(
-    await generateJson(provider, {
-      system: SYSTEM,
-      prompt: subtreePrompt(input),
-      schema: GeneratedLeafChildren,
-      maxOutputTokens: MAP_OUTPUT_TOKENS,
-    }),
+    await generateJson(provider, { ...call, schema: GeneratedLeafChildren }),
     parentKey,
     childDepth,
   );

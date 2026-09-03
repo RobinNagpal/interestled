@@ -5,8 +5,10 @@ import {
   ContentFormat,
   EnglishLevel,
   MAP_DEPTHS,
+  MAP_LEVELS,
   MINUTES_PER_DAY,
   MapDepth,
+  MapLevels,
   PARAGRAPH_SENTENCES,
   ParagraphLength,
   READ_TIMES,
@@ -121,6 +123,31 @@ export const MAP_DEPTH_OPTIONS = MAP_DEPTHS.map((value) => ({
   label: MAP_DEPTH_COPY[value].label,
 }));
 
+/**
+ * How many rows of headings sit above the nodes, said as what the learner will
+ * see rather than as a number of levels — "two" means nothing until it is
+ * "headings, and the nodes under them".
+ *
+ * It is the setting the two counts are read against, so it is offered before
+ * them: at two levels the second count is the nodes under a heading, and at
+ * three it is the headings under a heading.
+ */
+export const MAP_LEVELS_COPY: Record<MapLevels, { label: string; body: string }> = {
+  [MapLevels.Two]: {
+    label: "Two",
+    body: "Headings, and the nodes under them. Right for most subjects.",
+  },
+  [MapLevels.Three]: {
+    label: "Three",
+    body: "Areas, headings under those, and the nodes under those. For a subject wide enough that its main headings would each be a topic.",
+  },
+};
+
+export const MAP_LEVELS_OPTIONS = MAP_LEVELS.map((value) => ({
+  value: String(value),
+  label: MAP_LEVELS_COPY[value].label,
+}));
+
 /** "14 days" is a number; "2 weeks" is the thing somebody is agreeing to. */
 export const DAY_COPY: Record<StudyDays, string> = {
   [StudyDays.One]: "1 day",
@@ -159,8 +186,19 @@ export interface MapShapeRow {
 
 export function mapShapeRows(shape: MapShapeT): MapShapeRow[] {
   return [
+    {
+      label: "Levels",
+      value: MAP_LEVELS_COPY[shape.levels].label,
+      body: MAP_LEVELS_COPY[shape.levels].body,
+    },
     { label: "Main headings", value: String(shape.mainHeadings) },
-    { label: "Sub-headings under each", value: String(shape.subHeadings) },
+    // Named for what it counts at this level count, in the same words the chip
+    // that sets it uses: a panel saying "sub-headings" about a map whose second
+    // level is its nodes is the panel describing a different map.
+    {
+      label: shape.levels === MapLevels.Three ? "Sub-headings under each" : "Nodes under each",
+      value: String(shape.subHeadings),
+    },
     { label: "A sitting", value: `${shape.minutesPerDay} min` },
     { label: "Over", value: DAY_COPY[shape.days] },
     {
@@ -186,6 +224,7 @@ export function mapShapeSummary(shape: MapShapeT): string {
       ? `${shape.minutesPerDay} min in one sitting`
       : `${shape.minutesPerDay} min a day for ${DAY_COPY[shape.days].toLowerCase()}`;
   return [
+    `${shape.levels} levels`,
     `${shape.mainHeadings} headings, ${shape.subHeadings} under each`,
     time,
     MAP_DEPTH_COPY[shape.depth].label.toLowerCase(),
