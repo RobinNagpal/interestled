@@ -90,11 +90,15 @@ export const MAP_DEPTHS: readonly MapDepth[] = Object.values(MapDepth)
   .sort((a, b) => a - b);
 
 /**
- * How many headings, and how many under each.
+ * How many headings, and how many under each. The second count is the nodes
+ * under a heading on a two-level map, and the sub-headings on a three-level one
+ * — the nodes hang under those.
  *
  * The bounds are the generated-map schema's bounds, not a separate opinion: ask
  * for ten main headings and the parse refuses the reply, which reaches the
- * learner as a failed generation rather than as the setting it was.
+ * learner as a failed generation rather than as the setting it was. Both level
+ * counts are held to the same two pairs, so changing the number of levels can
+ * never turn a setting somebody already chose into a refused reply.
  */
 export const MAIN_HEADINGS_MIN = 3;
 export const MAIN_HEADINGS_MAX = 8;
@@ -102,15 +106,45 @@ export const SUB_HEADINGS_MIN = 2;
 export const SUB_HEADINGS_MAX = 8;
 
 /**
+ * How many rows of headings sit above the nodes.
+ *
+ * Two is headings and the nodes under them, which is the right shape for most
+ * subjects. Three puts a level in between, for a subject wide enough that its
+ * top-level headings are areas rather than groups: the map screen collapses a
+ * group, so the extra level is what keeps a wide map a thing you can see the
+ * whole of rather than forty rows.
+ *
+ * Not the same question as MapDepth below. Depth says how far into the subject
+ * the map goes; this says how the ground it does cover is grouped.
+ */
+export enum MapLevels {
+  Two = 2,
+  Three = 3,
+}
+
+export const MapLevelsSchema = z.nativeEnum(MapLevels);
+
+/** The two, in order, for the screen that offers them. */
+export const MAP_LEVELS: readonly MapLevels[] = Object.values(MapLevels)
+  .filter((value): value is MapLevels => typeof value === "number")
+  .sort((a, b) => a - b);
+
+/**
  * Everything that decides the shape and size of the map, as one object.
  *
- * This replaced TimeBudget ("20 minutes / a week / ongoing") and MapLevels
- * ("two or three"). Both were answering these questions more vaguely and in a
- * second place: the heading counts say the shape, and minutes a day times days
- * says the size. Two columns saying the same thing is two chances for an edit to
- * leave them disagreeing.
+ * This replaced TimeBudget ("20 minutes / a week / ongoing"), which was
+ * answering the size question more vaguely and in a second place: the heading
+ * counts say the shape, and minutes a day times days says the size. Two columns
+ * saying the same thing is two chances for an edit to leave them disagreeing.
+ *
+ * `levels` is the one setting the others are read against: the same pair of
+ * counts means headings and nodes at two levels, and areas and headings at
+ * three. It is here rather than in a second place for exactly that reason —
+ * everything that decides what the model is asked for is one object, and
+ * `mapShapeOf` carries all of it or none of it.
  */
 export const MapShape = z.object({
+  levels: MapLevelsSchema,
   mainHeadings: z.number().int().min(MAIN_HEADINGS_MIN).max(MAIN_HEADINGS_MAX),
   subHeadings: z.number().int().min(SUB_HEADINGS_MIN).max(SUB_HEADINGS_MAX),
   minutesPerDay: MinutesPerDaySchema,
@@ -119,6 +153,7 @@ export const MapShape = z.object({
 });
 
 export const MapShapeInput = z.object({
+  levels: MapLevelsSchema.default(MapLevels.Two),
   mainHeadings: MapShape.shape.mainHeadings.default(5),
   subHeadings: MapShape.shape.subHeadings.default(4),
   minutesPerDay: MinutesPerDaySchema.default(MinutesPerDay.Twenty),
@@ -136,6 +171,7 @@ export function totalMinutes(shape: MapShapeT): number {
 /** The shape settings alone, out of the topic every map call carries. */
 export function mapShapeOf(topic: MapShapeT): MapShapeT {
   return {
+    levels: topic.levels,
     mainHeadings: topic.mainHeadings,
     subHeadings: topic.subHeadings,
     minutesPerDay: topic.minutesPerDay,

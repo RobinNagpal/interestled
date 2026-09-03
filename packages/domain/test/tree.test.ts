@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NodeStatus, TopicArchetype } from "@interestled/schemas";
+import { NodeStatus, SubtreeShape, TopicArchetype } from "@interestled/schemas";
 import type { LearningNodeT } from "@interestled/schemas";
 import {
   ancestorsOf,
@@ -13,6 +13,7 @@ import {
   nodeByPath,
   nodeHref,
   rollupMinutes,
+  subtreeShapeOf,
   topicHref,
 } from "../src/tree";
 import { summarise } from "../src/progress";
@@ -115,6 +116,28 @@ describe("leaves and branches", () => {
     // Deleting is an edit, so this is a state the map really reaches.
     const emptied = map.filter((entry) => !entry.path.startsWith("networking/"));
     expect(isBranch(emptied.find((entry) => entry.path === "networking")!, emptied)).toBe(false);
+  });
+});
+
+describe("subtreeShapeOf", () => {
+  /** A three-level map: an area, two groups in it, a node in each. */
+  const deep: LearningNodeT[] = [
+    group("platform", 0),
+    group("platform/basics", 0, "platform"),
+    node({ path: "platform/basics/pods", parentId: "platform/basics", orderIndex: 0 }),
+    group("platform/networking", 1, "platform"),
+    node({ path: "platform/networking/services", parentId: "platform/networking", orderIndex: 0 }),
+  ];
+
+  it("asks for nodes when the group holds nodes", () => {
+    expect(subtreeShapeOf(map[1]!, map)).toBe(SubtreeShape.Leaves);
+    expect(subtreeShapeOf(deep[1]!, deep)).toBe(SubtreeShape.Leaves);
+  });
+
+  it("asks for groups when the group holds groups", () => {
+    // Rebuilding the top of a three-level map into bare nodes would flatten
+    // that branch and leave the rest of the map a level deeper than it.
+    expect(subtreeShapeOf(deep[0]!, deep)).toBe(SubtreeShape.Sections);
   });
 });
 

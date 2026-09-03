@@ -180,6 +180,10 @@ function topicRow(): Record<string, unknown> {
     archetype: TopicArchetype.Tool,
     // Deliberately none of the schema defaults, so a test that means to check
     // "the topic's own settings were kept" cannot pass by taking the defaults.
+    // Two, like every map built before it was a setting — the canned replies
+    // below are two-level maps, and the level count chooses the schema they are
+    // parsed by.
+    levels: 2,
     mainHeadings: 7,
     subHeadings: 3,
     minutesPerDay: 45,
@@ -1235,6 +1239,31 @@ describe("map plans", () => {
     })),
   });
 
+  /** The same map one level deeper, for a topic asking for three. */
+  const THREE_LEVEL_MAP = JSON.stringify({
+    archetype: TopicArchetype.Tool,
+    areas: [0, 1, 2].map((area) => ({
+      key: `area_${area}`,
+      title: `Area ${area}`,
+      claim: "One part of the subject.",
+      capability: "run a cluster",
+      sections: [0, 1].map((group) => ({
+        key: `group_${area}_${group}`,
+        title: `Group ${area} ${group}`,
+        claim: "One part of that part.",
+        capability: "read a manifest",
+        nodes: [0, 1].map((leaf) => ({
+          key: `node_${area}_${group}_${leaf}`,
+          title: `Node ${area} ${group} ${leaf}`,
+          claim: "One thing that is true.",
+          minutes: 3,
+          capability: "say what it does",
+          prerequisiteKeys: [],
+        })),
+      })),
+    })),
+  });
+
   interface PlanRow {
     id: string;
     userId: string;
@@ -1249,9 +1278,11 @@ describe("map plans", () => {
     created: Record<string, unknown>[];
     plans: PlanRow[];
     updates: Record<string, unknown>[];
+    nodes: Record<string, unknown>[];
   } {
     const created: Record<string, unknown>[] = [];
     const updates: Record<string, unknown>[] = [];
+    const nodes: Record<string, unknown>[] = [];
     const db = {
       authSession: {
         findUnique: vi.fn(async () => ({
@@ -1304,12 +1335,17 @@ describe("map plans", () => {
       learningNode: {
         count: vi.fn(async () => 0),
         findMany: vi.fn(async () => []),
-        createMany: vi.fn(async () => ({ count: 1 })),
+        // Kept, because the rows are where the shape of a generated map
+        // actually lands: paths are what a level count comes out as.
+        createMany: vi.fn(async ({ data }: { data: Record<string, unknown>[] }) => {
+          nodes.push(...data);
+          return { count: data.length };
+        }),
         deleteMany: vi.fn(async () => ({ count: 0 })),
       },
       nodePrerequisite: { createMany: vi.fn(async () => ({ count: 0 })) },
     };
-    return { db: db as unknown as Db, created, plans, updates };
+    return { db: db as unknown as Db, created, plans, updates, nodes };
   }
 
   /** The rows a Prisma where of {id?, userId, topicId?} would have matched. */
@@ -1502,7 +1538,31 @@ describe("map plans", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(updates[0]).toMatchObject({ mainHeadings: 7, subHeadings: 3, days: 30 });
+    expect(updates[0]).toMatchObject({ levels: 2, mainHeadings: 7, subHeadings: 3, days: 30 });
+  });
+
+  it("builds three levels of rows when the learner asks for three", async () => {
+    // The level count chooses the prompt and the schema together: a build that
+    // asked for two and parsed three would fail on every attempt, and one that
+    // asked for three and flattened it as two would put the groups on the map
+    // as nodes with no card behind them.
+    const { db, nodes } = planDb([]);
+    const { provider, prompts } = recorder(THREE_LEVEL_MAP);
+    const response = await post(db, provider, "/api/topics", {
+      title: "Kubernetes",
+      levels: 3,
+      answers: [],
+    });
+
+    expect(response.status).toBe(201);
+    expect(prompts[0]).toContain("Produce a THREE-level map.");
+    const paths = nodes.map((row) => row.path);
+    expect(paths).toContain("area-0");
+    expect(paths).toContain("area-0/group-0-0");
+    expect(paths).toContain("area-0/group-0-0/node-0-0-0");
+    // Only the leaves carry time; both rows of headings are headings.
+    const branches = nodes.filter((row) => String(row.path).split("/").length < 3);
+    expect(branches.every((row) => row.minutes === 0)).toBe(true);
   });
 
   it("refuses answers that arrive without the questions they answer", async () => {

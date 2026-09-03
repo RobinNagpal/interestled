@@ -16,6 +16,7 @@ import {
 import { ReviewGrade } from "@interestled/schemas";
 import type { AtomT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
+import { useHardwareBack } from "../lib/nav";
 
 /**
  * Three items, self-graded, two buttons. This is the only part of the product
@@ -23,6 +24,9 @@ import { messageOf } from "../lib/errors";
  * overdue items is a wall people do not climb.
  */
 export default function ReviewScreen(): ReactElement {
+  // The bar for this screen is set in the navigator, so the hardware button is
+  // wired here — both of them go to the topics list.
+  useHardwareBack("/");
   const review = useReview();
   const grade = useGradeReview();
   const [index, setIndex] = useState(0);

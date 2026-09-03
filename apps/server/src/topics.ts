@@ -32,7 +32,7 @@ import type {
   MapPlanViewT,
   TopicT,
 } from "@interestled/schemas";
-import { ancestorsOf, isBranch } from "@interestled/domain";
+import { ancestorsOf, isBranch, subtreeShapeOf } from "@interestled/domain";
 import { z } from "zod";
 import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
@@ -697,6 +697,10 @@ export function topicsRouter(db: Db, provider: (task: TextTask) => LlmProvider):
         siblingTitles: siblings.map((row) => row.title),
         profile: await loadProfile(db, userId),
         instructions: c.req.valid("json").instructions,
+        // What this group holds today is what it gets back: the top of a
+        // three-level map is rebuilt into groups with their nodes, and anything
+        // one level above the leaves into nodes.
+        shape: subtreeShapeOf(node, nodes),
       },
       node.id,
       node.depth + 1,

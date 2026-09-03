@@ -145,13 +145,24 @@ structure:
   at one level. Reading order comes from `inMapOrder`, which walks the tree; sorting
   the flat list by `orderIndex` interleaves the levels.
 
-**A map is two levels, and its shape is settings rather than a level count.**
-`MapShape` — `mainHeadings`, `subHeadings`, `minutesPerDay`, `days`, `depth` — replaced
-`MapLevels` and `TimeBudget`, which were answering the same questions more vaguely and
-in a second place. The heading counts say the shape, minutes a day times days says the
-size, and depth says how far into the subject it goes. The counts are bounded by the
-generated-map schema's own bounds, because a setting the parse then refuses reaches the
-learner as a failed generation rather than as a setting.
+**A map is two levels or three, and the rest of its shape is settings.** `MapShape` —
+`levels`, `mainHeadings`, `subHeadings`, `minutesPerDay`, `days`, `depth` — replaced
+`TimeBudget`, which was answering the size question more vaguely and in a second place.
+The heading counts say the shape, minutes a day times days says the size, and depth says
+how far into the subject it goes. The counts are bounded by the generated-map schema's
+own bounds, because a setting the parse then refuses reaches the learner as a failed
+generation rather than as a setting.
+
+**`levels` is what the two counts are read against.** At two they are headings and the
+nodes under each; at three they are areas and the headings under each, and how many
+nodes a group needs is left to the time budget. Both level counts are held to the same
+two pairs of bounds, so changing the number of levels can never turn a count somebody
+already chose into a reply the parse refuses. The setting picks the prompt block and the
+schema the reply is parsed by in the same breath (`mapShapeBlock`, `generateMap`) —
+asking for one shape and parsing the other is a generation that fails every attempt. A
+group rebuild does not read it at all: `subtreeShapeOf` asks what hangs under that group
+today, because the group at the top of a three-level map needs groups back and the
+topic's setting is about the last whole map that was built.
 
 **The settings seed instruction lines, and the lines are what the model gets.**
 `seedMapInstructions` renders `map-instructions.md` from the shape — "Use 5 main
@@ -692,6 +703,15 @@ holds only what this product composes on top of them.
   is typing into it on a phone. Three files disable it and say why: `Screen`
   itself, `Sheet`, and the sideways scroller `Markdown` puts a wide fenced block
   in.
+- **Back means up one level, and Android's own button says the same thing.**
+  Every URL here can be opened cold, so a screen with nothing under it in the
+  stack is ordinary rather than an edge case — `goBack(fallback)` replaces
+  rather than popping when there is nothing to pop, and `useHardwareBack` gives
+  Android's button the same answer. Without it that press falls through to the
+  system and closes the app on a learner in the middle of a card. Every screen
+  that shows the bar's back button calls the hook with the same fallback; the
+  topics list is the one screen that deliberately does neither, because back
+  from there is leaving.
 - **`keyboardDismissMode="on-drag"` is native-only.** react-native-web hangs it
   off every scroll event rather than a drag, so on the web it blurs the field on
   the very scroll that reveals it — the keyboard closes as you tap into the box.

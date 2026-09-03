@@ -6,6 +6,7 @@ import { Button, ErrorState, Screen, Input, LoadingContent } from "@interestled/
 import { LEARNING_STYLES, LEARNING_STYLE_LABELS } from "@interestled/schemas";
 import type { LearningStyle, ProfileT } from "@interestled/schemas";
 import { messageOf } from "../lib/errors";
+import { useHardwareBack } from "../lib/nav";
 import { ChipMultiRow } from "../components/ChipRow";
 
 const STYLE_OPTIONS = LEARNING_STYLES.map((value) => ({
@@ -28,6 +29,9 @@ function parseAge(text: string): number | null {
  * opens this screen gets the same product, written for a capable adult.
  */
 export default function ProfileScreen(): ReactElement {
+  // The bar for this screen is set in the navigator, so the hardware button is
+  // wired here — both of them go to the topics list.
+  useHardwareBack("/");
   const profile = useProfile();
   const save = useUpdateProfile();
   const [age, setAge] = useState("");

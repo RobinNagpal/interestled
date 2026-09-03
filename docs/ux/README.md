@@ -298,9 +298,9 @@ visible end, and the shape of a subject is a large part of what expertise actual
 
 **The map has levels.** A flat list of thirty nodes is a list, not a shape, so the map
 is built as groups with the nodes inside them — two levels by default, three for a
-subject too wide to sit under eight headings. The learner is asked which when they
-press the build button, because it is a question about the map rather than about them
-and it only matters at that moment. A group is a heading and nothing more: no card, no
+subject too wide to sit under eight headings. The learner is asked which on the form the
+map is built from, beside the heading counts it decides the meaning of, because it is a
+question about the map rather than about them and it only matters at that moment. A group is a heading and nothing more: no card, no
 drill, no minutes of its own, and nothing counts it as progress — its time is the sum
 of the leaves under it, and collapsing one is what keeps a wide subject something you
 can still see the whole of.

@@ -26,7 +26,7 @@ import {
 import { MoveDirection, mapShapeOf } from "@interestled/schemas";
 import type { LearningNodeT, MapAnswerT, MapPlanViewT, MapShapeT } from "@interestled/schemas";
 import { messageOf } from "../../../../lib/errors";
-import { backHeader } from "../../../../lib/nav";
+import { backHeader, useHardwareBack } from "../../../../lib/nav";
 import { MapQuestions } from "../../../../components/MapQuestions";
 import { MapSettings } from "../../../../components/MapSettings";
 import { MapShapeFields } from "../../../../components/MapShapeFields";
@@ -52,6 +52,9 @@ export default function EditMapScreen(): ReactElement {
   const rebuildMap = useRegenerateTopic(topicSlug);
   const rebuildNode = useRegenerateNode(topicSlug);
   const questions = useTopicMapQuestions(topicSlug);
+  // Android's own back button, saying what the bar says. A sheet open over this
+  // screen answers the press itself and closes, which never reaches here.
+  useHardwareBack(editHref(topicSlug));
 
   const [rebuilding, setRebuilding] = useState<Rebuilding>(null);
   // What a group rebuild is told to change. Free text, and only that: a group

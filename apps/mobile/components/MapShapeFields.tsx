@@ -1,17 +1,36 @@
 import { Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { useSeedMapInstructions } from "@interestled/api";
-import { DAY_OPTIONS, MAP_DEPTH_COPY, MAP_DEPTH_OPTIONS, MINUTES_OPTIONS } from "@interestled/ui";
+import {
+  DAY_OPTIONS,
+  MAP_DEPTH_COPY,
+  MAP_DEPTH_OPTIONS,
+  MAP_LEVELS_COPY,
+  MAP_LEVELS_OPTIONS,
+  MINUTES_OPTIONS,
+} from "@interestled/ui";
 import {
   MAIN_HEADINGS_MAX,
   MAIN_HEADINGS_MIN,
   MAP_INSTRUCTIONS_MAX,
+  MapLevels,
   SUB_HEADINGS_MAX,
   SUB_HEADINGS_MIN,
 } from "@interestled/schemas";
 import type { MapDepth, MapShapeT, MinutesPerDay, StudyDays } from "@interestled/schemas";
 import { ChipRow } from "./ChipRow";
 import { SeededInstructions } from "./SeededInstructions";
+
+/**
+ * What the second count is counting, which the level above decides: nodes under
+ * a heading, or headings under an area. One label that says "and under each
+ * one?" for both is the screen declining to say what is being chosen.
+ */
+function underEachLabel(levels: MapLevels): string {
+  return levels === MapLevels.Three
+    ? "And how many sub-headings under each?"
+    : "And how many nodes under each?";
+}
 
 /** Every count between the two bounds, which is few enough to be a row of chips. */
 function counts(min: number, max: number): { value: string; label: string }[] {
@@ -51,6 +70,19 @@ export function MapShapeFields({
 
   return (
     <View className="gap-5">
+      {/* First, because it is what the two counts below mean: at two levels the
+          second one is the nodes under a heading, and at three it is the
+          headings under a heading. */}
+      <View className="gap-2">
+        <Text className="text-sm font-medium text-ink-soft">How many levels?</Text>
+        <ChipRow
+          options={MAP_LEVELS_OPTIONS}
+          selected={String(shape.levels)}
+          onSelect={(value) => set({ levels: Number(value) as MapLevels })}
+        />
+        <Text className="text-sm text-ink-soft">{MAP_LEVELS_COPY[shape.levels].body}</Text>
+      </View>
+
       <View className="gap-2">
         <Text className="text-sm font-medium text-ink-soft">How many main headings?</Text>
         <ChipRow
@@ -61,7 +93,7 @@ export function MapShapeFields({
       </View>
 
       <View className="gap-2">
-        <Text className="text-sm font-medium text-ink-soft">And under each one?</Text>
+        <Text className="text-sm font-medium text-ink-soft">{underEachLabel(shape.levels)}</Text>
         <ChipRow
           options={counts(SUB_HEADINGS_MIN, SUB_HEADINGS_MAX)}
           selected={String(shape.subHeadings)}

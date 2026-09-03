@@ -9,6 +9,10 @@ import {
   MECHANISM_SECTION_WORDS,
   MECHANISM_SHARE,
   MapDepth,
+  MapLevels,
+  SUB_HEADINGS_MAX,
+  SUB_HEADINGS_MIN,
+  SubtreeShape,
   narrationWords,
   PARAGRAPH_SENTENCES,
   mapShapeOf,
@@ -186,6 +190,11 @@ export function seedMapInstructions(shape: MapShapeT): string {
   return render(promptFile("map-instructions"), {
     mainHeadings: String(shape.mainHeadings),
     subHeadings: String(shape.subHeadings),
+    // Which line the counts are stated in: at three levels the sub-headings are
+    // headings too, and the nodes hang under those. Saying it in one line rather
+    // than adding a second, because the learner is going to read this as a
+    // sentence about their map and then edit it.
+    threeLevels: shape.levels === MapLevels.Three ? "yes" : "",
     totalTime: minutesText(totalMinutes(shape)),
     perDay: minutesText(shape.minutesPerDay),
     days: daysText(shape.days),
@@ -261,6 +270,14 @@ function shapeBlocks(averageReadTime: number): { leafRules: string; groupRules: 
   return { leafRules: leafRules(averageReadTime), groupRules: promptFile("group-rules") };
 }
 
+/**
+ * How many children a group may hold, said to the model in the same numbers the
+ * schema will hold the reply to. Asking for a count the parse then refuses
+ * reaches the learner as a failed generation, so there is one pair of numbers
+ * and both places read it.
+ */
+const CHILD_BOUNDS = { min: String(SUB_HEADINGS_MIN), max: String(SUB_HEADINGS_MAX) };
+
 function leafRules(averageReadTime: number): string {
   return render(promptFile("leaf-rules"), minutesBand(averageReadTime));
 }
@@ -301,6 +318,34 @@ export function choicesBlock(answered: readonly AnsweredQuestionT[]): string {
   return render(promptFile("map-choices"), { choices });
 }
 
+/**
+ * The levels themselves: how many rows of headings there are, what each one is
+ * called in the reply, and the JSON that comes back.
+ *
+ * One block per level count rather than one that counts, because the two are
+ * different documents — a three-level reply nests "sections" inside "areas" —
+ * and the schema the reply is parsed by is chosen by the same setting. Keeping
+ * them side by side is what makes it obvious that both have to move together.
+ */
+function mapShapeBlock(shape: MapShapeT, averageReadTime: number): string {
+  const counts = {
+    mainHeadings: String(shape.mainHeadings),
+    subHeadings: String(shape.subHeadings),
+  };
+  if (shape.levels === MapLevels.Three) {
+    return render(promptFile("map-three-levels"), {
+      ...shapeBlocks(averageReadTime),
+      ...counts,
+      // The leaf count is the model's to judge at three levels: the learner's
+      // two counts are both spent on headings, and what is left to decide is how
+      // many nodes each group needs to fit the time the lines above state.
+      minNodes: CHILD_BOUNDS.min,
+      maxNodes: CHILD_BOUNDS.max,
+    });
+  }
+  return render(promptFile("map-two-levels"), { ...shapeBlocks(averageReadTime), ...counts });
+}
+
 export function mapPrompt(input: {
   title: string;
   goal: string;
@@ -322,11 +367,7 @@ export function mapPrompt(input: {
     // The counts reach the shape block as well as the instruction lines: the
     // lines are the learner's to rewrite, and the block is what the schema will
     // actually refuse a reply for.
-    shape: render(promptFile("map-two-levels"), {
-      ...shapeBlocks(input.content.averageReadTime),
-      mainHeadings: String(input.shape.mainHeadings),
-      subHeadings: String(input.shape.subHeadings),
-    }),
+    shape: mapShapeBlock(input.shape, input.content.averageReadTime),
     mapInstructions: input.mapInstructions,
     learner: learnerBlock(input.profile),
     contentRules: contentRulesBlock(input.content),
@@ -379,9 +420,24 @@ export function subtreePrompt(input: {
   siblingTitles: readonly string[];
   profile: ProfileT;
   instructions: string;
+  /** Nodes, or groups with their nodes — whichever this group already holds. */
+  shape: SubtreeShape;
 }): string {
   const average = input.topic.averageReadTime;
-  const shape = render(promptFile("subtree-leaves"), { leafRules: leafRules(average) });
+  const shapeBlock =
+    input.shape === SubtreeShape.Sections
+      ? render(promptFile("subtree-sections"), {
+          ...shapeBlocks(average),
+          minSections: CHILD_BOUNDS.min,
+          maxSections: CHILD_BOUNDS.max,
+          minNodes: CHILD_BOUNDS.min,
+          maxNodes: CHILD_BOUNDS.max,
+        })
+      : render(promptFile("subtree-leaves"), {
+          leafRules: leafRules(average),
+          minNodes: CHILD_BOUNDS.min,
+          maxNodes: CHILD_BOUNDS.max,
+        });
   return render(promptFile("subtree"), {
     topic: input.topic.title,
     goal: input.topic.goal || "(not stated)",
@@ -392,7 +448,7 @@ export function subtreePrompt(input: {
     learner: learnerBlock(input.profile),
     contentRules: contentRulesBlock(contentSettingsOf(input.topic)),
     instructions: instructionBlock(input.instructions),
-    shape,
+    shape: shapeBlock,
     ordering: promptFile("ordering"),
   });
 }

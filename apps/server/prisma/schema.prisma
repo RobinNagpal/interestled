@@ -93,12 +93,12 @@ model Topic {
   timeBudget          String         @default("week") @map("time_budget")
   // Where they are now and where they want to get to, in their own words.
   level               String         @default("")
-  // Superseded by mainHeadings/subHeadings. Same deploy-gap reason as timeBudget
-  // above, and the same instruction: drop it in the next schema change.
-  levels              Int            @default(2)
-  // How the map is shaped and sized. Heading counts say the shape; minutes a day
+  // How the map is shaped and sized. Levels says how many rows of headings sit
+  // above the nodes; the heading counts say how many of each; minutes a day
   // times days says the size; depth says how far into the subject it goes. The
-  // enums live in packages/schemas, so the columns are plain ints.
+  // enums live in packages/schemas, so the columns are plain ints. The default
+  // on levels is what every map built before it was a setting actually has.
+  levels              Int            @default(2)
   mainHeadings        Int            @default(5) @map("main_headings")
   subHeadings         Int            @default(4) @map("sub_headings")
   minutesPerDay       Int            @default(20) @map("minutes_per_day")

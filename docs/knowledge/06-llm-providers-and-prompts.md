@@ -113,10 +113,10 @@ fails the build if it did not land.
 | Prompt | Used by |
 |---|---|
 | `system.md` | Every call. The hard rules. |
-| `map.md`, `map-two-levels.md`, `leaf-rules.md`, `group-rules.md`, `ordering.md`, `archetypes.md` | Building a map |
+| `map.md`, `map-two-levels.md`, `map-three-levels.md`, `leaf-rules.md`, `group-rules.md`, `ordering.md`, `archetypes.md` | Building a map — the shape block is picked by the topic's level count |
 | `map-questions.md`, `map-choices.md` | The seven questions, and the answers going back in |
 | `map-instructions.md`, `content-instructions.md` | The instruction lines the settings seed |
-| `subtree.md`, `subtree-leaves.md` | Rebuilding one group |
+| `subtree.md`, `subtree-leaves.md`, `subtree-sections.md` | Rebuilding one group — nodes, or groups with their nodes |
 | `card.md`, `content-rules.md`, `learner.md`, `instructions.md` | Writing a card |
 | `question.md` | A question asked on a card |
 | `narration.md` | A card read aloud |
