@@ -543,10 +543,22 @@ asking to be read to. The button goes back to offering one, and a player part-wa
 through the old recording stops offering to resume it — reading out words that are no
 longer on the screen is the one thing this feature must never do.
 
+Who reads it is a setting on the topic, chosen once on *How it is written* and never
+asked at the moment of listening. Eight voices, each with a line saying what it sounds
+like, and Erinome — clear and unhurried — until somebody picks another. Eight rather
+than the thirty the provider offers, because a card is an explanation rather than a
+performance: the excitable and the gravelly are fine for a minute and wear through a
+session. Changing it does not go and re-record anything. It means the recordings the
+topic already has stop matching what it now asks for, so each one is made again in the
+new voice the next time that card is played — and the note under the chips says exactly
+that, since a setting that quietly costs a wait later is a setting nobody trusts twice.
+
 - *Covers:* W5 (a different channel for the same content), W8 (hands free while it
   plays), A1 (a card that reads as a wall can be listened to instead), A10 (the wait
   is never dead time — the press answers at once and the card stays readable while
-  the recording is made).
+  the recording is made), W16 (the voice is chosen on a settings screen, away from
+  the moment of doing, and there is a default so choosing is never the price of
+  starting).
 
 ### Asking about a card
 
@@ -1103,7 +1115,7 @@ the design, not an acceptable gap.
 | W13 | One thing at a time | One concept and one visual per card; map rail dims during a drill |
 | W14 | Ask before explaining | Predict-then-reveal on every reveal; guided questions on the hardest nodes |
 | W15 | Surprise and story | The misconception slot on every card; timeline topics ordered causally |
-| W16 | Reduce decisions | One primary action per screen; the map is available, never required; the depth question is asked once, with two levels already chosen |
+| W16 | Reduce decisions | One primary action per screen; the map is available, never required; the depth question is asked once, with two levels already chosen; the narration voice is a topic setting with a default, decided on a settings screen rather than at the moment of pressing play, and eight options rather than the provider's thirty |
 | W17 | Err on the side of too fast | Cards written above comfort with depth buttons underneath; no recaps |
 | W18 | Skip what they know | Calibration and the profile's background collapse branches; the *scope* choice names what the map leaves out; "I already know this" on every node, honoured without proof; the calibration answers stay editable per topic, so a wrong one is corrected rather than lived with |
 | W19 | Concrete progress | Status dots advance only on production; progress stated as new ability |

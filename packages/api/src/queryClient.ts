@@ -36,7 +36,7 @@ export const NARRATION_POLL_MS = 3000;
  * version discards the whole persisted cache on the next launch and nothing
  * else; the same idea as `CARD_PROMPT_REVISION` on the server.
  */
-export const PERSISTED_CACHE_VERSION = "2";
+export const PERSISTED_CACHE_VERSION = "3";
 
 /**
  * One cache, two kinds of thing in it.

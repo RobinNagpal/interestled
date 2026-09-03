@@ -140,8 +140,21 @@ export function seedContentInstructions(paragraphLength: ParagraphLength): strin
   });
 }
 
+/**
+ * What a prompt is allowed to know about a topic's settings: how it is written,
+ * and nothing about how it is read aloud.
+ *
+ * TopicContentSettings carries the narration voice as well, and no prompt may
+ * see it — a card is written the same way whoever says it out loud, and the
+ * three callers below assemble one of these out of a *card's* own settings,
+ * which have no voice on them to put there. Stated as what is missing rather
+ * than as a second list, so a setting added to the topic is one this block gets
+ * unless somebody says otherwise.
+ */
+type WritingSettings = Omit<TopicContentSettingsT, "narrationVoice">;
+
 /** The stored value, or the seed when the learner has not overridden it. */
-function effectiveContentInstructions(content: TopicContentSettingsT): string {
+function effectiveContentInstructions(content: WritingSettings): string {
   return content.contentInstructions.trim() === ""
     ? seedContentInstructions(content.paragraphLength)
     : content.contentInstructions.trim();
@@ -215,7 +228,7 @@ export function effectiveMapInstructions(input: MapShapeT & { mapInstructions: s
  * card — and the model is told which wins. Empty everywhere but the card and
  * the questions asked on it.
  */
-function contentRulesBlock(content: TopicContentSettingsT, cardInstructions = ""): string {
+function contentRulesBlock(content: WritingSettings, cardInstructions = ""): string {
   return render(promptFile("content-rules"), {
     englishRule: ENGLISH_GUIDE[content.englishLevel],
     technicalRule: TECHNICAL_GUIDE[content.technicalDetail],

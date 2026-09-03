@@ -3,7 +3,14 @@ import type { LlmProviderId } from "@interestled/schemas";
 export interface SpeakRequest {
   /** The words to say, and only those: the provider adds no instructions of its own. */
   text: string;
-  /** A prebuilt voice name on the provider's side — NARRATION_VOICE by default. */
+  /**
+   * A prebuilt voice name on the provider's side — a NarrationVoice, which is
+   * the set the settings screen offers, spelled the way the provider spells it.
+   * A plain string here rather than that enum because this is the seam: the
+   * names are the provider's namespace, and a second provider would have its
+   * own. What refuses an unknown one is NarrationVoiceSchema, at the boundary
+   * the value arrives on.
+   */
   voice: string;
 }
 

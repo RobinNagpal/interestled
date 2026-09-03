@@ -17,7 +17,7 @@ learner sees, what happens when they use it, and which files to open.
 | [1. Topics and the map](docs/knowledge/01-topics-and-the-map.md) | Creating a topic, the seven questions, the node tree, editing and rebuilding a map |
 | [2. Cards and writing settings](docs/knowledge/02-cards-and-writing-settings.md) | The concept card, its slots, the cache, the controls under it, questions asked on it |
 | [3. Drills, progress and review](docs/knowledge/03-drills-progress-and-review.md) | The status ladder, grading, spaced review, study sessions |
-| [4. Reading a card aloud](docs/knowledge/04-reading-a-card-aloud.md) | The play button, narration scripts, speech synthesis, the audio bucket |
+| [4. Reading a card aloud](docs/knowledge/04-reading-a-card-aloud.md) | The play button, narration scripts, the voice a topic is read in, speech synthesis, the audio bucket |
 | [5. Accounts, ownership and budgets](docs/knowledge/05-accounts-ownership-and-budgets.md) | Registration, sessions, the authorisation model, every generation ceiling |
 | [6. LLM providers and prompts](docs/knowledge/06-llm-providers-and-prompts.md) | Which model answers which call, structured generation, the prompt files |
 | [7. The app shell and caching](docs/knowledge/07-the-app-shell-and-caching.md) | Routing, the query cache and what is persisted, the component set |
@@ -461,10 +461,24 @@ by tests.
   hour are the ceiling below: a counter another endpoint empties is a counter a learner
   empties, and rewrite-then-play in a loop would cost nothing against the tightest
   budget in the product.
-- **The bucket is laid out by slug, and the key is the card's identity.**
-  `narrationKey` builds `<user>/<topic>/<node path>/n<rev>-d<depth>-<variant>.wav`, so a
-  card rewritten at the same settings overwrites its own object and one written at other
-  settings gets its own. `users.slug` is allocated at registration from the address —
+- **The voice is the topic's, and it is in the key.** `NarrationVoice` is eight of
+  Google's prebuilt names, picked on the content settings screen and stored on
+  `topics.narration_voice`; `DEFAULT_NARRATION_VOICE` is Erinome, which is the even,
+  unhurried one — a card is an explanation rather than a performance, and the voices
+  with character in them wear through a session. It is the one member of
+  `TopicContentSettings` no prompt may see, so `contentRulesBlock` takes
+  `WritingSettings` (that type without it) and `cardVariant` never mentions it: keying
+  a card on the voice would retire every cached card for a change that cannot alter a
+  word of one. What it is keyed into is `narrationKey`, and that is the whole of how
+  moving the chip takes effect — a stored row is served only while its key still
+  matches the one built now, so a topic put into another voice misses every recording
+  it has and records again on the next press. `card_narrations.voice` stays a plain
+  string, because it says which voice made a recording that already exists and that may
+  be one the enum has since dropped.
+- **The bucket is laid out by slug, and the key is the recording's identity.**
+  `narrationKey` builds `<user>/<topic>/<node path>/n<rev>-<voice>-d<depth>-<variant>.wav`,
+  so a card re-recorded in the same voice at the same settings overwrites its own object
+  and any of the four changing gets its own. `users.slug` is allocated at registration from the address —
   `emailSlug` then `uniqueSlug`, because two accounts at two providers can hold the same
   local part and their folders must not be the same folder — and never changed, because
   changing it orphans everything already recorded. It rides on the session beside
@@ -568,7 +582,7 @@ card must handle their absence — the screen drops the section, and `drill.md` 
 `atoms.md` drop the line rather than labelling a blank the model would then answer.
 
 **Every topic carries its own writing settings** — `englishLevel`, `technicalDetail`,
-`format`, `averageReadTime` and `contentInstructions`, defaulting to
+`format`, `paragraphLength`, `averageReadTime` and `contentInstructions`, defaulting to
 `prompts/content-instructions.md` when the learner has written none. The first two are
 independent on purpose, and `content-rules.md` says so to the model: two rules pulling
 opposite ways are two rules it resolves by picking one. `contentSettingsOf(topic)` is
@@ -577,6 +591,12 @@ written keeps its writing and says under it that the settings have moved (see
 *Regeneration is manual* above), and nodes nobody has opened are written to the new
 settings. Drills are kept for the older reason: deleting one cascades to the attempts
 made against it.
+
+`TopicContentSettings` carries one member that is not about the writing at all —
+`narrationVoice`, above — and the route that saves them decides whether anything
+changed by walking `TopicContentSettingsInput.keyof()` rather than by a list written
+out. The list had gone stale: `paragraphLength` was never compared, so a save that
+moved only that chip answered 200 and stored nothing.
 
 ## The cache on the phone and the website
 

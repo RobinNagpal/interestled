@@ -12,7 +12,8 @@ import {
   MapQuestionKind,
   NARRATION_TIMED_OUT,
   NARRATION_TIMEOUT_MS,
-  NARRATION_VOICE,
+  DEFAULT_NARRATION_VOICE,
+  NarrationVoice,
   NarrationStatus,
   NodeStatus,
   ParagraphLength,
@@ -192,6 +193,7 @@ function topicRow(): Record<string, unknown> {
     format: ContentFormat.Prose,
     contentInstructions: "",
     averageReadTime: DEFAULT_AVERAGE_READ_TIME,
+    narrationVoice: DEFAULT_NARRATION_VOICE,
     status: TopicStatus.Ready,
     error: null,
     createdAt: new Date(),
@@ -302,6 +304,7 @@ describe("topic settings writes", () => {
         // Defaulted rather than sent: the screen always holds every setting, so
         // a save that omitted one would be a screen that had lost it.
         paragraphLength: ParagraphLength.Medium,
+        narrationVoice: DEFAULT_NARRATION_VOICE,
         contentInstructions: "No YAML in the examples",
         averageReadTime: ReadTime.Ten,
       },
@@ -356,6 +359,63 @@ describe("topic settings writes", () => {
     expect(response.status).toBe(200);
     expect(updates).toEqual([]);
     expect(deletedCards).toEqual([]);
+  });
+
+  it("saves the voice the topic is read in, and touches nothing else", async () => {
+    const { db, updates, minuteWrites, deletedCards } = settingsDb();
+    const response = await send(db, "/api/topics/kubernetes/content-settings", {
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
+      contentInstructions: "",
+      averageReadTime: DEFAULT_AVERAGE_READ_TIME,
+      narrationVoice: NarrationVoice.Sulafat,
+    });
+
+    expect(response.status).toBe(200);
+    expect(updates).toEqual([
+      expect.objectContaining({ narrationVoice: NarrationVoice.Sulafat }),
+    ]);
+    // It changes who reads a card out, not a word of one, so nothing written is
+    // touched and the map's own minutes stand.
+    expect(deletedCards).toEqual([]);
+    expect(minuteWrites).toEqual([]);
+  });
+
+  it("saves a change to nothing but the paragraph length", async () => {
+    // It was left out of the comparison that decides whether anything changed,
+    // so moving only this chip answered 200 and stored nothing. The comparison
+    // is read off the schema now, which is what stops the next setting added
+    // from being forgotten the same way.
+    const { db, updates } = settingsDb();
+    const response = await send(db, "/api/topics/kubernetes/content-settings", {
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
+      paragraphLength: ParagraphLength.Long,
+      contentInstructions: "",
+      averageReadTime: DEFAULT_AVERAGE_READ_TIME,
+    });
+
+    expect(response.status).toBe(200);
+    expect(updates).toEqual([expect.objectContaining({ paragraphLength: ParagraphLength.Long })]);
+  });
+
+  it("refuses a voice the product does not offer, rather than passing it on", async () => {
+    // An unknown name is a failure minutes later, on the row, saying something
+    // about a voice the learner never typed.
+    const { db, updates } = settingsDb();
+    const response = await send(db, "/api/topics/kubernetes/content-settings", {
+      englishLevel: EnglishLevel.Medium,
+      technicalDetail: TechnicalDetail.Medium,
+      format: ContentFormat.Prose,
+      contentInstructions: "",
+      averageReadTime: DEFAULT_AVERAGE_READ_TIME,
+      narrationVoice: "Fenrir",
+    });
+
+    expect(response.status).toBe(400);
+    expect(updates).toEqual([]);
   });
 
   it("refuses a read time that is not a rung on the ladder", async () => {
@@ -1571,6 +1631,7 @@ describe("reading a card out", () => {
     userSlug: "robin",
     topicSlug: "kubernetes",
     nodePath: "pods/restarts",
+    voice: DEFAULT_NARRATION_VOICE,
     depth: cardSettings.depth,
     variant: cardVariant(cardSettings),
   });
@@ -1619,6 +1680,8 @@ describe("reading a card out", () => {
       children?: number;
       /** Make the speech model fail, so the run has something to record. */
       speechFails?: string;
+      /** The voice this topic is set to, when it is not the default one. */
+      voice?: NarrationVoice;
       /**
        * Hold the run at the speech model until `release`. Nothing here touches a
        * network, so an unheld run finishes on the microtask queue before the
@@ -1648,7 +1711,7 @@ describe("reading a card out", () => {
             script: SCRIPT,
             seconds: 91,
             bytes: 4_400_000,
-            voice: NARRATION_VOICE,
+            voice: DEFAULT_NARRATION_VOICE,
             createdAt: new Date("2026-09-01T10:05:00.000Z"),
             ...options.narration,
           };
@@ -1692,7 +1755,7 @@ describe("reading a card out", () => {
           cardInstructions: "",
           createdAt: new Date(),
           prerequisites: [],
-          topic: topicRow(),
+          topic: { ...topicRow(), narrationVoice: options.voice ?? DEFAULT_NARRATION_VOICE },
         })),
         count: vi.fn(async () => options.children ?? 0),
       },
@@ -1890,7 +1953,7 @@ describe("reading a card out", () => {
     stub.release();
     await stub.settle();
 
-    expect(stub.spoken).toEqual([{ text: SCRIPT, voice: NARRATION_VOICE }]);
+    expect(stub.spoken).toEqual([{ text: SCRIPT, voice: DEFAULT_NARRATION_VOICE }]);
     expect(stub.row()).toMatchObject({
       status: NarrationStatus.Ready,
       error: "",
@@ -1898,7 +1961,7 @@ describe("reading a card out", () => {
       objectKey: KEY,
       cardWrittenAt: WRITTEN_AT,
       seconds: 1,
-      voice: NARRATION_VOICE,
+      voice: DEFAULT_NARRATION_VOICE,
     });
 
     // Raw PCM is not something a browser or a phone will play, so what lands in
@@ -1920,7 +1983,7 @@ describe("reading a card out", () => {
     stub.release();
     await stub.settle();
     expect(await (await get(stub)).json()).toMatchObject({
-      audio: { status: NarrationStatus.Ready, seconds: 1, voice: NARRATION_VOICE },
+      audio: { status: NarrationStatus.Ready, seconds: 1, voice: DEFAULT_NARRATION_VOICE },
     });
   });
 
@@ -2138,6 +2201,46 @@ describe("reading a card out", () => {
 
     expect(stub.spoken).toHaveLength(1);
     expect(stub.row()).toMatchObject({ status: NarrationStatus.Ready, cardWrittenAt: WRITTEN_AT });
+  });
+
+  it("reads the card in the voice its topic is set to, not in the default one", async () => {
+    // The setting has to reach the speech model to be a setting at all, and it
+    // has to reach the key as well, or a topic moved to another voice keeps
+    // being served the recording the old one made.
+    const stub = audioStub({ narration: null, voice: NarrationVoice.Kore });
+    await post(stub);
+    await stub.settle();
+
+    expect(stub.spoken).toEqual([{ text: SCRIPT, voice: NarrationVoice.Kore }]);
+    expect(stub.row()).toMatchObject({ voice: NarrationVoice.Kore });
+    expect(stub.put[0]?.key).toContain("-kore-d2-");
+  });
+
+  it("does not serve what the topic's previous voice recorded", async () => {
+    // The row is a finished recording of exactly this card — only the voice has
+    // moved under it. Serving it would make the setting a thing that only
+    // applies to cards nobody has played yet.
+    // `narration: {}` is a finished recording at KEY, the key the default voice
+    // builds. Leaving it out would be no row at all, and the test would pass
+    // without the staleness it is about.
+    const stub = audioStub({ narration: {}, voice: NarrationVoice.Sulafat });
+    expect(await (await get(stub)).json()).toEqual({ audio: null });
+  });
+
+  it("records again in the new voice, and keeps the row it replaced counting", async () => {
+    const stub = audioStub({ narration: {}, voice: NarrationVoice.Sulafat });
+    await post(stub);
+    await stub.settle();
+
+    expect(stub.spoken).toEqual([{ text: SCRIPT, voice: NarrationVoice.Sulafat }]);
+    // One row per card, taken over rather than added to: attempts is what the
+    // ceiling counts, so the second recording of a card is not a free one.
+    expect(stub.row()).toMatchObject({
+      status: NarrationStatus.Ready,
+      voice: NarrationVoice.Sulafat,
+      attempts: 2,
+    });
+    expect(stub.put[0]?.key).toContain("-sulafat-d2-");
   });
 
   it("does not serve a recording made under an earlier narration prompt", async () => {

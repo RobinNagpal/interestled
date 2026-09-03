@@ -131,20 +131,57 @@ which is why a recording is made once and played from the bucket after that.
 `narrationKey` in `packages/schemas/src/audio.ts`:
 
 ```
-<user-slug>/<topic-slug>/<node-path>/n<rev>-d<depth>-<variant>.wav
-robin/kubernetes/scheduling/taints/n1-d2-r6-base-3-medium-medium-prose-medium.wav
+<user-slug>/<topic-slug>/<node-path>/n<rev>-<voice>-d<depth>-<variant>.wav
+robin/kubernetes/scheduling/taints/n1-erinome-d2-r6-base-3-medium-medium-prose-medium.wav
 ```
 
 Readable rather than hashed, built from the same slugs the URLs are. The file
-name is the card's identity, so a card re-recorded at the same settings
-**overwrites its own object** and one at different settings gets its own.
+name is the recording's identity — revision, voice, depth, card variant — so a
+card re-recorded in the same voice at the same settings **overwrites its own
+object**, and any of the four changing gets its own.
 
 `users.slug` is allocated at registration from the address and never changed —
 changing it orphans everything already recorded. See doc 5.
 
 `NARRATION_PROMPT_REVISION` travels in the key, and the row stores the key it was
 written to, so bumping it makes every stored row miss its own lookup. No
-migration, nothing to delete.
+migration, nothing to delete. The voice below rides in the key for exactly that
+reason.
+
+## The voice
+
+`NarrationVoice` in `packages/schemas/src/voices.ts` — eight of Google's thirty
+prebuilt names, chosen per topic on **How it is written**
+(`app/topic/[topic]/edit/content.tsx`) and stored on `topics.narration_voice`.
+`DEFAULT_NARRATION_VOICE` is **Erinome**: clear and unhurried. The cut to eight is
+deliberate and is the product's, not the provider's — a card is an explanation
+rather than a performance, so the excitable, gravelly and breathy voices wear
+through a session. Adding one is a line in `voices.ts` and a line in `VOICE_COPY`;
+`VOICE_COPY` is keyed by the enum, so a voice added without copy fails the build
+rather than the screen.
+
+Three things about where it lives:
+
+- **It is in `TopicContentSettings`, and it is the one member no prompt sees.**
+  `contentRulesBlock` takes `WritingSettings` — that type without the voice —
+  because a card is written the same way whoever reads it out, and the three
+  callers that build one out of a *card's* own settings have no voice to put
+  there.
+- **It is not in `cardVariant`.** Keying a card on it would retire every cached
+  card for a change that cannot alter a word of one.
+- **It is in `narrationKey`**, which is the whole of how moving the chip takes
+  effect: a stored row is served only while its key still matches the one built
+  now, so a topic put into another voice misses every recording it already has and
+  the next press records again. Nothing is deleted, and the row's `attempts` keeps
+  counting against the ceiling — a voice chip is not a way to record for free.
+
+`card_narrations.voice` stays a plain string rather than the enum. It says which
+voice made a recording that already exists, and that may be one the set has since
+dropped; history has to survive the enum changing under it.
+
+On the seam to the provider, `SpeakRequest.voice` is a `string` too: the names are
+Google's namespace, and `NarrationVoiceSchema` is what refuses an unknown one, at
+the boundary the value arrives on.
 
 ## Staying honest about what it is a recording of
 
@@ -266,6 +303,9 @@ apps/server/src/llm/speech.ts                the SpeechProvider interface
 apps/server/src/llm/gemini.ts                createGeminiSpeech
 apps/server/src/llm/prompts/narration.md
 packages/schemas/src/audio.ts                the key, the revision, NodeAudio
+packages/schemas/src/voices.ts               NarrationVoice and the default
+packages/ui/src/copy.ts                      VOICE_COPY, VOICE_OPTIONS, VOICE_NOTE
+apps/mobile/app/topic/[topic]/edit/content.tsx  where the voice is picked
 packages/domain/src/audio.ts                 isLoadedRecordingCurrent
 packages/api/src/hooks.ts                    useNodeAudio, and the polling while pending
 apps/mobile/components/CardAudio.tsx         the player and its controls

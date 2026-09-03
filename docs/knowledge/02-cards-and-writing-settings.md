@@ -56,6 +56,18 @@ card, sent in the query rather than stored.
 `learning_nodes.card_instructions`, is saved by
 `PUT /api/nodes/:id/card-instructions`, and holds for the next writing too.
 
+The topic's own screen — **How it is written**, `app/topic/[topic]/edit/content.tsx`,
+saved by `PUT /api/topics/:slug/content-settings` — sets those defaults plus
+`averageReadTime`, the standing `contentInstructions`, and `narrationVoice`. The
+voice is the odd one out: it changes who reads a card aloud and no word of what is
+written, so it reaches no prompt and is not part of the card cache key. See
+[doc 4](04-reading-a-card-aloud.md).
+
+Whether a save changed anything is decided by walking
+`TopicContentSettingsInput.keyof()`, not by a list written out — the list had gone
+stale, and a save that moved only `paragraphLength` answered 200 and stored
+nothing.
+
 ## The cache
 
 `concept_cards` is unique on `(node_id, depth, variant)`. `cardVariant(settings)`
@@ -127,6 +139,10 @@ The one exception is `averageReadTime`: changing it rescales the leaves' own
 `minutes` (`rescaleMinutes` in `topics.ts`), because a node's estimate is what
 the default card length is capped to — without that, a ten-minute topic would
 still write three-minute cards.
+
+`narrationVoice` is not an exception to this, because it is not about the writing:
+it deletes no card and no recording either. It does retire the recordings, by
+missing their keys — see [doc 4](04-reading-a-card-aloud.md).
 
 ## Where to look
 

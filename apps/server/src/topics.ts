@@ -642,12 +642,14 @@ export function topicsRouter(db: Db, provider: (task: TextTask) => LlmProvider):
     const userId = c.get("userId");
     const topic = await findTopic(db, userId, c.req.param("slug"));
     const input = c.req.valid("json");
-    const unchanged =
-      input.englishLevel === topic.englishLevel &&
-      input.technicalDetail === topic.technicalDetail &&
-      input.format === topic.format &&
-      input.contentInstructions === topic.contentInstructions &&
-      input.averageReadTime === topic.averageReadTime;
+    // Read off the schema rather than listed by hand. Written out, the list had
+    // already gone stale once — paragraphLength was never compared, so a save
+    // that moved only that chip answered "nothing changed" and stored nothing —
+    // and the voice below would have been the second. Every member is a scalar,
+    // so === is the whole of the comparison.
+    const unchanged = TopicContentSettingsInput.keyof().options.every(
+      (key) => input[key] === topic[key],
+    );
     if (unchanged) {
       return c.json(topic);
     }

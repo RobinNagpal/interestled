@@ -3,7 +3,6 @@ import {
   NARRATION_ERROR_MAX,
   NARRATION_TIMED_OUT,
   NARRATION_TIMEOUT_MS,
-  NARRATION_VOICE,
   NarrationStatus,
   NarrationStatusSchema,
   cardVariant,
@@ -14,6 +13,7 @@ import type {
   CardContentT,
   CardSettingsT,
   LearningNodeT,
+  NarrationVoice,
   NodeAudioT,
   TopicT,
 } from "@interestled/schemas";
@@ -78,14 +78,16 @@ async function cardBeingRead(
  *
  * Built rather than remembered, so it can be compared against the key a stored
  * row was written to: they differ exactly when NARRATION_PROMPT_REVISION has
- * moved, which is how a rewritten narration.md retires every recording without
- * a migration and without deleting anything.
+ * moved or the topic has been put into another voice, which is how a rewritten
+ * narration.md and a moved voice chip each retire every recording without a
+ * migration and without deleting anything.
  */
 function keyFor(target: NarrationTarget): string {
   return narrationKey({
     userSlug: target.userSlug,
     topicSlug: target.topic.slug,
     nodePath: target.node.path,
+    voice: target.topic.narrationVoice,
     depth: target.settings.depth,
     variant: cardVariant(target.settings),
   });
@@ -212,7 +214,17 @@ export async function readNarration(
 async function claimRun(
   db: Db,
   cardId: string,
-  row: { objectKey: string; cardWrittenAt: Date; createdAt: Date },
+  row: {
+    objectKey: string;
+    cardWrittenAt: Date;
+    createdAt: Date;
+    /**
+     * The topic's voice at the moment of the claim, written down rather than
+     * looked up later: the topic can be moved to another voice while this run
+     * is under way, and the row has to say which one actually spoke.
+     */
+    voice: NarrationVoice;
+  },
 ): Promise<boolean> {
   const claimed = {
     status: NarrationStatus.Pending,
@@ -220,7 +232,6 @@ async function claimRun(
     script: "",
     seconds: 0,
     bytes: 0,
-    voice: NARRATION_VOICE,
     ...row,
   };
   const created = await db.cardNarration.createMany({
@@ -291,7 +302,7 @@ async function runNarration(
       card: card.content,
       settings: target.settings,
     });
-    const spoken = await speech.speak({ text: script, voice: NARRATION_VOICE });
+    const spoken = await speech.speak({ text: script, voice: target.topic.narrationVoice });
     const rate = sampleRateOf(spoken.mimeType);
     const wav = pcmToWav(spoken.audio, rate);
 
@@ -384,6 +395,7 @@ export async function startNarration(
     objectKey: key,
     cardWrittenAt: card.writtenAt,
     createdAt: now,
+    voice: target.topic.narrationVoice,
   });
   if (!claimed) {
     // Another press got there between the read above and here. Whatever it

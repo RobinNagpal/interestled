@@ -4,6 +4,7 @@ import {
   NARRATION_PROMPT_REVISION,
   NARRATION_SCRIPT_MAX,
   NarrationScript,
+  NarrationVoice,
   SPOKEN_WORDS_PER_MINUTE,
   cardVariant,
   narrationKey,
@@ -29,6 +30,7 @@ describe("narrationKey", () => {
       userSlug: "robin",
       topicSlug: "kubernetes",
       nodePath: "scheduling/taints",
+      voice: NarrationVoice.Erinome,
       depth: settings.depth,
       variant: cardVariant(settings),
     });
@@ -37,14 +39,25 @@ describe("narrationKey", () => {
   });
 
   it("gives two accounts two folders, whatever the topic is called", () => {
-    const shared = { topicSlug: "kubernetes", nodePath: "pods", depth: 2, variant: "v" };
+    const shared = {
+      topicSlug: "kubernetes",
+      nodePath: "pods",
+      voice: NarrationVoice.Erinome,
+      depth: 2,
+      variant: "v",
+    };
     expect(narrationKey({ ...shared, userSlug: "robin" })).not.toBe(
       narrationKey({ ...shared, userSlug: "robin-2" }),
     );
   });
 
   it("names the card in the file, so two settings never share one recording", () => {
-    const shared = { userSlug: "robin", topicSlug: "kubernetes", nodePath: "pods" };
+    const shared = {
+      userSlug: "robin",
+      topicSlug: "kubernetes",
+      nodePath: "pods",
+      voice: NarrationVoice.Erinome,
+    };
     const base = narrationKey({ ...shared, depth: 2, variant: cardVariant(settings) });
     // The depth is its own column on the card, so it is its own piece of the name.
     expect(narrationKey({ ...shared, depth: 4, variant: cardVariant(settings) })).not.toBe(base);
@@ -59,7 +72,14 @@ describe("narrationKey", () => {
   });
 
   it("is stable for the same card, so a recording overwrites its own object", () => {
-    const input = { userSlug: "robin", topicSlug: "k8s", nodePath: "pods", depth: 2, variant: "v" };
+    const input = {
+      userSlug: "robin",
+      topicSlug: "k8s",
+      nodePath: "pods",
+      voice: NarrationVoice.Erinome,
+      depth: 2,
+      variant: "v",
+    };
     expect(narrationKey(input)).toBe(narrationKey(input));
   });
 
@@ -68,10 +88,27 @@ describe("narrationKey", () => {
       userSlug: "robin",
       topicSlug: "k8s",
       nodePath: "pods",
+      voice: NarrationVoice.Erinome,
       depth: 2,
       variant: cardVariant(settings),
     });
-    expect(key).toContain(`/n${NARRATION_PROMPT_REVISION}-d2-`);
+    expect(key).toContain(`/n${NARRATION_PROMPT_REVISION}-erinome-d2-`);
+  });
+
+  it("carries the voice, which is what retires the recordings of one topic", () => {
+    // The whole of how a moved voice chip takes effect: a stored row is served
+    // only while its key still matches the one built here, so the recordings a
+    // topic already has stop matching and the next press records them again.
+    const shared = {
+      userSlug: "robin",
+      topicSlug: "k8s",
+      nodePath: "pods",
+      depth: 2,
+      variant: cardVariant(settings),
+    };
+    expect(narrationKey({ ...shared, voice: NarrationVoice.Erinome })).not.toBe(
+      narrationKey({ ...shared, voice: NarrationVoice.Kore }),
+    );
   });
 
   it("writes a key with nothing in it that needs escaping", () => {
@@ -79,6 +116,8 @@ describe("narrationKey", () => {
       userSlug: "robin",
       topicSlug: "k8s",
       nodePath: "scheduling/taints",
+      // The longest name in the set: nothing in it needs escaping either.
+      voice: NarrationVoice.Vindemiatrix,
       depth: 5,
       variant: cardVariant({ ...settings, angle: CardAngle.MoreConcrete, format: ContentFormat.ReferenceNotes }),
     });

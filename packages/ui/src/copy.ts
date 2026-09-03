@@ -7,6 +7,7 @@ import {
   MAP_DEPTHS,
   MINUTES_PER_DAY,
   MapDepth,
+  NarrationVoice,
   PARAGRAPH_SENTENCES,
   ParagraphLength,
   READ_TIMES,
@@ -204,6 +205,47 @@ export const PARAGRAPH_OPTIONS = Object.values(ParagraphLength).map((value) => (
   value,
   label: PARAGRAPH_SENTENCES[value],
 }));
+
+/**
+ * The voices a topic can be read in.
+ *
+ * Named by the voice rather than by a role ("the calm one", "the teacher"),
+ * because the name is what Google calls it and inventing a second name for the
+ * same thing is how the two drift apart. The body is what it sounds like, which
+ * is the part worth reading before pressing anything.
+ *
+ * Keyed by the enum, so a voice added without copy fails the build rather than
+ * the screen — the same rule the settings above follow.
+ */
+export const VOICE_COPY: Record<NarrationVoice, { label: string; body: string }> = {
+  [NarrationVoice.Erinome]: {
+    label: "Erinome",
+    body: "Clear and unhurried, with nothing in the way of the words. The default.",
+  },
+  [NarrationVoice.Schedar]: { label: "Schedar", body: "Even and level, start to finish." },
+  [NarrationVoice.Charon]: { label: "Charon", body: "Informative — the register of a briefing." },
+  [NarrationVoice.Kore]: { label: "Kore", body: "Firm and definite, a little more weight on it." },
+  [NarrationVoice.Sulafat]: { label: "Sulafat", body: "Warm, and the easiest to sit with for long." },
+  [NarrationVoice.Achird]: { label: "Achird", body: "Friendly, as if talking rather than reading." },
+  [NarrationVoice.Sadaltager]: {
+    label: "Sadaltager",
+    body: "Knowledgeable — somebody who has explained this before.",
+  },
+  [NarrationVoice.Vindemiatrix]: { label: "Vindemiatrix", body: "Gentle and quiet-spoken." },
+};
+
+export const VOICE_OPTIONS = Object.values(NarrationVoice).map((value) => ({
+  value,
+  label: VOICE_COPY[value].label,
+}));
+
+/**
+ * What moving that chip costs, which is the one thing about it worth warning
+ * about: the voice is part of where a recording lives, so a topic put into
+ * another voice stops matching everything it has already recorded.
+ */
+export const VOICE_NOTE =
+  "Cards are read in this voice. Anything already recorded was read in the old one and is recorded again, in the new voice, the next time you press play.";
 
 /** What that chip changes, said once for both of the screens that offer it. */
 export const PARAGRAPH_NOTE =

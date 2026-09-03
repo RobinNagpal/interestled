@@ -131,6 +131,12 @@ model Topic {
   // Minutes: what a node on this map is built to cost, and what a card is
   // written to. 1-5, the same band LearningNode.minutes is capped to.
   averageReadTime     Int            @default(3) @map("average_read_time")
+  // NarrationVoice, as a plain string like every other enum here — one of
+  // Google's prebuilt voice names, and the one this topic's cards are read in.
+  // The default is both the product's default voice and what the old bundle
+  // needs for the seconds between the migration running and the new code
+  // shipping, where a topic is inserted naming no voice at all.
+  narrationVoice      String         @default("Erinome") @map("narration_voice")
   status              String         @default("generating")
   error               String?
   createdAt           DateTime       @default(now()) @map("created_at")
