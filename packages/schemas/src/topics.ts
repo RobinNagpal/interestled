@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Id } from "./ids";
 import { MapAnswers } from "./mapQuestions";
 import { Slug } from "./slugs";
+import { DEFAULT_NARRATION_VOICE, NarrationVoiceSchema } from "./voices";
 
 /**
  * The kind of subject decides which drills are used and what "known" means.
@@ -334,6 +335,15 @@ export const TopicContentSettings = z.object({
   /** "" means the default applies; see TopicContentSettingsInput. */
   contentInstructions: z.string(),
   averageReadTime: ReadTimeSchema,
+  /**
+   * Who reads this topic's cards aloud. The one member here that no prompt ever
+   * sees: the others decide what is written, and this decides how the written
+   * thing sounds, so contentRulesBlock leaves it out and cardVariant does too —
+   * keying a card on it would retire every cached card for a change that cannot
+   * alter a word of one. Where it does belong is narrationKey, which is what
+   * makes moving it retire the recordings instead.
+   */
+  narrationVoice: NarrationVoiceSchema,
 });
 
 /**
@@ -442,6 +452,7 @@ export const TopicContentSettingsInput = z.object({
   paragraphLength: ParagraphLengthSchema.default(ParagraphLength.Medium),
   contentInstructions: z.string().trim().max(2000).default(""),
   averageReadTime: ReadTimeSchema.default(DEFAULT_AVERAGE_READ_TIME),
+  narrationVoice: NarrationVoiceSchema.default(DEFAULT_NARRATION_VOICE),
 });
 
 /**
@@ -502,5 +513,6 @@ export function contentSettingsOf(topic: TopicT): TopicContentSettingsT {
     paragraphLength: topic.paragraphLength,
     contentInstructions: topic.contentInstructions,
     averageReadTime: topic.averageReadTime,
+    narrationVoice: topic.narrationVoice,
   };
 }

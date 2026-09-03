@@ -131,20 +131,48 @@ which is why a recording is made once and played from the bucket after that.
 `narrationKey` in `packages/schemas/src/audio.ts`:
 
 ```
-<user-slug>/<topic-slug>/<node-path>/n<rev>-d<depth>-<variant>.wav
-robin/kubernetes/scheduling/taints/n1-d2-r6-base-3-medium-medium-prose-medium.wav
+<user-slug>/<topic-slug>/<node-path>/n<rev>-<voice>-d<depth>-<variant>.wav
+robin/kubernetes/scheduling/taints/n1-erinome-d2-r6-base-3-medium-medium-prose-medium.wav
 ```
 
 Readable rather than hashed, built from the same slugs the URLs are. The file
-name is the card's identity, so a card re-recorded at the same settings
-**overwrites its own object** and one at different settings gets its own.
+name is the recording's identity — revision, voice, depth, card variant — so a
+card re-recorded in the same voice at the same settings **overwrites its own
+object**, and any of the four changing gets its own.
 
 `users.slug` is allocated at registration from the address and never changed —
 changing it orphans everything already recorded. See doc 5.
 
 `NARRATION_PROMPT_REVISION` travels in the key, and the row stores the key it was
 written to, so bumping it makes every stored row miss its own lookup. No
-migration, nothing to delete.
+migration, nothing to delete. The voice below rides in the key for exactly that
+reason.
+
+## The voice
+
+`NarrationVoice` (`packages/schemas/src/voices.ts`), per topic on **How it is
+written**, stored on `topics.narration_voice`, defaulting to Erinome.
+
+Eight of Google's thirty, and the cut is the product's rather than the
+provider's: a card is an explanation, not a performance, and the excitable,
+gravelly and breathy voices wear through a session.
+
+Where it goes is what it does, and each of the three matters:
+
+- **In `narrationKey`** — the whole of how moving the chip takes effect. A row is
+  served only while its key matches the one built now, so a topic in a new voice
+  misses its recordings and records again on the next press. `attempts` keeps
+  counting, so this is not a way to record for free.
+- **Not in `cardVariant`** — keying a card on the voice would retire every cached
+  card for a change that cannot alter a word of one.
+- **Not in any prompt** — `contentRulesBlock` takes `WritingSettings`, which is
+  `TopicContentSettings` without the voice, so the callers that build one out of
+  a *card's* settings have nothing missing to supply.
+
+Two plain strings on purpose: `card_narrations.voice`, which records which voice
+made an existing recording and may name one the set has since dropped, and
+`SpeakRequest.voice`, where the names are the provider's namespace.
+`NarrationVoiceSchema` refuses an unknown one where it arrives.
 
 ## Staying honest about what it is a recording of
 
@@ -266,6 +294,9 @@ apps/server/src/llm/speech.ts                the SpeechProvider interface
 apps/server/src/llm/gemini.ts                createGeminiSpeech
 apps/server/src/llm/prompts/narration.md
 packages/schemas/src/audio.ts                the key, the revision, NodeAudio
+packages/schemas/src/voices.ts               NarrationVoice and the default
+packages/ui/src/copy.ts                      VOICE_COPY, VOICE_OPTIONS, VOICE_NOTE
+apps/mobile/app/topic/[topic]/edit/content.tsx  where the voice is picked
 packages/domain/src/audio.ts                 isLoadedRecordingCurrent
 packages/api/src/hooks.ts                    useNodeAudio, and the polling while pending
 apps/mobile/components/CardAudio.tsx         the player and its controls

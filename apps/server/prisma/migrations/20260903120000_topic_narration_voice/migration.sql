@@ -1,0 +1,17 @@
+-- The voice a topic is read in, picked on the content settings screen.
+--
+-- A plain string, like every other enum in this schema: NarrationVoice lives in
+-- packages/schemas, so offering another voice is a code change with nothing to
+-- migrate. The value is Google's prebuilt voice name exactly, because that name
+-- is what goes on the wire to the speech model.
+--
+-- The default is the product's default voice, and it is also what the deploy gap
+-- needs: migrations run from the runner before the new bundle ships, so for a few
+-- seconds the old code is still inserting topics that name no voice at all.
+--
+-- Every topic already recorded was read by Kore, and this makes them all say
+-- Erinome. That is correct rather than a loss: the voice is part of the object
+-- key from this change on, so every recording already in the bucket misses its
+-- own lookup and is made again in the new voice on the next press. Nothing is
+-- deleted, and nothing is served in a voice the topic no longer names.
+ALTER TABLE "topics" ADD COLUMN "narration_voice" TEXT NOT NULL DEFAULT 'Erinome';

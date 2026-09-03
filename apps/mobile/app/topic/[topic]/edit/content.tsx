@@ -20,9 +20,12 @@ import {
   TECHNICAL_COPY,
   PARAGRAPH_OPTIONS,
   TECHNICAL_OPTIONS,
+  VOICE_COPY,
+  VOICE_NOTE,
+  VOICE_OPTIONS,
 } from "@interestled/ui";
 import { ReadTimeSchema } from "@interestled/schemas";
-import type { ParagraphLength } from "@interestled/schemas";
+import type { NarrationVoice, ParagraphLength } from "@interestled/schemas";
 import type {
   ContentFormat,
   EnglishLevel,
@@ -37,10 +40,17 @@ import { backHeader, goBack, useHardwareBack } from "../../../../lib/nav";
 import { ChipRow } from "../../../../components/ChipRow";
 
 /**
- * How this topic is written. All three settings are read by every generation
- * inside it — the map, every card, every drill, every review item — so an answer
- * given here keeps paying, instead of being retyped into the instructions box on
- * each rebuild. None of them reaches the grader; see TopicContentSettingsInput.
+ * How this topic is written, and who reads it out. Everything here but the voice
+ * is read by every generation inside the topic — the map, every card, every
+ * drill, every review item — so an answer given here keeps paying, instead of
+ * being retyped into the instructions box on each rebuild. None of it reaches
+ * the grader; see TopicContentSettingsInput.
+ *
+ * The voice is on this screen rather than beside the play button because it is
+ * a standing preference, not a decision to make at the moment of listening —
+ * "reduce the number of decisions", whose answer is to separate deciding from
+ * doing and to keep a default so choosing is never the price of starting. It
+ * reaches no prompt at all.
  */
 export default function EditContentScreen(): ReactElement {
   const { topic: slug } = useLocalSearchParams<{ topic: string }>();
@@ -104,6 +114,7 @@ function ContentForm({
   const [format, setFormat] = useState<ContentFormat>(topic.format);
   const [paragraphLength, setParagraphLength] = useState<ParagraphLength>(topic.paragraphLength);
   const [averageReadTime, setAverageReadTime] = useState(topic.averageReadTime);
+  const [narrationVoice, setNarrationVoice] = useState<NarrationVoice>(topic.narrationVoice);
   const [instructions, setInstructions] = useState(topic.contentInstructions);
 
   const usingDefault = instructions.trim() === "";
@@ -123,6 +134,7 @@ function ContentForm({
         format,
         paragraphLength,
         averageReadTime,
+        narrationVoice,
         contentInstructions: instructions,
       },
       // Back to the hub, not another copy of it pushed on top.
@@ -181,6 +193,17 @@ function ContentForm({
           The map is built to nodes about this long. A card is written to match, up to about four
           minutes of reading — past that the extra time is the drill and the doing, not more card.
         </Text>
+      </View>
+
+      <View className="gap-2">
+        <SectionTitle>The voice that reads it</SectionTitle>
+        <ChipRow
+          options={VOICE_OPTIONS}
+          selected={narrationVoice}
+          onSelect={(value) => setNarrationVoice(value)}
+        />
+        <Text className="text-sm text-ink-soft">{VOICE_COPY[narrationVoice].body}</Text>
+        <Text className="text-sm text-ink-faint">{VOICE_NOTE}</Text>
       </View>
 
       <View className="gap-2">

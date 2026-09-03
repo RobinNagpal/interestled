@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CARD_MINUTES_MAX, CardMinutes } from "./cards";
+import type { NarrationVoice } from "./voices";
 
 /**
  * Which generation of the narration prompt made a stored recording.
@@ -15,17 +16,6 @@ import { CARD_MINUTES_MAX, CardMinutes } from "./cards";
  * sound.
  */
 export const NARRATION_PROMPT_REVISION = 1;
-
-/**
- * One of Google's prebuilt voice names, as a plain string for the same reason
- * LLM_MODEL is one: it names something on the provider's side, and the set is
- * theirs to change. Stored on the row so a recording can say which voice made
- * it after the constant here has moved on.
- *
- * Kore is the even, unhurried one. A card is an explanation rather than a
- * performance, and the voices with character in them wear through a session.
- */
-export const NARRATION_VOICE = "Kore";
 
 /**
  * Speech is slower than reading. 200 words a minute is ordinary adult prose off
@@ -75,30 +65,42 @@ export type NarrationScriptT = z.infer<typeof NarrationScript>;
  * Where a recording lives in the audio bucket.
  *
  * Readable rather than hashed, and built from the slugs the URLs are already
- * built from: `robin/kubernetes/scheduling/taints/n1-d2-r6-base-3-….wav` says
- * whose it is, which topic, and where on the map, so the bucket can be read by
- * a person looking for one file. The learner's slug is the top folder because
- * a node belongs to exactly one topic, which belongs to exactly one account —
- * nothing is shared, so nothing collides across accounts.
+ * built from: `robin/kubernetes/scheduling/taints/n1-erinome-d2-r6-base-3-….wav`
+ * says whose it is, which topic, where on the map, and who read it — so the
+ * bucket can be read by a person looking for one file. The learner's slug is
+ * the top folder because a node belongs to exactly one topic, which belongs to
+ * exactly one account — nothing is shared, so nothing collides across accounts.
  *
- * The file name is the card's identity: the narration revision, the depth, and
- * the card variant, which between them are everything that decides what was
- * said. So a card rewritten at the same settings overwrites its own recording
- * rather than leaving one behind, and a card written at different settings gets
- * its own. The variant's separator is swapped for a hyphen because the pieces
- * inside it already use underscores, and a key is easier to read when the two
- * levels are told apart.
+ * The file name is the recording's identity: the narration revision, the voice,
+ * the depth, and the card variant, which between them are everything that
+ * decides what was said and how it sounded. So a card re-recorded in the same
+ * voice at the same settings overwrites its own object rather than leaving one
+ * behind, and any of the four changing gets its own.
+ *
+ * The voice is in the key rather than only on the row because that is what
+ * makes changing it take effect. A stored row is served only while its key
+ * still matches the one built here, so a topic moved to another voice misses
+ * every recording it already has and the next press records again — the same
+ * device NARRATION_PROMPT_REVISION is, with no migration and nothing deleted.
+ * Lower-cased on the way in, because the rest of the key is slugs.
+ *
+ * The variant's separator is swapped for a hyphen because the pieces inside it
+ * already use underscores, and a key is easier to read when the two levels are
+ * told apart.
  */
 export function narrationKey(input: {
   userSlug: string;
   topicSlug: string;
   nodePath: string;
+  /** The topic's narration voice — what said it, and so part of what it is. */
+  voice: NarrationVoice;
   depth: number;
   /** cardVariant(settings) — what the card the recording is of was written to. */
   variant: string;
 }): string {
   const file = [
     `n${NARRATION_PROMPT_REVISION}`,
+    input.voice.toLowerCase(),
     `d${input.depth}`,
     input.variant.split("|").join("-"),
   ].join("-");
