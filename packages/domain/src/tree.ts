@@ -1,3 +1,4 @@
+import { SubtreeShape } from "@interestled/schemas";
 import type { LearningNodeT } from "@interestled/schemas";
 
 /** One node with everything under it, ready to render as an indented list. */
@@ -66,6 +67,25 @@ export function inMapOrder(nodes: readonly LearningNodeT[]): LearningNodeT[] {
  */
 export function isBranch(node: LearningNodeT, nodes: readonly LearningNodeT[]): boolean {
   return nodes.some((candidate) => candidate.parentId === node.id);
+}
+
+/**
+ * What rebuilding this group has to produce: the nodes under it, or the groups
+ * under it with their nodes inside them.
+ *
+ * Read off the map, the same way `isBranch` is. The topic's level count says
+ * what the last whole-map build was asked for, and this group may since have
+ * been the one thing on the map that was left alone — what actually hangs under
+ * it is the only answer that cannot be out of date.
+ */
+export function subtreeShapeOf(
+  node: LearningNodeT,
+  nodes: readonly LearningNodeT[],
+): SubtreeShape {
+  const children = nodes.filter((candidate) => candidate.parentId === node.id);
+  return children.some((child) => isBranch(child, nodes))
+    ? SubtreeShape.Sections
+    : SubtreeShape.Leaves;
 }
 
 /**

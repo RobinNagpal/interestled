@@ -24,7 +24,7 @@ import {
 } from "@interestled/ui";
 import type { LearningNodeT } from "@interestled/schemas";
 import { messageOf } from "../../../lib/errors";
-import { backHeader } from "../../../lib/nav";
+import { backHeader, useHardwareBack } from "../../../lib/nav";
 import { NodeCard } from "../../../components/NodeCard";
 import { NodeDrill } from "../../../components/NodeDrill";
 
@@ -58,13 +58,32 @@ export default function NodePathScreen(): ReactElement {
   // a card is read top to bottom, and a question comes up anywhere in it.
   const [asking, setAsking] = useState(false);
 
+  /**
+   * Up one level, worked out from the address alone: a drill goes to its card, a
+   * node to the group above it, and a top-level node to the map.
+   *
+   * From the address rather than from the node, because both back buttons have
+   * to answer while this screen is still a skeleton — a cold link is the case
+   * where there is nothing under it in the stack, which is exactly the case
+   * where "back" has nowhere to go on its own.
+   */
+  const upHref = isDrill
+    ? nodeHref(topicSlug, nodePath)
+    : nodePath.includes("/")
+      ? nodeHref(topicSlug, nodePath.slice(0, nodePath.lastIndexOf("/")))
+      : topicHref(topicSlug);
+  // Android's own back button, saying what the bar says. Called here rather than
+  // in each branch below: it is one answer for the address, and a hook cannot
+  // live behind a return.
+  useHardwareBack(upHref);
+
   // The map is fetched rather than the node: the same query already backs the
   // topic screen, so arriving from it costs nothing, and a cold link pays one
   // request to learn what the whole URL means.
   const topic = useTopic(topicSlug);
 
   const header = (title: string): ReactElement => (
-    <Stack.Screen options={{ title, headerLeft: backHeader(topicHref(topicSlug)) }} />
+    <Stack.Screen options={{ title, headerLeft: backHeader(upHref) }} />
   );
 
   if (topic.isPending) {
@@ -98,14 +117,10 @@ export default function NodePathScreen(): ReactElement {
     );
   }
 
-  const parentPath = node.path.includes("/")
-    ? nodeHref(topicSlug, node.path.slice(0, node.path.lastIndexOf("/")))
-    : topicHref(topicSlug);
-
   if (isBranch(node, nodes)) {
     return (
       <>
-        <Stack.Screen options={{ title: node.title, headerLeft: backHeader(parentPath) }} />
+        <Stack.Screen options={{ title: node.title, headerLeft: backHeader(upHref) }} />
         <GroupScreen topicSlug={topicSlug} node={node} nodes={nodes} />
       </>
     );
@@ -114,9 +129,7 @@ export default function NodePathScreen(): ReactElement {
   if (isDrill) {
     return (
       <>
-        <Stack.Screen
-          options={{ title: node.title, headerLeft: backHeader(nodeHref(topicSlug, node.path)) }}
-        />
+        <Stack.Screen options={{ title: node.title, headerLeft: backHeader(upHref) }} />
         <NodeDrill topic={topic.data.topic} node={node} />
       </>
     );
@@ -127,7 +140,7 @@ export default function NodePathScreen(): ReactElement {
       <Stack.Screen
         options={{
           title: node.title,
-          headerLeft: backHeader(parentPath),
+          headerLeft: backHeader(upHref),
           headerRight: () => (
             <HeaderButton
               label="Ask"

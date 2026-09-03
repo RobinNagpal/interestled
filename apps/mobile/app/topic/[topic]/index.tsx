@@ -29,7 +29,7 @@ import {
 import { NodeStatus, TopicStatus, mapShapeOf } from "@interestled/schemas";
 import type { LearningNodeT } from "@interestled/schemas";
 import { messageOf } from "../../../lib/errors";
-import { backHeader } from "../../../lib/nav";
+import { backHeader, useHardwareBack } from "../../../lib/nav";
 
 /**
  * The map. Everything rests on this being honest, so a node advances only on
@@ -49,6 +49,9 @@ export default function TopicScreen(): ReactElement {
   const setStatus = useSetNodeStatus(topicSlug);
   const regenerate = useRegenerateTopic(topicSlug);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // Android's own back button, saying what the bar says: the topics list, even
+  // when this map was opened cold from a link and has nothing under it.
+  useHardwareBack("/");
 
   const header = (
     <Stack.Screen

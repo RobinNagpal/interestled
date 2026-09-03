@@ -1,14 +1,16 @@
 # Topics and the map
 
-A topic is a subject somebody wants to learn. Its map is a two-level tree of
-nodes: headings, and under each heading the nodes a learner actually reads and
-drills. The map is generated once from what the learner asked for, and is then
-theirs to edit.
+A topic is a subject somebody wants to learn. Its map is a tree of nodes:
+headings, and under each heading the nodes a learner actually reads and drills —
+two levels, or three for a subject wide enough that its main headings are areas.
+The map is generated once from what the learner asked for, and is then theirs to
+edit.
 
 ## What the learner does
 
 1. Fills in a short form: title, goal, where they are now, and the shape of the
-   map (how many headings, minutes a day, for how many days, how deep).
+   map (how many levels, how many headings, minutes a day, for how many days,
+   how deep).
 2. Presses a button that asks the model for **seven questions**, each with four
    options, and picks from them. Every question is skippable.
 3. Gets the map, and lands on the topic screen with the whole tree on it.
@@ -45,7 +47,7 @@ topics
   slug              unique per user; every URL is built from it
   title, summary, goal, level
   archetype         set by the generated map, not by the form
-  mainHeadings, subHeadings, minutesPerDay, days, depth   the MapShape
+  levels, mainHeadings, subHeadings, minutesPerDay, days, depth   the MapShape
   mapInstructions   "" means the seed rendered from the shape applies
   englishLevel, technicalDetail, format, paragraphLength, averageReadTime
   contentInstructions
@@ -74,6 +76,36 @@ node from the constraint.
 
 Files: `apps/server/prisma/schema.prisma`, `packages/schemas/src/nodes.ts`,
 `packages/schemas/src/slugs.ts`, `packages/domain/src/tree.ts`.
+
+## How many levels
+
+`levels` is `MapLevels.Two` or `MapLevels.Three`, chosen on the same screen as
+the heading counts, and it is what those counts mean:
+
+| | Level 1 | Level 2 | Level 3 |
+|---|---|---|---|
+| Two | `mainHeadings` headings | `subHeadings` nodes under each | — |
+| Three | `mainHeadings` areas | `subHeadings` headings under each | the nodes each of those needs |
+
+At three levels the leaf count is the model's to judge, inside the same bounds,
+against the time the instruction lines state — the learner's two counts are both
+spent on headings by then.
+
+The setting chooses two things together, a line apart: the block of the prompt
+that says what shape to produce (`map-two-levels.md` or `map-three-levels.md`,
+picked in `mapShapeBlock`) and the schema the reply is parsed by
+(`GeneratedTwoLevelMap` or `GeneratedThreeLevelMap`, picked in `generateMap`).
+Both are flattened to the same rows by `flattenTwoLevelMap` /
+`flattenThreeLevelMap`, so nothing below the parse knows which it was.
+
+Every count is bounded by what the generated-map schema will accept, and both
+level counts are held to the same two pairs — `MAIN_HEADINGS_MIN/MAX` and
+`SUB_HEADINGS_MIN/MAX`. A setting the parse would then refuse reaches the learner
+as a failed generation rather than as the setting it was.
+
+Files: `packages/schemas/src/topics.ts` (`MapLevels`, `MapShape`),
+`packages/schemas/src/nodes.ts` (the generated shapes and the flatteners),
+`apps/server/src/llm/prompts.ts`, `apps/mobile/components/MapShapeFields.tsx`.
 
 ## Building a map
 
@@ -114,6 +146,12 @@ the client holds the new truth rather than a fragment plus a refetch.
 Rebuilding one group is the load-bearing one: "the map is nearly right" is the
 normal case after reading it, and an edit mode whose only answer is regenerating
 everything throws away every node already verified.
+
+What that rebuild asks for is read off the map rather than off `topic.levels`:
+`subtreeShapeOf` answers `Sections` for a group whose children are themselves
+groups — the top of a three-level map — and `Leaves` for anything one level above
+the nodes. The topic's setting describes the last whole map that was built, and
+this group may be the one part of it that was left alone.
 
 `PUT /:slug/info` and `PUT /:slug/content-settings` change what the topic is and
 how it is written. **Neither regenerates anything** — see doc 2.

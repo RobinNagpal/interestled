@@ -2,14 +2,34 @@ import { z } from "zod";
 import { CardInstructions } from "./cards";
 import { Id } from "./ids";
 import { NodePath, Slug } from "./slugs";
-import { MAX_NODE_MINUTES, TopicArchetypeSchema } from "./topics";
+import {
+  MAIN_HEADINGS_MAX,
+  MAIN_HEADINGS_MIN,
+  MAX_NODE_MINUTES,
+  SUB_HEADINGS_MAX,
+  SUB_HEADINGS_MIN,
+  TopicArchetypeSchema,
+} from "./topics";
 
 /**
- * How deep a node may sit. A map is two levels now — headings and the nodes
- * under them — but rows built before that are three deep, and a cap of 2 would
- * refuse to read them. It stays at 3 until those are gone.
+ * How deep a node may sit. A three-level map is areas, the groups under them and
+ * the nodes under those, and that is as far as it goes: a fourth level is a
+ * heading somebody has to open twice before reaching anything to read.
  */
 export const MAX_NODE_DEPTH = 3;
+
+/**
+ * What a rebuild of one group is asked for: the nodes that belong under it, or
+ * the groups that do with their nodes inside them.
+ *
+ * Read off the map rather than off the topic's level count. A group whose
+ * children are groups needs groups back whatever the setting now says, and the
+ * setting is only ever applied to a whole map being built.
+ */
+export enum SubtreeShape {
+  Leaves = "leaves",
+  Sections = "sections",
+}
 
 /**
  * A node's state on the map. The order here is the order of advancement, and
@@ -92,13 +112,19 @@ export const GeneratedLeaf = z.object({
   prerequisiteKeys: z.array(Key).max(6),
 });
 
-/** A group of leaves. Level 2 of a two-level map, level 3 of a three-level one. */
+/**
+ * A group of leaves. Level 2 of a two-level map, level 3 of a three-level one.
+ *
+ * Every count here is the one the settings offer, so a shape a learner can
+ * choose is never a reply this refuses — that would reach them as a failed
+ * generation rather than as the setting it was.
+ */
 export const GeneratedSection = z.object({
   key: Key,
   title: z.string().min(1).max(120),
   claim: z.string().min(1).max(300),
   capability: z.string().min(1).max(200),
-  nodes: z.array(GeneratedLeaf).min(2).max(8),
+  nodes: z.array(GeneratedLeaf).min(SUB_HEADINGS_MIN).max(SUB_HEADINGS_MAX),
 });
 
 /** A group of sections. Only a three-level map has these. */
@@ -107,7 +133,7 @@ export const GeneratedArea = z.object({
   title: z.string().min(1).max(120),
   claim: z.string().min(1).max(300),
   capability: z.string().min(1).max(200),
-  sections: z.array(GeneratedSection).min(2).max(5),
+  sections: z.array(GeneratedSection).min(SUB_HEADINGS_MIN).max(SUB_HEADINGS_MAX),
 });
 
 /**
@@ -132,7 +158,7 @@ function refuseDuplicateKeys(keys: readonly string[], ctx: z.RefinementCtx): voi
 export const GeneratedTwoLevelMap = z
   .object({
     archetype: TopicArchetypeSchema,
-    sections: z.array(GeneratedSection).min(3).max(8),
+    sections: z.array(GeneratedSection).min(MAIN_HEADINGS_MIN).max(MAIN_HEADINGS_MAX),
   })
   .superRefine((map, ctx) => {
     refuseDuplicateKeys(
@@ -144,7 +170,7 @@ export const GeneratedTwoLevelMap = z
 export const GeneratedThreeLevelMap = z
   .object({
     archetype: TopicArchetypeSchema,
-    areas: z.array(GeneratedArea).min(2).max(5),
+    areas: z.array(GeneratedArea).min(MAIN_HEADINGS_MIN).max(MAIN_HEADINGS_MAX),
   })
   .superRefine((map, ctx) => {
     refuseDuplicateKeys(
@@ -158,13 +184,13 @@ export const GeneratedThreeLevelMap = z
 
 /** Children of one branch, when only that branch is being regenerated. */
 export const GeneratedLeafChildren = z
-  .object({ nodes: z.array(GeneratedLeaf).min(2).max(8) })
+  .object({ nodes: z.array(GeneratedLeaf).min(SUB_HEADINGS_MIN).max(SUB_HEADINGS_MAX) })
   .superRefine((children, ctx) => {
     refuseDuplicateKeys(children.nodes.map((node) => node.key), ctx);
   });
 
 export const GeneratedSectionChildren = z
-  .object({ sections: z.array(GeneratedSection).min(2).max(5) })
+  .object({ sections: z.array(GeneratedSection).min(SUB_HEADINGS_MIN).max(SUB_HEADINGS_MAX) })
   .superRefine((children, ctx) => {
     refuseDuplicateKeys(
       children.sections.flatMap((section) => [

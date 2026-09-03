@@ -33,7 +33,7 @@ import type {
 import { useSeedContentInstructions } from "@interestled/api";
 import { messageOf } from "../../../../lib/errors";
 import { useSeededText } from "../../../../components/SeededInstructions";
-import { backHeader, goBack } from "../../../../lib/nav";
+import { backHeader, goBack, useHardwareBack } from "../../../../lib/nav";
 import { ChipRow } from "../../../../components/ChipRow";
 
 /**
@@ -47,6 +47,8 @@ export default function EditContentScreen(): ReactElement {
   const topicSlug = slug ?? "";
   const topic = useTopic(topicSlug);
   const defaults = useTopicDefaults();
+  // Android's own back button, saying what the bar says.
+  useHardwareBack(editHref(topicSlug));
 
   const header = (
     <Stack.Screen

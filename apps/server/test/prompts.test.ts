@@ -11,6 +11,7 @@ import {
   LearningStyle,
   MAX_MECHANISM_SECTIONS,
   MapDepth,
+  MapLevels,
   ParagraphLength,
   MinutesPerDay,
   StudyDays,
@@ -18,6 +19,7 @@ import {
   NodeStatus,
   TechnicalDetail,
   TopicArchetype,
+  SubtreeShape,
   TopicStatus,
   contentSettingsOf,
   mapShapeOf,
@@ -67,6 +69,7 @@ const topic: TopicT = {
   summary: "Deploy and debug a service",
   goal: "deploy and debug a service",
   archetype: TopicArchetype.Tool,
+  levels: MapLevels.Two,
   mainHeadings: 5,
   subHeadings: 4,
   minutesPerDay: MinutesPerDay.Twenty,
@@ -169,6 +172,7 @@ function mapInput(overrides: Partial<Parameters<typeof mapPrompt>[0]> = {}): Par
 }
 
 const SHAPE = {
+  levels: MapLevels.Two,
   mainHeadings: 5,
   subHeadings: 4,
   minutesPerDay: MinutesPerDay.Twenty,
@@ -182,6 +186,17 @@ describe("seedMapInstructions", () => {
     expect(lines).toContain("Use 5 main headings, and 4 sub-headings under each one.");
     expect(lines).toContain("about 280 minutes to work through — 20 minutes a day for 14 days");
     expect(lines).toContain("enough to use it for the everyday cases.");
+  });
+
+  it("says where the second count goes when the map is three levels deep", () => {
+    // The counts mean different things at each level count, and this text is
+    // what the model is actually sent — a line saying "sub-headings under each
+    // one" on a three-level map is the settings screen and the prompt
+    // disagreeing about what the learner just chose.
+    const lines = seedMapInstructions({ ...SHAPE, levels: MapLevels.Three });
+    expect(lines).toContain(
+      "Use 5 main headings, 4 sub-headings under each of those, and the nodes those need under them.",
+    );
   });
 
   it("calls one day one sitting, rather than 'a day for 1 days'", () => {
@@ -323,6 +338,23 @@ describe("mapPrompt", () => {
     );
     expect(prompt).toContain("Level 1: 7 groups");
     expect(prompt).toContain("Level 2: 3 nodes inside each group");
+  });
+
+  it("asks for the level count the learner chose, and the JSON that goes with it", () => {
+    // The block and the schema the reply is parsed by are chosen by the same
+    // setting: a prompt asking for one shape and a parse expecting the other is
+    // a generation that fails on every attempt.
+    const two = mapPrompt(mapInput());
+    expect(two).toContain("Produce a TWO-level map.");
+    expect(two).not.toContain('"areas"');
+
+    const three = mapPrompt(
+      mapInput({ shape: { ...mapShapeOf(topic), levels: MapLevels.Three } }),
+    );
+    expect(three).toContain("Produce a THREE-level map.");
+    expect(three).toContain("Level 1: 5 parts of the subject");
+    expect(three).toContain("Level 2: 4 groups inside each area");
+    expect(three).toContain('"areas"');
   });
 
   it("says a group has no minutes, so only the leaves carry time", () => {
@@ -480,6 +512,7 @@ describe("subtreePrompt", () => {
     siblingTitles: ["Networking", "Storage"],
     profile,
     instructions: "",
+    shape: SubtreeShape.Leaves,
   };
 
   it("names where the group sits, so a title like 'Taints' has its context", () => {
@@ -495,6 +528,16 @@ describe("subtreePrompt", () => {
   it("asks for nodes, because what hangs under a heading is always nodes", () => {
     expect(subtreePrompt(base)).toContain('"nodes"');
     expect(subtreePrompt(base)).not.toContain('"sections"');
+  });
+
+  it("asks for groups when the group being rebuilt is the one holding groups", () => {
+    // The top of a three-level map. Rebuilding it into bare nodes would flatten
+    // that branch of the map and leave the rest of it two levels deeper.
+    const prompt = subtreePrompt({ ...base, shape: SubtreeShape.Sections });
+    expect(prompt).toContain('"sections"');
+    expect(prompt).toContain("Then the nodes inside each group");
+    // The rules for a heading, which only the sections form needs.
+    expect(prompt).toContain("A group is a heading");
   });
 
   it("leaves the rest of the map alone, and says so", () => {

@@ -5,7 +5,7 @@ import { useTopic } from "@interestled/api";
 import { editContentHref, editGoalsHref, editMapHref, topicHref } from "@interestled/domain";
 import { Button, ErrorState, LoadingContent, Screen, SectionTitle } from "@interestled/ui";
 import { messageOf } from "../../../../lib/errors";
-import { backHeader } from "../../../../lib/nav";
+import { backHeader, useHardwareBack } from "../../../../lib/nav";
 
 /**
  * Three things can be edited about a topic, and they are three different
@@ -22,6 +22,8 @@ export default function EditTopicScreen(): ReactElement {
   const { topic: slug } = useLocalSearchParams<{ topic: string }>();
   const topicSlug = slug ?? "";
   const topic = useTopic(topicSlug);
+  // Android's own back button, saying what the bar says.
+  useHardwareBack(topicHref(topicSlug));
 
   const header = (
     <Stack.Screen

@@ -8,6 +8,7 @@ import { Button, ErrorState, Screen, Input, Sheet } from "@interestled/ui";
 import { MapShapeInput } from "@interestled/schemas";
 import type { MapAnswerT, MapPlanViewT, MapShapeT } from "@interestled/schemas";
 import { messageOf } from "../../lib/errors";
+import { useHardwareBack } from "../../lib/nav";
 import { MapQuestions } from "../../components/MapQuestions";
 import { MapShapeFields } from "../../components/MapShapeFields";
 
@@ -38,6 +39,9 @@ const DEFAULT_SHAPE: MapShapeT = MapShapeInput.parse({});
  * everybody can pick it out of four.
  */
 export default function NewTopicScreen(): ReactElement {
+  // The bar for this screen is set in the navigator; this is the same answer for
+  // Android's own button.
+  useHardwareBack("/");
   const create = useCreateTopic();
   const questions = useMapQuestions();
   const [title, setTitle] = useState("");
