@@ -899,14 +899,48 @@ describe("cardPrompt", () => {
 
   it("never asks for more sections than the schema will accept", () => {
     // A count the prompt asks for and the schema then refuses is a card that
-    // fails validation for doing as it was told.
+    // fails validation for doing as it was told. Every length at every
+    // paragraph setting, because the shortest paragraphs ask for the most.
     for (const minutes of [1, 2, 3, 5, 7, 10]) {
-      const prompt = cardPrompt(withSettings({ minutes }));
-      const range = /(\d+)-(\d+) sections/.exec(prompt);
-      expect(range).not.toBeNull();
-      expect(Number(range![2])).toBeLessThanOrEqual(MAX_MECHANISM_SECTIONS);
-      expect(Number(range![1])).toBeGreaterThanOrEqual(1);
+      for (const paragraphLength of Object.values(ParagraphLength)) {
+        const prompt = cardPrompt(withSettings({ minutes, paragraphLength }));
+        const range = /(\d+)-(\d+) sections/.exec(prompt);
+        expect(range).not.toBeNull();
+        expect(Number(range![2])).toBeLessThanOrEqual(MAX_MECHANISM_SECTIONS);
+        expect(Number(range![1])).toBeGreaterThanOrEqual(1);
+      }
     }
+  });
+
+  it("writes the paragraphs the length they were asked for", () => {
+    // The setting was in the cache key and in nothing else: the prompt asked
+    // for two to four sentences a section whatever the chip said, so moving it
+    // wrote the same card again under a new key. The read time is unchanged,
+    // so a longer paragraph is fewer of them rather than a longer card.
+    const short = unwrapped(cardPrompt(withSettings({ paragraphLength: ParagraphLength.Short })));
+    expect(short).toContain("The body is 2-3 sentences, about 50 words");
+
+    const long = unwrapped(cardPrompt(withSettings({ paragraphLength: ParagraphLength.Long })));
+    expect(long).toContain("The body is 6-8 sentences, about 130 words");
+    expect(long).not.toContain("two to four short sentences");
+
+    const sections = (prompt: string): number => Number(/(\d+)-\d+ sections/.exec(prompt)![1]);
+    expect(sections(short)).toBeGreaterThan(sections(long));
+  });
+
+  it("states the paragraph length even where the standing instructions do not", () => {
+    // The seeded instructions say it, but the learner may have written over
+    // them — and at that point the only place the setting appeared was the
+    // cache key.
+    const rewritten = { ...topic, contentInstructions: "Answer in French." };
+    const prompt = cardPrompt(
+      cardInput({
+        topic: rewritten,
+        settings: { ...defaultCardSettings(rewritten, node, 3), paragraphLength: ParagraphLength.Long },
+      }),
+    );
+    expect(prompt).toContain("The paragraphs: 6-8 sentences each.");
+    expect(prompt).toContain("Answer in French.");
   });
 
   it("lets reference notes stay flat, because that is what was asked for", () => {

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Id } from "./ids";
 import {
   ContentFormatSchema,
+  ParagraphLength,
   ParagraphLengthSchema,
   EnglishLevelSchema,
   MAX_NODE_MINUTES,
@@ -126,8 +127,12 @@ export type CardInstructionsInputT = z.infer<typeof CardInstructionsInput>;
  * 5: the mechanism is headed sections rather than a run of unlabelled items.
  * 6: paragraph length is asked, so the same card comes back in longer or
  *    shorter paragraphs under the same depth and register.
+ * 7: and it now reaches the prompt. At 6 it was in the key and nowhere else:
+ *    the card prompt asked for two to four sentences a section whatever the
+ *    setting said, and the rules block never mentioned it at all unless the
+ *    learner had left their standing instructions at the seeded text.
  */
-export const CARD_PROMPT_REVISION = 6;
+export const CARD_PROMPT_REVISION = 7;
 
 /**
  * The cache key's variant half. Depth has a column of its own, so this carries
@@ -204,23 +209,38 @@ export const WORDS_PER_MINUTE = 200;
 export const MECHANISM_SHARE = 0.8;
 
 /**
- * What one mechanism section is written to: a heading and a short paragraph
- * under it, two to four sentences long.
+ * What one mechanism section is written to, in words: a heading and the
+ * paragraph under it, at the length this topic asked its paragraphs to be.
  *
- * It was 45 — one unlabelled item — and a ten-minute card was then thirty-odd
- * of them running down the screen with nothing to navigate by. A heading every
- * forty-five words is not a document, it is a glossary; at eighty there is a
- * paragraph under each one worth giving a name to.
+ * A record rather than a constant, because a card's word budget comes from its
+ * read time and the only thing a longer paragraph can change is how that budget
+ * is cut up — the same card in fewer, longer sections. Fixed at 80 it made
+ * paragraphLength unanswerable: the prompt asked for two to four sentences
+ * whatever the chip said, so moving it wrote the same card again under a new
+ * cache key.
+ *
+ * The numbers are PARAGRAPH_SENTENCES at ordinary sentence lengths, and the
+ * middle one is the 80 that stood here alone. It was 45 once — one unlabelled
+ * item — and a ten-minute card was thirty-odd of them running down the screen
+ * with nothing to navigate by. Below fifty a heading every other sentence is a
+ * glossary rather than a document, which is why Short stops there.
  */
-export const MECHANISM_SECTION_WORDS = 80;
+export const MECHANISM_SECTION_WORDS: Record<ParagraphLength, number> = {
+  [ParagraphLength.Short]: 50,
+  [ParagraphLength.Medium]: 80,
+  [ParagraphLength.Long]: 130,
+};
 
 /**
- * The most sections a card may carry: the mechanism's share of the longest card,
- * plus the quarter the prompt's range runs over its target. Derived rather than
- * chosen, so a count the prompt asks for can never be one the schema refuses.
+ * The most sections a card may carry: the mechanism's share of the longest card
+ * cut into the shortest paragraphs, plus the quarter the prompt's range runs
+ * over its target. Derived rather than chosen, so a count the prompt asks for
+ * can never be one the schema refuses.
  */
 export const MAX_MECHANISM_SECTIONS = Math.ceil(
-  ((CARD_MINUTES_MAX * WORDS_PER_MINUTE * MECHANISM_SHARE) / MECHANISM_SECTION_WORDS) * 1.25,
+  ((CARD_MINUTES_MAX * WORDS_PER_MINUTE * MECHANISM_SHARE) /
+    Math.min(...Object.values(MECHANISM_SECTION_WORDS))) *
+    1.25,
 );
 
 /**
@@ -240,7 +260,7 @@ export const MAX_MECHANISM_SECTIONS = Math.ceil(
  */
 const MechanismSection = z.object({
   heading: z.string().min(1).max(80),
-  body: z.string().min(1).max(800),
+  body: z.string().min(1).max(1500),
 });
 
 export type MechanismSectionT = z.infer<typeof MechanismSection>;
@@ -266,10 +286,12 @@ export type MechanismSectionT = z.infer<typeof MechanismSection>;
 export const CardContent = z.object({
   claim: z.string().min(1).max(300),
   /**
-   * Short paragraphs under headings, and length arrives as more of them: a wall
-   * of text is not made readable by being one of five rather than one of forty.
-   * The body cap is well above what the prompt asks a section to be, so it binds
-   * on a runaway paragraph and on nothing else.
+   * Paragraphs under headings, and length arrives as more of them: a wall of
+   * text is not made readable by being one of five rather than one of forty.
+   * The body cap is well above the longest paragraph asked for, so it binds on
+   * a runaway paragraph and on nothing else — at 800 it sat right on what the
+   * Long setting produces, and would have refused a card for doing as it was
+   * told.
    */
   mechanism: z.array(MechanismSection).min(1).max(MAX_MECHANISM_SECTIONS),
   example: z

@@ -24,9 +24,12 @@ both come back as the node restated under a heading promising something new.
 The mechanism is a chain, not a set: each section starts from what the one above
 it established. Length arrives as *more sections*, never longer ones —
 `MECHANISM_SHARE` (0.8) of the word budget divided by `MECHANISM_SECTION_WORDS`
-(80) is the count the prompt asks for, and `MAX_MECHANISM_SECTIONS` is derived
-from the same constants so the prompt can never ask for a count the schema
-refuses.
+is the count the prompt asks for, and `MAX_MECHANISM_SECTIONS` is derived from
+the same constants so the prompt can never ask for a count the schema refuses.
+
+`MECHANISM_SECTION_WORDS` is keyed by `paragraphLength` (50/80/130), which is
+how that setting takes effect: the word budget belongs to the read time, so
+longer paragraphs mean fewer of them, not a longer card.
 
 Every string the model writes is rendered through `Markdown` / `InlineMarkdown`
 in `packages/ui`. Titles and section headings are the exception — plain text,
@@ -51,6 +54,12 @@ The topic's settings are the defaults (`defaultCardSettings` in
 `packages/domain/src/cards.ts` — shared, because the app names what a card is
 being written to while it waits for it). Each control is an override for one
 card, sent in the query rather than stored.
+
+Every one of them has to reach the prompt as well as the cache key, and
+`paragraphLength` did not until revision 7: it was in `cardVariant` and nowhere
+else, so moving the chip wrote the same card again at a new key. A setting says
+itself in `content-rules.md` — never only through the seeded instructions, which
+the learner can write over.
 
 `instructions` is the one that is not a chip: it lives on
 `learning_nodes.card_instructions`, is saved by

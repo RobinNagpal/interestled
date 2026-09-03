@@ -101,7 +101,7 @@ describe("CardContent", () => {
       mechanism: Array.from({ length: MAX_MECHANISM_SECTIONS + 1 }, () => section),
     };
     expect(CardContent.safeParse(tooMany).success).toBe(false);
-    const tooLong = { ...valid, mechanism: [{ ...section, body: "x".repeat(801) }] };
+    const tooLong = { ...valid, mechanism: [{ ...section, body: "x".repeat(1501) }] };
     expect(CardContent.safeParse(tooLong).success).toBe(false);
   });
 
@@ -125,9 +125,21 @@ describe("CardContent", () => {
     // asks for at ten minutes must be a count the schema accepts. If this drops
     // below what mechanismSections returns, a card fails validation for doing as
     // it was told — which is the failure this cap exists to make impossible.
+    // Every paragraph length, because the shortest one asks for the most.
     const words = CARD_MINUTES_MAX * WORDS_PER_MINUTE * MECHANISM_SHARE;
-    expect(MAX_MECHANISM_SECTIONS).toBeGreaterThanOrEqual(
-      Math.round(words / MECHANISM_SECTION_WORDS),
+    for (const sectionWords of Object.values(MECHANISM_SECTION_WORDS)) {
+      expect(MAX_MECHANISM_SECTIONS).toBeGreaterThanOrEqual(Math.round(words / sectionWords));
+    }
+  });
+
+  it("writes a long paragraph without hitting the cap that stops a runaway one", () => {
+    // The body cap is the outer bound, not the length asked for: at 800 it sat
+    // right on what "6-8 sentences" produces, so the longest paragraph setting
+    // would have failed the parse for doing as it was told.
+    const longest = MECHANISM_SECTION_WORDS[ParagraphLength.Long];
+    const paragraph = "word ".repeat(longest).trim();
+    expect(CardContent.safeParse({ ...valid, mechanism: [{ ...section, body: paragraph }] }).success).toBe(
+      true,
     );
   });
 
