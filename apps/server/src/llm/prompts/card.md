@@ -39,9 +39,9 @@ restating it.
 **claim** — required. One sentence: the answer, before any context.
 
 **mechanism** — required, {{mechanismSections}} sections of `{"heading", "body"}`, in
-order, on why it behaves this way. Each is a short paragraph with a name over it.
+order, on why it behaves this way. Each is a paragraph with a name over it.
 
-- The body is two to four short sentences, about {{sectionWords}} words. Never longer:
+- The body is {{sectionSentences}}, about {{sectionWords}} words. Never longer:
   the card gets longer by having more sections, not bigger ones.
 - Each sentence follows from the one before it. Keep the words that join them — so,
   which means, until, that is why — and never open a body by restating its own heading.

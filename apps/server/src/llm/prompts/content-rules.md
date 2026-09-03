@@ -4,6 +4,7 @@ asked for, and so is dense prose that avoids it.
 
 - The English: {{englishRule}}
 - The terminology: {{technicalRule}}
+- The paragraphs: {{paragraphRule}} each.
 {{#formatRule}}- The shape: {{formatRule}}
 {{/formatRule}}
 {{#contentInstructions}}

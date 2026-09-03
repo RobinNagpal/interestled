@@ -241,6 +241,11 @@ function contentRulesBlock(content: WritingSettings, cardInstructions = ""): str
   return render(promptFile("content-rules"), {
     englishRule: ENGLISH_GUIDE[content.englishLevel],
     technicalRule: TECHNICAL_GUIDE[content.technicalDetail],
+    // Said here as well as in the seeded instructions below, for the reason
+    // question.md says it outright: the learner may have rewritten those and
+    // dropped the line. Without this the setting reached no prompt at all
+    // unless the standing instructions were still the ones the seed wrote.
+    paragraphRule: PARAGRAPH_SENTENCES[content.paragraphLength],
     formatRule: FORMAT_GUIDE[content.format],
     contentInstructions: effectiveContentInstructions(content),
     cardInstructions: cardInstructions.trim(),
@@ -492,9 +497,13 @@ function mechanismWords(minutes: number): number {
  * where the idea stops, and its top is held under MAX_MECHANISM_SECTIONS — a
  * count the prompt asks for and the schema then refuses is a card that fails
  * validation for doing as it was told.
+ *
+ * The paragraph length is the divisor, which is the whole of how that setting
+ * takes effect: the same read time in longer paragraphs is fewer of them, not
+ * a longer card.
  */
-function mechanismSections(minutes: number): string {
-  const target = mechanismWords(minutes) / MECHANISM_SECTION_WORDS;
+function mechanismSections(minutes: number, paragraphLength: ParagraphLength): string {
+  const target = mechanismWords(minutes) / MECHANISM_SECTION_WORDS[paragraphLength];
   const low = Math.max(1, Math.round(target * 0.75));
   const high = Math.min(MAX_MECHANISM_SECTIONS, Math.max(low + 2, Math.round(target * 1.25)));
   return `${low}-${high}`;
@@ -537,8 +546,9 @@ export function cardPrompt(input: {
       },
       input.settings.instructions,
     ),
-    mechanismSections: mechanismSections(minutes),
-    sectionWords: String(MECHANISM_SECTION_WORDS),
+    mechanismSections: mechanismSections(minutes, input.settings.paragraphLength),
+    sectionSentences: PARAGRAPH_SENTENCES[input.settings.paragraphLength],
+    sectionWords: String(MECHANISM_SECTION_WORDS[input.settings.paragraphLength]),
     mechanismWords: String(mechanismWords(minutes)),
     readTime: minutesText(minutes),
     readWords: String(minutes * WORDS_PER_MINUTE),

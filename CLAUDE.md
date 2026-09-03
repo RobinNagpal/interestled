@@ -193,6 +193,8 @@ they do, so moving a chip re-seeds; once it holds text, the text is what reaches
 model and what a rebuild shows, and the chips stop touching it. The same pattern runs on
 the content side through `seedContentInstructions` and `paragraphLength`. A chip is a
 setting somebody has to imagine the effect of; a sentence is one they can disagree with.
+A seed is not the only route a setting takes, though, and it must not be: the learner
+can write over the lines, so every setting says itself in `content-rules.md` as well.
 
 ## Accounts and sessions
 
@@ -586,7 +588,12 @@ is the ceiling one card can hold, and `CardContent`'s limits are the outer bound
 card that long — not the size of an ordinary one, which is the minutes in the settings.
 Length arrives as more mechanism sections, never longer ones: `MECHANISM_SHARE` of the
 words are the mechanism, and that budget divided by `MECHANISM_SECTION_WORDS` is the
-count `mechanismSections` asks for. Do not also fix the count — a fixed count and a
+count `mechanismSections` asks for. **`MECHANISM_SECTION_WORDS` is keyed by
+`paragraphLength`**, and that is the whole of how that setting takes effect — the word
+budget is the read time's, so a longer paragraph is fewer of them rather than a longer
+card. A constant there is what made the chip unanswerable: `card.md` asked for two to
+four sentences a section whatever it said, so moving it wrote the same card again under
+a new cache key. Do not also fix the count — a fixed count and a
 fixed section length between them already decide a card's length, and naming a read time
 as well is what left the read time as the part that gave way. `MAX_MECHANISM_SECTIONS`
 is derived from the same constants, so a count the prompt asks for can never be one the
