@@ -22,7 +22,7 @@ learner sees, what happens when they use it, and which files to open.
 | [6. LLM providers and prompts](docs/knowledge/06-llm-providers-and-prompts.md) | Which model answers which call, structured generation, the prompt files |
 | [7. The app shell and caching](docs/knowledge/07-the-app-shell-and-caching.md) | Routing, the query cache and what is persisted, the component set |
 
-### Two rules about it, and they matter more than most of what follows
+### Three rules about it, and they matter more than most of what follows
 
 **Read the relevant document before starting any task.** Not after getting
 stuck, and not instead of reading the code — before opening the first file.
@@ -43,6 +43,27 @@ trusts is worse than none, because it is read as current and is not. So:
 - Removing something means removing what says it exists.
 - The documents name files, routes, columns and constants. When you rename one,
   `grep docs/knowledge` for the old name before you finish.
+
+**Keep it short, and only write down what is actually worth knowing.** These
+documents are read before every task, so every paragraph is a cost paid again
+each time. The test for a sentence is whether somebody would get the change
+wrong without it:
+
+- **Write the decisions and the traps**: why something is the way it is, what
+  breaks if it is changed, the failure that is invisible until a learner hits it.
+  Those are what cannot be recovered by reading the code.
+- **Do not restate the code.** A list of a schema's fields, a signature, or a
+  route's parameters goes stale the week it is written and was already readable
+  where it lives. Name the file and say what to look for instead.
+- **One place per fact.** If it is already in another document, or in this file,
+  link to it rather than saying it again in different words — two copies drift,
+  and the reader cannot tell which is current.
+- **Prefer cutting to adding.** A new subsection on an existing document usually
+  means two paragraphs somewhere else are now redundant; delete them. If a
+  document has grown past what somebody will read before starting, it is too
+  long, whatever is in it.
+- **No summaries, no restating the point at the end, no filler.** The prose rules
+  for prompts further down apply here as well.
 
 The same applies to this file and to the coverage table in
 [docs/ux/README.md](docs/ux/README.md): if you add a feature, add its row.

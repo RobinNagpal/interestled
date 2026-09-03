@@ -150,38 +150,29 @@ reason.
 
 ## The voice
 
-`NarrationVoice` in `packages/schemas/src/voices.ts` — eight of Google's thirty
-prebuilt names, chosen per topic on **How it is written**
-(`app/topic/[topic]/edit/content.tsx`) and stored on `topics.narration_voice`.
-`DEFAULT_NARRATION_VOICE` is **Erinome**: clear and unhurried. The cut to eight is
-deliberate and is the product's, not the provider's — a card is an explanation
-rather than a performance, so the excitable, gravelly and breathy voices wear
-through a session. Adding one is a line in `voices.ts` and a line in `VOICE_COPY`;
-`VOICE_COPY` is keyed by the enum, so a voice added without copy fails the build
-rather than the screen.
+`NarrationVoice` (`packages/schemas/src/voices.ts`), per topic on **How it is
+written**, stored on `topics.narration_voice`, defaulting to Erinome.
 
-Three things about where it lives:
+Eight of Google's thirty, and the cut is the product's rather than the
+provider's: a card is an explanation, not a performance, and the excitable,
+gravelly and breathy voices wear through a session.
 
-- **It is in `TopicContentSettings`, and it is the one member no prompt sees.**
-  `contentRulesBlock` takes `WritingSettings` — that type without the voice —
-  because a card is written the same way whoever reads it out, and the three
-  callers that build one out of a *card's* own settings have no voice to put
-  there.
-- **It is not in `cardVariant`.** Keying a card on it would retire every cached
+Where it goes is what it does, and each of the three matters:
+
+- **In `narrationKey`** — the whole of how moving the chip takes effect. A row is
+  served only while its key matches the one built now, so a topic in a new voice
+  misses its recordings and records again on the next press. `attempts` keeps
+  counting, so this is not a way to record for free.
+- **Not in `cardVariant`** — keying a card on the voice would retire every cached
   card for a change that cannot alter a word of one.
-- **It is in `narrationKey`**, which is the whole of how moving the chip takes
-  effect: a stored row is served only while its key still matches the one built
-  now, so a topic put into another voice misses every recording it already has and
-  the next press records again. Nothing is deleted, and the row's `attempts` keeps
-  counting against the ceiling — a voice chip is not a way to record for free.
+- **Not in any prompt** — `contentRulesBlock` takes `WritingSettings`, which is
+  `TopicContentSettings` without the voice, so the callers that build one out of
+  a *card's* settings have nothing missing to supply.
 
-`card_narrations.voice` stays a plain string rather than the enum. It says which
-voice made a recording that already exists, and that may be one the set has since
-dropped; history has to survive the enum changing under it.
-
-On the seam to the provider, `SpeakRequest.voice` is a `string` too: the names are
-Google's namespace, and `NarrationVoiceSchema` is what refuses an unknown one, at
-the boundary the value arrives on.
+Two plain strings on purpose: `card_narrations.voice`, which records which voice
+made an existing recording and may name one the set has since dropped, and
+`SpeakRequest.voice`, where the names are the provider's namespace.
+`NarrationVoiceSchema` refuses an unknown one where it arrives.
 
 ## Staying honest about what it is a recording of
 
