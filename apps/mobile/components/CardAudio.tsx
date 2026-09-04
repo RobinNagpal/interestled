@@ -10,6 +10,7 @@ import type { LoadedRecording } from "@interestled/domain";
 import { NarrationStatus, cardVariant } from "@interestled/schemas";
 import type { CardSettingsT, NodeAudioReadyT } from "@interestled/schemas";
 import { ErrorState } from "@interestled/ui";
+import { useScreenAwake } from "../lib/awake";
 import { messageOf } from "../lib/errors";
 
 /** How far the two skip controls move. The podcast default, and it is muscle memory. */
@@ -84,14 +85,30 @@ export function CardAudio({
   // remounting it, so a chip moved to a variant that is already cached changes
   // what the button is on while everything here carries on.
   const cardKey = `${nodeId}:${settings.depth}:${cardVariant(settings)}`;
+  // Which card the player is loaded with. Compared on the way in rather than
+  // undone from a cleanup, and that is the whole point of writing it this way:
+  // the cleanup of an effect keyed on the card also runs on unmount, and by then
+  // the player is gone. `useAudioPlayer` releases it from its own cleanup, which
+  // was registered first and therefore runs first, and a released shared object
+  // throws on every call after that — "no longer associated with its native
+  // counterpart". A throw inside an unmount cleanup is nobody's to catch: it is
+  // the red screen in development and the app dying in a release build, on the
+  // ordinary way out of a card. Nothing has to stop the audio on unmount anyway.
+  // Releasing the player is what stops it.
+  const playingFor = useRef(cardKey);
   useEffect(() => {
-    return () => {
-      player.pause();
-      setLoaded(null);
-      setScrubbing(null);
-      started.current = false;
-    };
+    if (playingFor.current === cardKey) {
+      return;
+    }
+    playingFor.current = cardKey;
+    player.pause();
+    setLoaded(null);
+    setScrubbing(null);
+    started.current = false;
   }, [cardKey, player]);
+
+  // Listening is using the app, so the screen stays on while it plays.
+  useScreenAwake(status.playing);
 
   const recorded = audio.data ?? null;
   const ready = recorded?.status === NarrationStatus.Ready ? recorded : null;

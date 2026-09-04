@@ -13,6 +13,7 @@
     },
     "android": {
       "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
       "package": "com.robinnagpal.interestled"
     },
     "web": {
