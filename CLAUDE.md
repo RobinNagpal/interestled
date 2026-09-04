@@ -739,7 +739,18 @@ holds only what this product composes on top of them.
   system and closes the app on a learner in the middle of a card. Every screen
   that shows the bar's back button calls the hook with the same fallback; the
   topics list is the one screen that deliberately does neither, because back
-  from there is leaving.
+  from there is leaving. And none of it runs at all with Android's predictive
+  back gesture on — it is on by default targeting Android 16, react-native-screens
+  does not implement it, and the press then never reaches JavaScript. That is what
+  `"predictiveBackGestureEnabled": false` in `app.json` is for; deleting the line
+  breaks every back button in the product.
+- **Nothing may touch a released native object, and a cleanup is where that
+  happens.** `useAudioPlayer` releases its player from its own cleanup, which
+  runs before any effect declared after it, so a `player.pause()` in a later
+  cleanup runs against a released object — which throws, out of an unmount, where
+  nothing can catch it: a red screen in development and a dead app in a release
+  build. `CardAudio` resets on the way in by comparing the card key instead. The
+  same shape of trap is in every `use*` hook that hands back a shared object.
 - **`keyboardDismissMode="on-drag"` is native-only.** react-native-web hangs it
   off every scroll event rather than a drag, so on the web it blurs the field on
   the very scroll that reveals it — the keyboard closes as you tap into the box.

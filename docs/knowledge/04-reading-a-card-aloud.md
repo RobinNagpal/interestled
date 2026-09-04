@@ -230,6 +230,28 @@ builds a *new* player whenever the source changes and releases the old one, so
 passing state into it and calling `replace` as well tears the player down
 mid-press.
 
+**Never touch the player from an effect cleanup.** `useAudioPlayer` releases it
+in its own cleanup, which was registered first and so runs first, and a released
+shared object throws on every call after that — "no longer associated with its
+native counterpart". A throw inside an unmount cleanup is nobody's to catch: it
+is a red screen in development and the app dying in a release build, on the
+ordinary way out of a card. That is what a `player.pause()` in the cleanup keyed
+on the card did, and why the reset is now done on the way *in*, by comparing the
+card key to the one the player was loaded for. Nothing has to stop the audio on
+unmount: releasing the player is what stops it.
+
+**The screen stays on while it plays** (`useScreenAwake` in
+`apps/mobile/lib/awake.ts`). A card runs for minutes with nobody touching the
+phone, so the display goes out and the phone locks in the middle of the one
+feature whose point is that you are not looking at it. The lock is held only
+while something is actually playing — held for as long as a card is open, it
+would sit on the battery of a phone left on a table — and it is re-taken when the
+app comes back to the foreground, because a browser drops the wake lock the
+moment a tab is hidden and never gives it back on its own. Every call is wrapped
+in a catch: a browser without the Wake Lock API, one refusing it in the
+background, and releasing a lock that was never taken all end in the screen
+behaving the way it always did, which is not worth a message.
+
 `isLoadedRecordingCurrent` in `packages/domain/src/audio.ts` decides resume
 against reload, and lives in the domain package with tests because getting it
 wrong reads the wrong card out at somebody. What is loaded stops being current
@@ -300,4 +322,5 @@ apps/mobile/app/topic/[topic]/edit/content.tsx  where the voice is picked
 packages/domain/src/audio.ts                 isLoadedRecordingCurrent
 packages/api/src/hooks.ts                    useNodeAudio, and the polling while pending
 apps/mobile/components/CardAudio.tsx         the player and its controls
+apps/mobile/lib/awake.ts                     the screen staying on while it plays
 ```

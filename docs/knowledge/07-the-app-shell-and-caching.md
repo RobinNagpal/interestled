@@ -61,6 +61,14 @@ from the topics list is leaving the app. On `[...path].tsx` the fallback is
 worked out from the address rather than from the loaded node (`upHref`), because
 both buttons have to answer while the screen is still a skeleton.
 
+**None of that runs unless Android's predictive back gesture is off**, and
+`"predictiveBackGestureEnabled": false` in `app.json` is what keeps it off. It is
+on by default for anything targeting Android 16, react-native-screens v4 does not
+implement it, and while it is on the press never reaches JavaScript at all: no
+`BackHandler` listener fires, react-navigation never pops, and the system closes
+the app from under a learner in the middle of a card. Removing that line makes
+every back button in the product stop working, in a way no test here can see.
+
 ## The API client
 
 `packages/api/src/client.ts` is every call the app can make, in one interface, so
