@@ -287,9 +287,18 @@ function leafRules(averageReadTime: number): string {
   return render(promptFile("leaf-rules"), minutesBand(averageReadTime));
 }
 
-/** One option under a "picked" or "passed over" heading, sample and all. */
+/**
+ * One option under a "picked" or "passed over" heading — the whole of what the
+ * learner tapped, since the card they tapped is the label with every sample line
+ * under it and nothing else.
+ *
+ * Indented by two spaces rather than four. Four is a Markdown code block, and
+ * the system prompt has just told the model that everything is Markdown, so a
+ * set of headings the learner chose arrived looking like literal output rather
+ * than like the map they asked for.
+ */
 function optionLines(option: MapQuestionOptionT): string[] {
-  return [`- ${option.label}`, ...option.sample.map((line) => `    ${line}`)];
+  return [`- ${option.label}`, ...option.sample.map((line) => `  ${line}`)];
 }
 
 /**
@@ -303,6 +312,11 @@ function optionLines(option: MapQuestionOptionT): string[] {
  * five headings rather than those five" is a stronger instruction than the five
  * on their own — without the rejected ones the model is free to build the very
  * cut the learner just turned down.
+ *
+ * The lines of a sample go in in the order the learner read them, and
+ * map-choices.md says that order is part of the pick. An outline sample is a
+ * map read top to bottom, so "we picked the one starting at point coordinates"
+ * is an answer about where to start and not only about what to include.
  *
  * Skipped questions are simply absent. The block disappears entirely when
  * nothing was answered, so a map built without the questions reads exactly as it
@@ -378,6 +392,12 @@ export function mapPrompt(input: {
     contentRules: contentRulesBlock(input.content),
     choices: choicesBlock(input.answered),
     archetypes: promptFile("archetypes"),
+    // A default, and map.md puts it above the instruction lines and the choices
+    // for that reason. It used to be the last block in the prompt and phrased as
+    // an absolute — "the most interesting item first, never a definition or a
+    // setup step" — which is a rule a learner who asked to start at the basics
+    // cannot get out from under. A map built for somebody who had said three
+    // times that they did not know matrices put the matrices last.
     ordering: promptFile("ordering"),
   });
 }

@@ -1110,7 +1110,7 @@ the design, not an acceptable gap.
 
 | # | Requirement | Where it is met |
 |---|---|---|
-| W1 | Open with the interesting thing | Node 1 of every topic is a hook or live demo; concept card opens on the claim; map suggests by interest as well as order |
+| W1 | Open with the interesting thing | Each group opens on its most interesting node; concept card opens on the claim; map suggests by interest as well as order. It is a default, not a rule: a learner who asked to start at the basics starts at the basics |
 | W2 | Units small enough to finish | 3-minute node cap, each with a stated outcome and a completion state |
 | W3 | Say how long before they start | Measured minute estimates on every node, path and session; the session contract |
 | W4 | Tiny physical first action | Sessions and resumes open on one keystroke or drag, never on a page of reading |
