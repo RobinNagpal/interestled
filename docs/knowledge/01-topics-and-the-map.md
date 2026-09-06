@@ -40,7 +40,15 @@ was asked and a repeated one overwrites another.
 An option is a **sample**, not a description: four candidate sets of headings
 rather than "how should this be organised". Both the picked and the passed-over
 options reach the prompt, with their samples, because the four were only ever
-meaningful against each other.
+meaningful against each other. What reaches it is the whole of what was on the
+card the learner tapped — the label and every sample line, indented two spaces
+rather than four, since four is a Markdown code block and turned a set of
+headings somebody chose into what looks like literal output.
+
+**The order inside a sample is part of the pick**, and `map-choices.md` says so.
+An outline sample is a map read top to bottom, so picking the one that starts at
+point coordinates is an answer about where to start and not only about what to
+include.
 
 Files: `packages/schemas/src/mapQuestions.ts`,
 `apps/server/src/topics.ts` (`createPlan`, `resolveChoices`, `rebuildChoices`),
@@ -212,9 +220,31 @@ One file resolves the first three: `apps/mobile/app/topic/[topic]/[...path].tsx`
 Whether an address is a heading, a card or a drill is a fact about the node the
 map already carries.
 
+## What the learner says beats what the prompt assumes
+
+The map prompt's own defaults come first and the learner's words come last, which
+is the precedence idiom the rest of the prompts use: what wins is stated last and
+says that it wins. So `map.md` reads archetypes, then `ordering.md`, then the
+instruction lines, then the choices, then the reply format.
+
+`ordering.md` is the one that had to be cut back. It said to open every list with
+the most interesting item, "never a definition or a setup step", and that it held
+inside each group too — an absolute, at the end of the prompt, that a learner
+asking to start at the basics could not get out from under, since foundations are
+definitions. It reordered whole areas of a three-level map, so a learner who said
+three times that they did not know matrices got the matrices in heading six of
+six. It is now a default about the nodes inside one group, it says it is a
+default, and it does not touch the order of the headings at all.
+
+Keep any new default that way: short, above the learner's lines, and said to be a
+default. `subtree.md` is the same shape — `{{ordering}}` sits above
+`{{instructions}}` so that "where it conflicts with anything above, it wins"
+actually covers it.
+
 ## What must not break
 
 - **Nothing on the map locks.** Prerequisites are a note with a link.
+- **A built-in default never outranks what the learner asked for.**
 - **A branch is never counted as progress.** A total the learner cannot reach is
   the lying map ideal 1 forbids.
 - **Rebuilding one group leaves the rest alone.**

@@ -196,6 +196,19 @@ setting somebody has to imagine the effect of; a sentence is one they can disagr
 A seed is not the only route a setting takes, though, and it must not be: the learner
 can write over the lines, so every setting says itself in `content-rules.md` as well.
 
+**A built-in default never outranks what the learner asked for, and the prompt's own
+order is what enforces that.** What wins is stated last and says that it wins — the
+idiom `instructions.md` and `content-rules.md` already use. So `map.md` puts its
+defaults first and ends on the instruction lines and the choices, and `ordering.md` is
+above `{{instructions}}` in `subtree.md` for the same reason. `ordering.md` is the one
+that was on the wrong side of it: an absolute at the end of the prompt saying to open
+every list with the most interesting item, "never a definition or a setup step", holding
+inside each group too. Foundations are definitions, so a learner asking to start at the
+basics was asking for the one thing the prompt forbade, and a three-level map for
+somebody who had said three times that they did not know matrices put the matrices in
+heading six of six. Keep every default the way that one now is: short, above the
+learner's lines, saying it is a default, and silent about the order of the headings.
+
 ## Accounts and sessions
 
 **There are no roles, and there are two kinds of route.** Every *write* is ownership,
@@ -389,7 +402,10 @@ with four options each, the learner picks, and the picks go into `mapPrompt`.
   without the rejected ones the model is free to build the very cut just turned down. The
   prompt says picks are instructions and passed-over ones are what they saw and did not
   want, because "not picked" means different things on different questions — on *scope*
-  it means keep that.
+  it means keep that. What goes in is the whole of the card that was tapped, label and
+  every sample line, and **the order inside a sample is part of the pick** — an outline
+  sample is a map read top to bottom, so the one starting at point coordinates is an
+  answer about where to start.
 - **Every question is skippable, and a skip is absent from the prompt.** Seven mandatory
   questions between "I want to learn this" and the map is exactly the setup cost A14
   bans, and a default nobody chose is worse than no answer.

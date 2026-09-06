@@ -417,6 +417,51 @@ describe("mapPrompt", () => {
       prompt.indexOf("By what breaks"),
     );
   });
+
+  it("keeps the ordering default a default, rather than a rule about definitions", () => {
+    // It used to read "the most interesting item first ... never a definition or
+    // a setup step. That holds inside each group too", which is unanswerable:
+    // foundations are definitions, so a learner asking to start at the basics
+    // was asking for the one thing the prompt forbade. A map built for somebody
+    // who had said three times that they did not know matrices put the matrices
+    // in the last heading of six.
+    const prompt = mapPrompt(mapInput());
+    expect(prompt).toContain("That is only a default");
+    expect(prompt).not.toContain("never a definition or a setup step");
+  });
+
+  it("leaves the order of the headings to the learner, not to the default", () => {
+    expect(mapPrompt(mapInput())).toContain("never decides the order of the headings");
+  });
+
+  it("puts the instruction lines after the ordering default, and says they win", () => {
+    // The precedence idiom the rest of the prompts use: what wins comes last and
+    // says so. The ordering block was the last thing in this prompt, which is
+    // the opposite of what it should have been.
+    const prompt = mapPrompt(mapInput({ mapInstructions: "- Start with the matrix basics" }));
+    expect(prompt.indexOf("only a default")).toBeLessThan(
+      prompt.indexOf("- Start with the matrix basics"),
+    );
+    expect(prompt).toContain("the ordering default included");
+    expect(prompt).toContain("even when it is a definition or a setup step");
+  });
+
+  it("says a pick beats the defaults above it, not only the model's own taste", () => {
+    // map-choices.md used to exempt only "the hard rules in the system prompt",
+    // and the ordering block is not in the system prompt — so a pick that said
+    // where to start had nothing to say it outranked the block that reordered it.
+    const prompt = mapPrompt(mapInput({ answered: [outlineChoice] }));
+    expect(prompt).toContain("beats every default above, the ordering one included");
+  });
+
+  it("says the order inside a picked sample is part of the pick", () => {
+    // An outline sample is a map read top to bottom. Without this the model
+    // takes the headings and re-sorts them, which is how a learner who picked
+    // two samples that both open on the basics got the basics last.
+    const prompt = mapPrompt(mapInput({ answered: [outlineChoice] }));
+    expect(prompt).toContain("The order inside a pick is part of the pick");
+    expect(prompt).toContain("What they chose to see first is\nwhat they want first");
+  });
 });
 
 describe("choicesBlock", () => {
@@ -432,6 +477,31 @@ describe("choicesBlock", () => {
   it("puts each question's picks above the options it passed over", () => {
     const block = choicesBlock([outlineChoice]);
     expect(block.indexOf("They picked:")).toBeLessThan(block.indexOf("They passed over:"));
+  });
+
+  it("sends the whole of what the learner tapped — the label and every sample line", () => {
+    // The card on the screen is the label with the sample under it and nothing
+    // else, so this is the full text of the choice rather than a summary of it.
+    const block = choicesBlock([outlineChoice]);
+    expect(block).toContain("- By what breaks");
+    for (const line of outlineChoice.picked[0]!.sample) {
+      expect(block).toContain(line);
+    }
+    for (const option of outlineChoice.passedOver) {
+      expect(block).toContain(`- ${option.label}`);
+      for (const line of option.sample) {
+        expect(block).toContain(line);
+      }
+    }
+  });
+
+  it("never indents a sample four spaces, which would make it a code block", () => {
+    // The system prompt has just said everything is Markdown, and four spaces is
+    // a fenced block in it — so a set of headings the learner chose arrived
+    // looking like literal output rather than like the map they asked for.
+    const block = choicesBlock([outlineChoice]);
+    expect(block).toContain("\n  Pods that will not start");
+    expect(block).not.toContain("\n    Pods that will not start");
   });
 });
 
@@ -525,6 +595,17 @@ describe("subtreePrompt", () => {
 
   it("names the other groups, so the replacement does not repeat them", () => {
     expect(subtreePrompt(base)).toContain("Networking, Storage");
+  });
+
+  it("puts the ordering default above what they asked for, so 'it wins' covers it", () => {
+    // instructions.md says "where it conflicts with anything above, it wins",
+    // and the ordering block used to sit below it — so the one sentence naming
+    // the precedence did not reach the block most likely to contradict them.
+    const prompt = subtreePrompt({ ...base, instructions: "Start with the definitions" });
+    expect(prompt.indexOf("only a default")).toBeLessThan(
+      prompt.indexOf("Start with the definitions"),
+    );
+    expect(prompt).toContain("Where it conflicts with anything above, it wins");
   });
 
   it("asks for nodes, because what hangs under a heading is always nodes", () => {
