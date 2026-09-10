@@ -20,6 +20,7 @@ import { newestCard } from "./learning";
 import { readNarration } from "./narration";
 import type { ObjectStore } from "./storage";
 import { toCardQuestion, toDrill, toNode, toTopic } from "./rows";
+import { NOT_ARCHIVED } from "./topics";
 
 /**
  * Everything anyone may read, addressed by the username of whoever made it.
@@ -62,10 +63,14 @@ export function publicRouter(db: Db, objects: () => ObjectStore): Hono {
     return row;
   };
 
-  /** One topic of theirs, by the slug in its own URL. */
+  /**
+   * One topic of theirs, by the slug in its own URL. Archived means gone from
+   * here too: a learner who has taken a topic out of their own product has not
+   * left it up for strangers to read.
+   */
   const topicOf = async (username: string, slug: string): Promise<TopicT> => {
     const { id } = await owner(username);
-    const row = await db.topic.findFirst({ where: { userId: id, slug } });
+    const row = await db.topic.findFirst({ where: { userId: id, slug, ...NOT_ARCHIVED } });
     if (row === null) {
       throw new NotFoundError("Topic not found");
     }
@@ -84,7 +89,7 @@ export function publicRouter(db: Db, objects: () => ObjectStore): Hono {
   ): Promise<{ userId: string; username: string; node: LearningNodeT; topic: TopicT }> => {
     const account = await owner(username);
     const row = await db.learningNode.findFirst({
-      where: { id: nodeId, topic: { userId: account.id } },
+      where: { id: nodeId, topic: { userId: account.id, ...NOT_ARCHIVED } },
       include: { prerequisites: { select: { prerequisiteId: true } }, topic: true },
     });
     if (row === null) {
@@ -104,7 +109,10 @@ export function publicRouter(db: Db, objects: () => ObjectStore): Hono {
    */
   router.get("/:username/topics", async (c) => {
     const { id } = await owner(c.req.param("username"));
-    const rows = await db.topic.findMany({ where: { userId: id }, orderBy: { createdAt: "desc" } });
+    const rows = await db.topic.findMany({
+      where: { userId: id, ...NOT_ARCHIVED },
+      orderBy: { createdAt: "desc" },
+    });
     return c.json(rows.map((row) => PublicTopic.parse(toTopic(row))));
 
   });

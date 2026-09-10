@@ -217,6 +217,12 @@ export interface ApiClient {
   /** Every topic call is keyed by slug, because that is what the URL carries. */
   getTopic(slug: string): Promise<TopicDetailT>;
   regenerateTopic(slug: string, input: TopicRegenerateInputT): Promise<TopicT>;
+  /**
+   * Archive it: gone from the list and from its own address, with every row it
+   * owns left where it is. Nothing comes back — the topic it would answer with
+   * is one no screen may show — so the caller's job is to leave.
+   */
+  archiveTopic(slug: string): Promise<void>;
   deleteTopic(slug: string): Promise<void>;
 
   /** What the topic is and what the learner wants from it. Generates nothing. */
@@ -341,6 +347,8 @@ export function createApiClient(config: ClientConfig): ApiClient {
     getTopic: (slug) => get(`/api/topics/${encodeURIComponent(slug)}`, TopicDetail),
     regenerateTopic: (slug, input) =>
       post(`/api/topics/${encodeURIComponent(slug)}/regenerate`, Topic, input),
+    archiveTopic: (slug) =>
+      requestVoid(config, `/api/topics/${encodeURIComponent(slug)}/archive`, "POST"),
     deleteTopic: (slug) => requestVoid(config, `/api/topics/${encodeURIComponent(slug)}`, "DELETE"),
 
     updateTopicInfo: (slug, input) =>

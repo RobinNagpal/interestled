@@ -242,6 +242,10 @@ function topicRow(): Record<string, unknown> {
     narrationVoice: DEFAULT_NARRATION_VOICE,
     status: TopicStatus.Ready,
     error: null,
+    // Not archived. Written out rather than left off, so the stubs below can
+    // answer a query the way the database would instead of treating a missing
+    // column as a match.
+    archivedAt: null,
     createdAt: new Date(),
   };
 }
@@ -526,6 +530,99 @@ describe("topic settings writes", () => {
       averageReadTime: 6,
     });
     expect(response.status).toBe(400);
+  });
+});
+
+/**
+ * Archiving is one nullable column and one clause, and the clause is the part
+ * that can be forgotten — so these check the ways in rather than the write: the
+ * list, the topic's own address, and the review batch, which is the one screen
+ * that shows a topic's content without being addressed by that topic.
+ */
+describe("archiving a topic", () => {
+  function archiveDb(rows: Record<string, unknown>[] = [topicRow()]): {
+    db: Db;
+    updates: { id: string; data: Record<string, unknown> }[];
+    rows: Record<string, unknown>[];
+  } {
+    const updates: { id: string; data: Record<string, unknown> }[] = [];
+    // The where clause is applied rather than recorded: a test that read the
+    // clause back would pass on a route that sent the right words to the wrong
+    // query, and what is being checked here is what a learner can still reach.
+    const select = (where: Record<string, unknown>): Record<string, unknown>[] =>
+      rows.filter((row) => Object.entries(where).every(([key, value]) => row[key] === value));
+    const db = {
+      authSession: {
+        findUnique: vi.fn(async () => ({
+          token: "good",
+          userId: "u1",
+          expiresAt: new Date(Date.now() + 60_000),
+          user: { id: "u1", defaultDepth: 2, username: "robin" },
+        })),
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+      },
+      topic: {
+        findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => select(where)[0] ?? null),
+        findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) => select(where)),
+        update: vi.fn(
+          async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+            updates.push({ id: where.id, data });
+            const row = rows.find((candidate) => candidate.id === where.id);
+            return Object.assign(row ?? {}, data);
+          },
+        ),
+      },
+      learningNode: { findMany: vi.fn(async () => []) },
+      resumePoint: { findUnique: vi.fn(async () => null) },
+      atom: { findMany: vi.fn(async () => []) },
+    };
+    return { db: db as unknown as Db, updates, rows };
+  }
+
+  const send = async (db: Db, path: string, method = "GET"): Promise<Response> =>
+    createApp(db, { provider }).request(path, {
+      method,
+      headers: { Authorization: "Bearer good" },
+    });
+
+  it("dates the row and answers with nothing to show", async () => {
+    const { db, updates, rows } = archiveDb();
+    const response = await send(db, "/api/topics/kubernetes/archive", "POST");
+
+    expect(response.status).toBe(204);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.data.archivedAt).toBeInstanceOf(Date);
+    // The point of archiving rather than deleting: the row is still there.
+    expect(rows).toHaveLength(1);
+  });
+
+  it("takes it off the topics list", async () => {
+    const { db } = archiveDb();
+    expect(await (await send(db, "/api/topics")).json()).toHaveLength(1);
+
+    await send(db, "/api/topics/kubernetes/archive", "POST");
+
+    expect(await (await send(db, "/api/topics")).json()).toEqual([]);
+  });
+
+  it("stops answering on its own address, so archiving twice is a miss", async () => {
+    const { db } = archiveDb();
+    expect((await send(db, "/api/topics/kubernetes")).status).toBe(200);
+
+    await send(db, "/api/topics/kubernetes/archive", "POST");
+
+    expect((await send(db, "/api/topics/kubernetes")).status).toBe(404);
+    expect((await send(db, "/api/topics/kubernetes/archive", "POST")).status).toBe(404);
+  });
+
+  it("stops offering the recall items from an archived topic", async () => {
+    const { db } = archiveDb();
+    await send(db, "/api/review");
+    const client = db as unknown as { atom: { findMany: { mock: { calls: [{ where: object }][] } } } };
+
+    expect(client.atom.findMany.mock.calls[0]?.[0].where).toMatchObject({
+      node: { topic: { archivedAt: null } },
+    });
   });
 });
 

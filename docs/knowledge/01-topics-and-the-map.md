@@ -97,6 +97,7 @@ topics
   englishLevel, technicalDetail, format, paragraphLength, averageReadTime
   contentInstructions
   status            generating | ready | failed        error
+  archived_at       null until archived; every lookup of a topic asks for null
 
 learning_nodes
   parent_id         null at the top of the map
@@ -200,6 +201,38 @@ this group may be the one part of it that was left alone.
 
 `PUT /:slug/info` and `PUT /:slug/content-settings` change what the topic is and
 how it is written. **Neither regenerates anything** — see doc 2.
+
+## Archiving a topic
+
+`POST /:slug/archive` dates `topics.archived_at` and answers `204`. Nothing is
+deleted — the map, the cards, the drills and the learner's record of working
+through them stay where they are — and there is no route back: the sheet says so,
+and putting one back is an `UPDATE` somebody has to mean. `DELETE /:slug` still
+deletes the rows, and nothing in the app calls it.
+
+The flag is only half of it. The other half is `NOT_ARCHIVED` in
+`apps/server/src/topics.ts`, carried by every lookup of a topic somebody owns:
+the list, `findTopic`, `loadNode` in `learning.ts` — which is what stops an
+archived topic generating anything — the review batch, the study-session routes
+and the public routes. It is a constant rather than two words typed seven times,
+because the lookup that forgets it is the one that shows a learner the topic they
+just archived.
+
+Two places deliberately do not carry it, and both would be bugs if they did:
+
+- **`freeTopicSlug`.** `UNIQUE(user_id, slug)` does not care that a row is
+  archived, so a slug proposed without looking at the archived ones is one the
+  insert collides on — and would collide for as long as the row exists.
+- **`MAX_TOPICS_PER_HOUR`.** It counts model spend, and archiving spends nothing
+  back; counting only the live ones would make archive-then-create a way around
+  it. `MAX_TOPICS_PER_USER` is the opposite case and does carry it — see doc 5.
+
+The screen is the bottom of `app/topic/[topic]/edit/index.tsx`: a sheet naming
+the topic and a box that must have `DELETE` typed into it. Case is ignored,
+because a phone keyboard capitalises for you and being refused by your own
+keyboard is a dead end rather than friction. On success it *replaces* to the
+topics list — every screen under it in the stack is about a topic that has
+stopped answering.
 
 ## Reading order and URLs
 

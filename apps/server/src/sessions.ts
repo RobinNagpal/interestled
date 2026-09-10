@@ -7,6 +7,7 @@ import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { NotFoundError } from "./errors";
 import { toNode, toStudySession } from "./rows";
+import { NOT_ARCHIVED } from "./topics";
 
 const StartInput = z.object({
   topicId: Id,
@@ -29,7 +30,7 @@ export function sessionsRouter(db: Db): Hono<AuthEnv> {
   router.post("/", zValidator("json", StartInput), async (c) => {
     const userId = c.get("userId");
     const { topicId, minutes } = c.req.valid("json");
-    const topic = await db.topic.findFirst({ where: { id: topicId, userId } });
+    const topic = await db.topic.findFirst({ where: { id: topicId, userId, ...NOT_ARCHIVED } });
     if (topic === null) {
       throw new NotFoundError("Topic not found");
     }
@@ -99,7 +100,9 @@ export function sessionsRouter(db: Db): Hono<AuthEnv> {
   router.put("/resume", zValidator("json", ResumeInput), async (c) => {
     const userId = c.get("userId");
     const input = c.req.valid("json");
-    const topic = await db.topic.findFirst({ where: { id: input.topicId, userId } });
+    const topic = await db.topic.findFirst({
+      where: { id: input.topicId, userId, ...NOT_ARCHIVED },
+    });
     if (topic === null) {
       throw new NotFoundError("Topic not found");
     }

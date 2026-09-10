@@ -44,7 +44,7 @@ import { loadProfile } from "./profile";
 import { readNarration, startNarration } from "./narration";
 import type { Background, NarrationTarget } from "./narration";
 import type { ObjectStore } from "./storage";
-import { assertQuestionBudget, assertRewriteBudget } from "./topics";
+import { NOT_ARCHIVED, assertQuestionBudget, assertRewriteBudget } from "./topics";
 import { toCardQuestion, toDrill, toNode, toTopic } from "./rows";
 
 async function loadNode(
@@ -53,7 +53,10 @@ async function loadNode(
   nodeId: string,
 ): Promise<{ node: LearningNodeT; topic: TopicT }> {
   const row = await db.learningNode.findFirst({
-    where: { id: nodeId, topic: { userId } },
+    // Not archived, the same as every other way in: this is the one lookup in
+    // front of every card, drill, question and recording, so an archived topic
+    // stops generating anything from here rather than from six route bodies.
+    where: { id: nodeId, topic: { userId, ...NOT_ARCHIVED } },
     include: { prerequisites: { select: { prerequisiteId: true } }, topic: true },
   });
   if (row === null) {

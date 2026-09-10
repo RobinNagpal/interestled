@@ -6,6 +6,7 @@ import type { AuthEnv } from "./auth";
 import type { Db } from "./db";
 import { NotFoundError } from "./errors";
 import { toAtom } from "./rows";
+import { NOT_ARCHIVED } from "./topics";
 
 export function reviewRouter(db: Db): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
@@ -17,7 +18,10 @@ export function reviewRouter(db: Db): Hono<AuthEnv> {
    */
   router.get("/", async (c) => {
     const rows = await db.atom.findMany({
-      where: { userId: c.get("userId"), dueAt: { lte: new Date() } },
+      // Nothing from an archived topic. It is the one screen that shows a
+      // topic's content without being addressed by that topic, so without this
+      // clause archiving hides the map and keeps sending the recall items.
+      where: { userId: c.get("userId"), dueAt: { lte: new Date() }, node: { topic: NOT_ARCHIVED } },
       orderBy: { dueAt: "asc" },
       // Enough rows for the mixer to interleave across nodes without loading all.
       take: 60,

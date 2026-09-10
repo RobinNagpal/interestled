@@ -152,7 +152,7 @@ a ceiling somebody mistyped must not be one that silently is not there.
 | Variable | Counts | Guards |
 |---|---|---|
 | `MAX_TOPICS_PER_HOUR` | `topics` created in the last hour | Creating a topic |
-| `MAX_TOPICS_PER_USER` | `topics` in total | Creating a topic |
+| `MAX_TOPICS_PER_USER` | `topics` not archived | Creating a topic |
 | `MAX_GENERATED_NODES_PER_HOUR` | `learning_nodes` created in the last hour | Every map build **and every rebuild** |
 | `MAX_MAP_PLANS_PER_HOUR` | `map_plans` rows in the last hour | The seven questions only |
 | `MAX_CARDS_WRITTEN_PER_HOUR` | `concept_cards` written in the last hour | `?rewrite=1` |
@@ -181,6 +181,10 @@ Four things about *what* each one counts are load-bearing:
 - **A counter another endpoint can empty is a counter a learner can empty.** This
   is why a card rewrite marks a recording stale instead of deleting its row (doc
   4).
+- **Archiving refunds one of the two topic ceilings.** `MAX_TOPICS_PER_USER`
+  bounds what a learner is holding and its refusal tells them to archive one, so
+  it counts the live topics; `MAX_TOPICS_PER_HOUR` bounds spend, which archiving
+  does not return, so it counts every topic made in the hour (doc 1).
 - **A counter that cannot grow is not a ceiling.** `card_narrations` holds one
   row per card, and a failed recording is retried by taking that row over — so
   counting rows, a learner holding down retry on a broken card would never reach

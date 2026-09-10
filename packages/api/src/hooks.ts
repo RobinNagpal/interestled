@@ -138,6 +138,29 @@ export function useRegenerateTopic(
 }
 
 /**
+ * Archive it. Three things go at once and none of them can wait for a refetch:
+ * the topics list has one fewer, this topic's own entry now answers 404, and the
+ * review batch was built partly out of its recall items.
+ *
+ * The topic's entry is removed rather than invalidated, because invalidating it
+ * would refetch an address that no longer answers — the screen that archived it
+ * is still mounted for the moment it takes to navigate away, and what it would
+ * show in that moment is this topic's error state rather than the topics list.
+ */
+export function useArchiveTopic(slug: string): UseMutationResult<void, Error, void> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.archiveTopic(slug),
+    onSuccess: () => {
+      client.removeQueries({ queryKey: keys.topic(slug) });
+      void client.invalidateQueries({ queryKey: keys.topics });
+      void client.invalidateQueries({ queryKey: keys.review });
+    },
+  });
+}
+
+/**
  * What the topic is and what the learner wants from it. It regenerates nothing —
  * the answers change what the next generation reads, and the map already built
  * keeps every node and every status on it.
