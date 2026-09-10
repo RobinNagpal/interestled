@@ -152,7 +152,7 @@ a ceiling somebody mistyped must not be one that silently is not there.
 | Variable | Counts | Guards |
 |---|---|---|
 | `MAX_TOPICS_PER_HOUR` | `topics` created in the last hour | Creating a topic |
-| `MAX_TOPICS_PER_USER` | `topics` in total | Creating a topic |
+| `MAX_TOPICS_PER_USER` | `topics` in total, archived included | Creating a topic |
 | `MAX_GENERATED_NODES_PER_HOUR` | `learning_nodes` created in the last hour | Every map build **and every rebuild** |
 | `MAX_MAP_PLANS_PER_HOUR` | `map_plans` rows in the last hour | The seven questions only |
 | `MAX_CARDS_WRITTEN_PER_HOUR` | `concept_cards` written in the last hour | `?rewrite=1` |
@@ -181,6 +181,13 @@ Four things about *what* each one counts are load-bearing:
 - **A counter another endpoint can empty is a counter a learner can empty.** This
   is why a card rewrite marks a recording stale instead of deleting its row (doc
   4).
+- **Archiving refunds nothing.** It is the only way to get rid of a topic from
+  inside the app and it deletes nothing — the rows stay, the recordings stay in a
+  bucket the API user cannot delete from, and the slug stays taken — so both
+  topic counters still count an archived topic. `MAX_TOPICS_PER_USER` is the only
+  ceiling here that is not hourly, which makes it the only bound on what one
+  account can ever build; a count that discounted the archived would let
+  archive-then-create walk around it (doc 1).
 - **A counter that cannot grow is not a ceiling.** `card_narrations` holds one
   row per card, and a failed recording is retried by taking that row over — so
   counting rows, a learner holding down retry on a broken card would never reach

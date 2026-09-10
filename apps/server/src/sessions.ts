@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Id, NodeStatus, newId } from "@interestled/schemas";
 import { composeSession, contractLine, isEarned, summarise } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
+import { NOT_ARCHIVED } from "./db";
 import type { Db } from "./db";
 import { NotFoundError } from "./errors";
 import { toNode, toStudySession } from "./rows";
@@ -29,7 +30,7 @@ export function sessionsRouter(db: Db): Hono<AuthEnv> {
   router.post("/", zValidator("json", StartInput), async (c) => {
     const userId = c.get("userId");
     const { topicId, minutes } = c.req.valid("json");
-    const topic = await db.topic.findFirst({ where: { id: topicId, userId } });
+    const topic = await db.topic.findFirst({ where: { id: topicId, userId, ...NOT_ARCHIVED } });
     if (topic === null) {
       throw new NotFoundError("Topic not found");
     }
@@ -40,7 +41,12 @@ export function sessionsRouter(db: Db): Hono<AuthEnv> {
         orderBy: { orderIndex: "asc" },
       })
     ).map(toNode);
-    const dueCount = await db.atom.count({ where: { userId, dueAt: { lte: new Date() } } });
+    // The same clause the review batch reads with. Counted without it, an
+    // archived topic's items put a review step in the plan and a sentence about
+    // it in the contract, and the review screen then answers with nothing.
+    const dueCount = await db.atom.count({
+      where: { userId, dueAt: { lte: new Date() }, node: { topic: NOT_ARCHIVED } },
+    });
     const steps = composeSession(nodes, minutes, dueCount > 0);
     const contract = contractLine(steps, nodes);
     const created = await db.studySession.create({
@@ -99,7 +105,9 @@ export function sessionsRouter(db: Db): Hono<AuthEnv> {
   router.put("/resume", zValidator("json", ResumeInput), async (c) => {
     const userId = c.get("userId");
     const input = c.req.valid("json");
-    const topic = await db.topic.findFirst({ where: { id: input.topicId, userId } });
+    const topic = await db.topic.findFirst({
+      where: { id: input.topicId, userId, ...NOT_ARCHIVED },
+    });
     if (topic === null) {
       throw new NotFoundError("Topic not found");
     }

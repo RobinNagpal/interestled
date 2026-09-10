@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CardAngle,
   ContentFormat,
+  AtomKind,
   DrillKind,
   EnglishLevel,
   DEFAULT_AVERAGE_READ_TIME,
@@ -20,6 +21,7 @@ import {
   NarrationStatus,
   NodeStatus,
   ParagraphLength,
+  ReviewGrade,
   TechnicalDetail,
   ReadTime,
   TopicArchetype,
@@ -27,6 +29,7 @@ import {
   cardVariant,
   narrationKey,
 } from "@interestled/schemas";
+import { StepKind } from "@interestled/domain";
 import { createApp } from "../src/app";
 import type { Db } from "../src/db";
 import { GenerationError } from "../src/errors";
@@ -242,6 +245,10 @@ function topicRow(): Record<string, unknown> {
     narrationVoice: DEFAULT_NARRATION_VOICE,
     status: TopicStatus.Ready,
     error: null,
+    // Not archived. Written out rather than left off, so the stubs below can
+    // answer a query the way the database would instead of treating a missing
+    // column as a match.
+    archivedAt: null,
     createdAt: new Date(),
   };
 }
@@ -526,6 +533,332 @@ describe("topic settings writes", () => {
       averageReadTime: 6,
     });
     expect(response.status).toBe(400);
+  });
+});
+
+/**
+ * Archiving is one nullable column and one clause, and the clause is the part
+ * that can be forgotten — so these check the ways in rather than the write: the
+ * list, the topic's own address, and the review batch, which is the one screen
+ * that shows a topic's content without being addressed by that topic.
+ */
+/**
+ * Archiving is one nullable column and one clause, and the clause is the part
+ * that can be forgotten — so these check the ways in rather than the write, and
+ * they check them by what a learner can still reach. The stub applies the where
+ * clause it is handed, relations included: a test that read the clause back out
+ * of a mock would pass on a route that sent the right words to the wrong query,
+ * which is how the attempts route below first went out unfiltered.
+ */
+describe("archiving a topic", () => {
+  const node = (id: string, topicId: string, path: string): Record<string, unknown> => ({
+    id,
+    topicId,
+    parentId: null,
+    path,
+    title: path,
+    claim: "c",
+    capability: "do it",
+    minutes: 3,
+    archetype: TopicArchetype.Tool,
+    orderIndex: 0,
+    status: NodeStatus.Seen,
+    cardInstructions: "",
+    createdAt: new Date(),
+    prerequisites: [],
+  });
+
+  // n1 is in the topic these tests archive; n2 is in a second topic that stays,
+  // which is what makes "the session on a live topic" a case at all.
+  const nodeRows = [node("n1", "t1", "pods"), node("n2", "t2", "verbs")];
+
+  const drillRow = {
+    id: "d1",
+    nodeId: "n1",
+    kind: DrillKind.Apply,
+    prompt: "Restart it",
+    completionTest: "It comes back",
+    referencePoints: ["kubectl"],
+    hints: [],
+    createdAt: new Date(),
+  };
+
+  const atomRow = {
+    id: "a1",
+    nodeId: "n1",
+    userId: "u1",
+    kind: AtomKind.Cloze,
+    prompt: "p",
+    answer: "a",
+    intervalDays: 1,
+    ease: 2.5,
+    lapses: 0,
+    dueAt: new Date(0),
+    createdAt: new Date(),
+  };
+
+  function archiveApp(): {
+    app: ReturnType<typeof createApp>;
+    topics: Record<string, unknown>[];
+    calls: string[];
+  } {
+    const topics: Record<string, unknown>[] = [
+      topicRow(),
+      { ...topicRow(), id: "t2", slug: "french", title: "French" },
+    ];
+    // Every write and every model call, so a test can say that a route refused
+    // an archived topic before it cost its owner anything.
+    const calls: string[] = [];
+    const matches = (row: Record<string, unknown>, where: Record<string, unknown>): boolean =>
+      Object.entries(where).every(([key, value]) => {
+        // The two relations these routes filter through, resolved the way the
+        // database would resolve them rather than ignored.
+        if (key === "topic") {
+          const topic = topics.find((candidate) => candidate.id === row.topicId);
+          return topic !== undefined && matches(topic, value as Record<string, unknown>);
+        }
+        if (key === "node") {
+          const owner = nodeRows.find((candidate) => candidate.id === row.nodeId);
+          return owner !== undefined && matches(owner, value as Record<string, unknown>);
+        }
+        // Everything due, so the review batch is about the archive and not about
+        // the clock.
+        if (key === "dueAt") {
+          return true;
+        }
+        return row[key] === value;
+      });
+    const only = <T extends Record<string, unknown>>(
+      row: T,
+      where: Record<string, unknown>,
+    ): T | null => (matches(row, where) ? row : null);
+    const topicOf = (row: Record<string, unknown>): Record<string, unknown> | undefined =>
+      topics.find((candidate) => candidate.id === row.topicId);
+
+    const db = {
+      authSession: {
+        findUnique: vi.fn(async () => ({
+          token: "good",
+          userId: "u1",
+          expiresAt: new Date(Date.now() + 60_000),
+          user: { id: "u1", defaultDepth: 2, username: "robin" },
+        })),
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+      },
+      user: {
+        findUnique: vi.fn(async ({ where }: { where: { username: string } }) =>
+          where.username === "robin" ? { id: "u1", username: "robin" } : null,
+        ),
+        findUniqueOrThrow: vi.fn(async () => ({ age: null, background: "", learningStyles: [] })),
+        update: vi.fn(async () => ({ id: "u1", defaultDepth: 2 })),
+      },
+      topic: {
+        findFirst: vi.fn(
+          async ({ where }: { where: Record<string, unknown> }) =>
+            topics.find((row) => matches(row, where)) ?? null,
+        ),
+        findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+          topics.filter((row) => matches(row, where)),
+        ),
+        update: vi.fn(
+          async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+            calls.push("topic.update");
+            const row = topics.find((candidate) => candidate.id === where.id);
+            return Object.assign(row ?? {}, data);
+          },
+        ),
+      },
+      learningNode: {
+        findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+          const row = nodeRows.find((candidate) => matches(candidate, where));
+          return row === undefined ? null : { ...row, topic: topicOf(row) };
+        }),
+        findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+          nodeRows.filter((row) => matches(row, where)),
+        ),
+        count: vi.fn(async () => 0),
+        update: vi.fn(async () => {
+          calls.push("learningNode.update");
+          return nodeRows[0];
+        }),
+      },
+      drill: {
+        findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+          const row = only(drillRow, where);
+          if (row === null) {
+            return null;
+          }
+          const owner = nodeRows[0] as Record<string, unknown>;
+          return { ...row, node: { ...owner, topic: topicOf(owner) } };
+        }),
+      },
+      studySession: {
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          ...data,
+          nodesCompleted: 0,
+          startedAt: new Date(),
+          endedAt: null,
+        })),
+      },
+      attempt: {
+        create: vi.fn(async () => {
+          calls.push("attempt.create");
+          return { id: "at1" };
+        }),
+      },
+      atom: {
+        findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+          only(atomRow, where),
+        ),
+        findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+          matches(atomRow, where) ? [atomRow] : [],
+        ),
+        count: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+          matches(atomRow, where) ? 1 : 0,
+        ),
+        update: vi.fn(async () => {
+          calls.push("atom.update");
+          return atomRow;
+        }),
+      },
+      conceptCard: { findUnique: vi.fn(async () => null), findFirst: vi.fn(async () => null) },
+      cardNarration: { findUnique: vi.fn(async () => null) },
+      mapPlan: { findMany: vi.fn(async () => []) },
+      resumePoint: { findUnique: vi.fn(async () => null) },
+    };
+    const spend = (): LlmProvider => {
+      calls.push("llm");
+      return { id: LlmProviderId.Gemini, model: "test", complete: async () => "{}" };
+    };
+    return { app: createApp(db as unknown as Db, { provider: spend }), topics, calls };
+  }
+
+  const send = async (
+    app: ReturnType<typeof createApp>,
+    path: string,
+    method = "GET",
+    body?: object,
+  ): Promise<Response> =>
+    app.request(path, {
+      method,
+      headers:
+        body === undefined
+          ? { Authorization: "Bearer good" }
+          : { Authorization: "Bearer good", "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+  const archive = async (app: ReturnType<typeof createApp>): Promise<Response> =>
+    send(app, "/api/topics/kubernetes/archive", "POST");
+
+  it("dates the row and answers with nothing to show", async () => {
+    const { app, topics } = archiveApp();
+    const response = await archive(app);
+
+    expect(response.status).toBe(204);
+    expect(topics[0]?.archivedAt).toBeInstanceOf(Date);
+    // The point of archiving rather than deleting: the row is still there.
+    expect(topics).toHaveLength(2);
+  });
+
+  it("takes it off the topics list, and leaves the others on it", async () => {
+    const { app } = archiveApp();
+    expect(await (await send(app, "/api/topics")).json()).toHaveLength(2);
+
+    await archive(app);
+
+    const listed = (await (await send(app, "/api/topics")).json()) as { slug: string }[];
+    expect(listed.map((row) => row.slug)).toEqual(["french"]);
+  });
+
+  it("stops answering on its own address, so archiving twice is a miss", async () => {
+    const { app } = archiveApp();
+    expect((await send(app, "/api/topics/kubernetes")).status).toBe(200);
+
+    await archive(app);
+
+    expect((await send(app, "/api/topics/kubernetes")).status).toBe(404);
+    expect((await archive(app)).status).toBe(404);
+  });
+
+  it("stops writing cards for its nodes", async () => {
+    const { app } = archiveApp();
+    // Before: it gets as far as the model, which is what has to stop.
+    expect((await send(app, "/api/nodes/n1/card")).status).not.toBe(404);
+
+    await archive(app);
+
+    expect((await send(app, "/api/nodes/n1/card")).status).toBe(404);
+  });
+
+  it("refuses an attempt on its drills before the grader costs anything", async () => {
+    const { app, calls } = archiveApp();
+    const attempt = { drillId: "d1", response: "I restarted it" };
+    // This route is the one node lookup that does not go through loadNode.
+    expect((await send(app, "/api/nodes/attempts", "POST", attempt)).status).not.toBe(404);
+
+    await archive(app);
+    calls.length = 0;
+    const response = await send(app, "/api/nodes/attempts", "POST", attempt);
+
+    expect(response.status).toBe(404);
+    // No grading call, no status moved, no attempt kept.
+    expect(calls).toEqual([]);
+  });
+
+  it("stops offering its recall items, and stops grading them", async () => {
+    const { app, calls } = archiveApp();
+    expect(await (await send(app, "/api/review")).json()).toMatchObject({ dueCount: 1 });
+
+    await archive(app);
+    calls.length = 0;
+
+    expect(await (await send(app, "/api/review")).json()).toMatchObject({ atoms: [], dueCount: 0 });
+    const graded = await send(app, "/api/review", "POST", {
+      atomId: "a1",
+      grade: ReviewGrade.Missed,
+    });
+    // A device holding a batch from before the archive must not be able to walk
+    // a node's status back inside a topic that is gone.
+    expect(graded.status).toBe(404);
+    expect(calls).toEqual([]);
+  });
+
+  it("does not promise a session a review step the review screen cannot fill", async () => {
+    const { app } = archiveApp();
+    const start = async (): Promise<{ kind: string }[]> => {
+      const planned = (await (
+        await send(app, "/api/sessions", "POST", { topicId: "t2", minutes: 12 })
+      ).json()) as { steps: { kind: string }[] };
+      return planned.steps;
+    };
+    // The only item due belongs to the topic about to be archived, and the
+    // session being planned is on the other one.
+    expect((await start())[0]?.kind).toBe(StepKind.Review);
+
+    await archive(app);
+
+    expect((await start()).map((step) => step.kind)).not.toContain(StepKind.Review);
+  });
+
+  it("refuses to start a session on the archived topic itself", async () => {
+    const { app } = archiveApp();
+    await archive(app);
+
+    const response = await send(app, "/api/sessions", "POST", { topicId: "t1", minutes: 12 });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("drops it from the public routes, which are nobody's to read once it is gone", async () => {
+    const { app } = archiveApp();
+    expect(await (await send(app, "/api/u/robin/topics")).json()).toHaveLength(2);
+
+    await archive(app);
+
+    expect(await (await send(app, "/api/u/robin/topics")).json()).toHaveLength(1);
+    expect((await send(app, "/api/u/robin/topics/kubernetes")).status).toBe(404);
+    expect((await send(app, "/api/u/robin/nodes/n1/card")).status).toBe(404);
   });
 });
 

@@ -35,6 +35,7 @@ import type {
 import { ancestorsOf, isBranch, subtreeShapeOf } from "@interestled/domain";
 import { z } from "zod";
 import type { AuthEnv } from "./auth";
+import { NOT_ARCHIVED } from "./db";
 import type { Db } from "./db";
 import { getLimits } from "./env";
 import { ConflictError, NotFoundError } from "./errors";
@@ -192,6 +193,12 @@ async function assertWithinBudget(db: Db, userId: string, about: BudgetFor): Pro
     );
     await assertUnder(
       limits.MAX_TOPICS_PER_USER,
+      // Every topic, archived ones included — the one ceiling here that is not
+      // hourly, so it is the only thing bounding what one account can ever
+      // build. Archiving frees nothing: the rows stay, the recordings stay in a
+      // bucket the API user cannot delete from, and the slug stays taken. If it
+      // discounted the archived, archive-then-create would walk around the only
+      // absolute limit in the product, on a box shared with another application.
       () => db.topic.count({ where: { userId } }),
       (limit) => `You have reached ${limit} topics. Delete one to add another.`,
     );
@@ -225,12 +232,15 @@ function summaryFromGoal(goal: string): string {
 
 /** A slug that is free for this user. Topic titles repeat, so this is normal. */
 async function freeTopicSlug(db: Db, userId: string, title: string): Promise<string> {
+  // Every topic, archived ones included: UNIQUE(user_id, slug) does not care
+  // that a row is archived, so a slug proposed without looking at them is one
+  // the insert can still collide on.
   const rows = await db.topic.findMany({ where: { userId }, select: { slug: true } });
   return uniqueSlug(title, new Set(rows.map((row) => row.slug)), "topic-map");
 }
 
 async function findTopic(db: Db, userId: string, slug: string): Promise<TopicT> {
-  const row = await db.topic.findFirst({ where: { userId, slug } });
+  const row = await db.topic.findFirst({ where: { userId, slug, ...NOT_ARCHIVED } });
   if (row === null) {
     throw new NotFoundError("Topic not found");
   }
@@ -418,7 +428,7 @@ export function topicsRouter(db: Db, provider: (task: TextTask) => LlmProvider):
 
   router.get("/", async (c) => {
     const rows = await db.topic.findMany({
-      where: { userId: c.get("userId") },
+      where: { userId: c.get("userId"), ...NOT_ARCHIVED },
       orderBy: { createdAt: "desc" },
     });
     return c.json(rows.map(toTopic));
@@ -657,6 +667,32 @@ export function topicsRouter(db: Db, provider: (task: TextTask) => LlmProvider):
     return c.json(toTopic(updated));
   });
 
+  /**
+   * Archive it. The topic leaves the list, its own URL stops answering, its
+   * nodes generate nothing more and its review items stop coming up — and not
+   * one row is deleted, which is the whole reason this exists beside the delete
+   * below. A map is half an hour of model calls and a learner's record of
+   * working through it; "I am done with this" and "destroy it" are different
+   * sentences, and only the second one should be unrecoverable.
+   *
+   * It answers 204 rather than the topic, because the topic it would answer with
+   * is one nothing may show. There is no route back: the screen that archives
+   * says so, and putting it back is an UPDATE somebody has to mean.
+   */
+  router.post("/:slug/archive", async (c) => {
+    const userId = c.get("userId");
+    // Through findTopic, so archiving one twice is a 404 rather than a second
+    // date written over the first.
+    const topic = await findTopic(db, userId, c.req.param("slug"));
+    await db.topic.update({ where: { id: topic.id }, data: { archivedAt: new Date() } });
+    return c.body(null, 204);
+  });
+
+  /**
+   * Delete it, rows and all. Nothing in the app calls this — archiving is what
+   * the edit screen offers — and it is kept because an account that asks to be
+   * rid of a topic entirely should have something that actually is.
+   */
   router.delete("/:slug", async (c) => {
     const result = await db.topic.deleteMany({
       where: { slug: c.req.param("slug"), userId: c.get("userId") },

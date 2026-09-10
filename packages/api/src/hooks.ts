@@ -138,6 +138,33 @@ export function useRegenerateTopic(
 }
 
 /**
+ * Archive it. Two things are wrong the moment it returns: the topics list has
+ * one fewer, and the review batch was built partly out of this topic's recall
+ * items.
+ *
+ * This topic's own entry is deliberately left alone, neither invalidated nor
+ * removed. The screen that archived it is still mounted while the navigation
+ * away runs, and it is observing that key — invalidating refetches it, and
+ * removing it is worse rather than better, because an observed query that is
+ * removed is rebuilt empty on the next render and fetched again. Either way the
+ * screen asks for an address that now answers 404 and paints the error for that
+ * instead of leaving. What is left behind is a cached map of a topic whose URL
+ * has stopped answering, which is what a stale entry always is here: opening it
+ * paints once and then says what happened, because the map's staleTime is 0.
+ */
+export function useArchiveTopic(slug: string): UseMutationResult<void, Error, void> {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.archiveTopic(slug),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.topics });
+      void client.invalidateQueries({ queryKey: keys.review });
+    },
+  });
+}
+
+/**
  * What the topic is and what the learner wants from it. It regenerates nothing —
  * the answers change what the next generation reads, and the map already built
  * keeps every node and every status on it.

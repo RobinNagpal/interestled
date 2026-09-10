@@ -1,11 +1,37 @@
+import { useState } from "react";
 import { Text, View } from "react-native";
 import type { ReactElement } from "react";
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { useTopic } from "@interestled/api";
+import { useArchiveTopic, useTopic } from "@interestled/api";
 import { editContentHref, editGoalsHref, editMapHref, topicHref } from "@interestled/domain";
-import { Button, ErrorState, LoadingContent, Screen, SectionTitle } from "@interestled/ui";
+import {
+  Button,
+  ErrorState,
+  Input,
+  LoadingContent,
+  Screen,
+  SectionTitle,
+  Sheet,
+} from "@interestled/ui";
 import { messageOf } from "../../../../lib/errors";
 import { backHeader, useHardwareBack } from "../../../../lib/nav";
+
+/**
+ * What has to be typed to archive a topic, and the one place it is written.
+ *
+ * A word rather than a second button: archiving is the only action in the
+ * product that takes a whole topic away at once, and a confirm button next to
+ * the button that opened it is one mis-tap. Read without regard to case, because
+ * a phone keyboard capitalises for you and being told "no" by your own keyboard
+ * is not friction, it is a dead end.
+ *
+ * The word is the strong one because the effect is the strong one: from in here
+ * the topic is gone and does not come back. That the rows survive is a fact
+ * about the database and a decision about what is recoverable by hand — it is
+ * not a promise to make to somebody who is about to lose the topic, and the copy
+ * around this box does not make it.
+ */
+const CONFIRM_WORD = "DELETE";
 
 /**
  * Three things can be edited about a topic, and they are three different
@@ -22,8 +48,22 @@ export default function EditTopicScreen(): ReactElement {
   const { topic: slug } = useLocalSearchParams<{ topic: string }>();
   const topicSlug = slug ?? "";
   const topic = useTopic(topicSlug);
-  // Android's own back button, saying what the bar says.
+  const archive = useArchiveTopic(topicSlug);
+  // Android's own back button, saying what the bar says. A sheet open over this
+  // screen answers the press itself and closes, which never reaches here.
   useHardwareBack(topicHref(topicSlug));
+
+  const [archiving, setArchiving] = useState(false);
+  const [typed, setTyped] = useState("");
+  const confirmed = typed.trim().toUpperCase() === CONFIRM_WORD;
+
+  const closeArchive = (): void => {
+    setArchiving(false);
+    setTyped("");
+    // Or the next open of the sheet paints the last failure under an empty box,
+    // describing a request that is not running.
+    archive.reset();
+  };
 
   const header = (
     <Stack.Screen
@@ -73,6 +113,66 @@ export default function EditTopicScreen(): ReactElement {
         label="Edit how it is written"
         onPress={() => router.push(editContentHref(topicSlug))}
       />
+
+      {/* Last, and on its own, because it is the one thing on this screen that
+          is not an edit: everything above changes what the topic is, and this
+          takes it off the list. */}
+      <Choice
+        title="Archive this topic"
+        body="It leaves your topics list for good, and its review items stop coming up. There is no way back to it from inside the app."
+        label="Archive this topic"
+        onPress={() => {
+          setTyped("");
+          setArchiving(true);
+        }}
+      />
+
+      <Sheet
+        visible={archiving}
+        // No fallback title: both the pending and the error branch have already
+        // returned above, so the topic is loaded wherever this renders. The
+        // header higher up looks like this and does need one, because it is what
+        // those two branches show.
+        title={`Archive “${topic.data.topic.title}”?`}
+        body="It goes from your topics list, its map and cards stop opening, and the recall items from it stop coming up in review. You cannot bring it back from inside the app."
+        onClose={() => (archive.isPending ? undefined : closeArchive())}
+      >
+        <Input
+          label={`Type ${CONFIRM_WORD} to confirm`}
+          value={typed}
+          onChangeText={setTyped}
+          placeholder={CONFIRM_WORD}
+          autoFocus
+          maxLength={20}
+        />
+        {archive.isError ? <ErrorState message={messageOf(archive.error)} /> : null}
+        <Button
+          label="Archive it"
+          disabled={!confirmed}
+          busy={archive.isPending}
+          onPress={() =>
+            archive.mutate(undefined, {
+              // Straight to the list rather than back one screen: everything
+              // under this one in the stack is a screen about a topic that has
+              // stopped answering, and `replace` is what stops back landing on
+              // one of them.
+              onSuccess: () => {
+                closeArchive();
+                router.replace("/");
+              },
+            })
+          }
+        />
+        <Button
+          label="Keep it"
+          tone="secondary"
+          // Closing the sheet does not cancel the request, so while one is in
+          // flight this would hide the sheet and archive the topic regardless —
+          // the backdrop and Android's back button are held for the same reason.
+          disabled={archive.isPending}
+          onPress={closeArchive}
+        />
+      </Sheet>
     </Screen>
   );
 }

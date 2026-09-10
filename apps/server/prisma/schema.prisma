@@ -154,6 +154,14 @@ model Topic {
   narrationVoice      String         @default("Erinome") @map("narration_voice")
   status              String         @default("generating")
   error               String?
+  // When the learner archived this topic, and null while they have not. The
+  // whole of the flag: every lookup of a topic they own asks for null here
+  // (NOT_ARCHIVED in src/topics.ts), so an archived one is gone from the list,
+  // from its own URL, from the review batch and from the public routes, while
+  // every row it owns stays exactly where it is. Nullable rather than a boolean,
+  // like StudySession.endedAt: null is the state, and the date is worth having
+  // the day somebody asks for a topic back.
+  archivedAt          DateTime?      @map("archived_at")
   createdAt           DateTime       @default(now()) @map("created_at")
   user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   nodes               LearningNode[]

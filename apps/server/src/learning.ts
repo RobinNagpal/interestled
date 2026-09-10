@@ -35,6 +35,7 @@ import {
   nextDefaultDepth,
 } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
+import { NOT_ARCHIVED } from "./db";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
 import { generateAnswer, generateAtoms, generateCard, generateDrill, gradeAttempt } from "./llm";
@@ -53,7 +54,10 @@ async function loadNode(
   nodeId: string,
 ): Promise<{ node: LearningNodeT; topic: TopicT }> {
   const row = await db.learningNode.findFirst({
-    where: { id: nodeId, topic: { userId } },
+    // Not archived, the same as every other way in: this is the one lookup in
+    // front of every card, drill, question and recording, so an archived topic
+    // stops generating anything from here rather than from six route bodies.
+    where: { id: nodeId, topic: { userId, ...NOT_ARCHIVED } },
     include: { prerequisites: { select: { prerequisiteId: true } }, topic: true },
   });
   if (row === null) {
@@ -594,7 +598,12 @@ export function learningRouter(
   router.post("/attempts", zValidator("json", AttemptInput), async (c) => {
     const userId = c.get("userId");
     const drillRow = await db.drill.findFirst({
-      where: { id: c.req.valid("json").drillId, node: { topic: { userId } } },
+      // This is the one route that reads a node without loadNode, so it is the
+      // one that has to carry NOT_ARCHIVED itself. Without it an archived topic
+      // is still gradable from a drill screen left open or a drill id held from
+      // before: two model calls, a status moved, and atoms written for a map
+      // nothing may show.
+      where: { id: c.req.valid("json").drillId, node: { topic: { userId, ...NOT_ARCHIVED } } },
       include: { node: { include: { prerequisites: { select: { prerequisiteId: true } }, topic: true } } },
     });
     if (drillRow === null) {

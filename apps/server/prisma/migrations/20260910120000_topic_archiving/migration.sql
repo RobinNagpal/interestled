@@ -1,0 +1,13 @@
+-- Archiving a topic. It leaves the topics list, its own URL stops answering,
+-- its nodes stop generating anything and its review items stop coming up — and
+-- every row it owns stays exactly where it is.
+--
+-- Nullable rather than a boolean with a default, which also means there is
+-- nothing for the deploy gap to worry about: migrations run from the runner
+-- before the new bundle ships, and a column the old code never names is one it
+-- cannot insert wrongly. Null is the state and the date is the flag, the same
+-- shape as study_sessions.ended_at.
+--
+-- No index. The clause is always read beside user_id, which is already indexed,
+-- and a learner has tens of topics rather than thousands.
+ALTER TABLE "topics" ADD COLUMN "archived_at" TIMESTAMP(3);
