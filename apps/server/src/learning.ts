@@ -35,6 +35,7 @@ import {
   nextDefaultDepth,
 } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
+import { NOT_ARCHIVED } from "./db";
 import type { Db } from "./db";
 import { ConflictError, NotFoundError } from "./errors";
 import { generateAnswer, generateAtoms, generateCard, generateDrill, gradeAttempt } from "./llm";
@@ -44,7 +45,7 @@ import { loadProfile } from "./profile";
 import { readNarration, startNarration } from "./narration";
 import type { Background, NarrationTarget } from "./narration";
 import type { ObjectStore } from "./storage";
-import { NOT_ARCHIVED, assertQuestionBudget, assertRewriteBudget } from "./topics";
+import { assertQuestionBudget, assertRewriteBudget } from "./topics";
 import { toCardQuestion, toDrill, toNode, toTopic } from "./rows";
 
 async function loadNode(
@@ -597,7 +598,12 @@ export function learningRouter(
   router.post("/attempts", zValidator("json", AttemptInput), async (c) => {
     const userId = c.get("userId");
     const drillRow = await db.drill.findFirst({
-      where: { id: c.req.valid("json").drillId, node: { topic: { userId } } },
+      // This is the one route that reads a node without loadNode, so it is the
+      // one that has to carry NOT_ARCHIVED itself. Without it an archived topic
+      // is still gradable from a drill screen left open or a drill id held from
+      // before: two model calls, a status moved, and atoms written for a map
+      // nothing may show.
+      where: { id: c.req.valid("json").drillId, node: { topic: { userId, ...NOT_ARCHIVED } } },
       include: { node: { include: { prerequisites: { select: { prerequisiteId: true } }, topic: true } } },
     });
     if (drillRow === null) {

@@ -211,21 +211,28 @@ and putting one back is an `UPDATE` somebody has to mean. `DELETE /:slug` still
 deletes the rows, and nothing in the app calls it.
 
 The flag is only half of it. The other half is `NOT_ARCHIVED` in
-`apps/server/src/topics.ts`, carried by every lookup of a topic somebody owns:
-the list, `findTopic`, `loadNode` in `learning.ts` — which is what stops an
-archived topic generating anything — the review batch, the study-session routes
-and the public routes. It is a constant rather than two words typed seven times,
-because the lookup that forgets it is the one that shows a learner the topic they
-just archived.
+`apps/server/src/db.ts`, carried by every lookup of a topic somebody owns: the
+list, `findTopic`, `loadNode` in `learning.ts`, the drill lookup on the attempts
+route, the review batch and the grading call, the study-session routes and their
+count of what is due, and the public routes. It is a constant rather than two
+words typed at each of those, because the lookup that forgets it is the one that
+shows a learner the topic they just archived — and one did: the attempts route is
+the only place that reads a node without `loadNode`, and it went out unfiltered,
+so an archived topic was still gradable at the cost of two model calls and a
+status write. It lives in `db.ts` rather than beside `findTopic` so that
+`review.ts` and `sessions.ts` do not import the router that owns the LLM modules
+to get at it; a cycle through that graph resolves to `undefined` in the CommonJS
+bundle, and `archivedAt: undefined` matches every row.
 
 Two places deliberately do not carry it, and both would be bugs if they did:
 
 - **`freeTopicSlug`.** `UNIQUE(user_id, slug)` does not care that a row is
   archived, so a slug proposed without looking at the archived ones is one the
   insert collides on — and would collide for as long as the row exists.
-- **`MAX_TOPICS_PER_HOUR`.** It counts model spend, and archiving spends nothing
-  back; counting only the live ones would make archive-then-create a way around
-  it. `MAX_TOPICS_PER_USER` is the opposite case and does carry it — see doc 5.
+- **The topic ceilings.** Archiving frees no rows, no recordings and no slug, so
+  it must not free a count either — `MAX_TOPICS_PER_USER` is the only ceiling in
+  the product that is not hourly, and discounting the archived would make
+  archive-then-create a way around the one absolute limit there is (doc 5).
 
 The screen is the bottom of `app/topic/[topic]/edit/index.tsx`: a sheet naming
 the topic and a box that must have `DELETE` typed into it. Case is ignored,

@@ -4,10 +4,10 @@ import { z } from "zod";
 import { Id, NodeStatus, newId } from "@interestled/schemas";
 import { composeSession, contractLine, isEarned, summarise } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
+import { NOT_ARCHIVED } from "./db";
 import type { Db } from "./db";
 import { NotFoundError } from "./errors";
 import { toNode, toStudySession } from "./rows";
-import { NOT_ARCHIVED } from "./topics";
 
 const StartInput = z.object({
   topicId: Id,
@@ -41,7 +41,12 @@ export function sessionsRouter(db: Db): Hono<AuthEnv> {
         orderBy: { orderIndex: "asc" },
       })
     ).map(toNode);
-    const dueCount = await db.atom.count({ where: { userId, dueAt: { lte: new Date() } } });
+    // The same clause the review batch reads with. Counted without it, an
+    // archived topic's items put a review step in the plan and a sentence about
+    // it in the contract, and the review screen then answers with nothing.
+    const dueCount = await db.atom.count({
+      where: { userId, dueAt: { lte: new Date() }, node: { topic: NOT_ARCHIVED } },
+    });
     const steps = composeSession(nodes, minutes, dueCount > 0);
     const contract = contractLine(steps, nodes);
     const created = await db.studySession.create({

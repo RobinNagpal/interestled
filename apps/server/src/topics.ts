@@ -35,6 +35,7 @@ import type {
 import { ancestorsOf, isBranch, subtreeShapeOf } from "@interestled/domain";
 import { z } from "zod";
 import type { AuthEnv } from "./auth";
+import { NOT_ARCHIVED } from "./db";
 import type { Db } from "./db";
 import { getLimits } from "./env";
 import { ConflictError, NotFoundError } from "./errors";
@@ -187,20 +188,19 @@ async function assertWithinBudget(db: Db, userId: string, about: BudgetFor): Pro
   if (about.newTopic) {
     await assertUnder(
       limits.MAX_TOPICS_PER_HOUR,
-      // Every topic made in the hour, archived ones included. This one counts
-      // model spend, and archiving spends nothing back — counting only the live
-      // ones would make archive-then-create a way around the ceiling.
       () => db.topic.count({ where: { userId, createdAt: { gte: hourAgo() } } }),
       (limit) => `That is ${limit} new topics in an hour — the limit resets shortly.`,
     );
     await assertUnder(
       limits.MAX_TOPICS_PER_USER,
-      // The opposite, and for the opposite reason: this one bounds what a
-      // learner is holding, and the refusal tells them to get rid of one. A
-      // count that still included the archived would make archiving the thing
-      // the sentence asks for and refuse them anyway.
-      () => db.topic.count({ where: { userId, ...NOT_ARCHIVED } }),
-      (limit) => `You have reached ${limit} topics. Archive one to add another.`,
+      // Every topic, archived ones included — the one ceiling here that is not
+      // hourly, so it is the only thing bounding what one account can ever
+      // build. Archiving frees nothing: the rows stay, the recordings stay in a
+      // bucket the API user cannot delete from, and the slug stays taken. If it
+      // discounted the archived, archive-then-create would walk around the only
+      // absolute limit in the product, on a box shared with another application.
+      () => db.topic.count({ where: { userId } }),
+      (limit) => `You have reached ${limit} topics. Delete one to add another.`,
     );
   }
   await assertUnder(
@@ -229,22 +229,6 @@ function summaryFromGoal(goal: string): string {
   // bad one, and refusing the whole create over a derived field would be absurd.
   return TopicSummary.parse((goal.split("\n")[0] ?? "").trim().slice(0, SUMMARY_MAX));
 }
-
-/**
- * The half of every topic lookup that says "not archived".
- *
- * Archiving is one nullable column and this clause: the row and everything
- * hanging off it stays exactly where it is, and every way in stops answering —
- * the list, the topic's own URL, its nodes (loadNode in learning.ts), its review
- * items (review.ts), a study session on it (sessions.ts) and the public routes.
- * It is a constant rather than two words typed at each of those, because the one
- * that forgets it is the one that shows a learner the topic they just archived.
- *
- * Two lookups deliberately do not use it, and both are below: freeTopicSlug,
- * because an archived topic keeps its slug and the unique index still covers it,
- * and the hour's topic count, because archiving must not refund a ceiling.
- */
-export const NOT_ARCHIVED = { archivedAt: null } as const;
 
 /** A slug that is free for this user. Topic titles repeat, so this is normal. */
 async function freeTopicSlug(db: Db, userId: string, title: string): Promise<string> {

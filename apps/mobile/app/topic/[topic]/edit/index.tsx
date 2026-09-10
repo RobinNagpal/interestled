@@ -24,6 +24,12 @@ import { backHeader, useHardwareBack } from "../../../../lib/nav";
  * the button that opened it is one mis-tap. Read without regard to case, because
  * a phone keyboard capitalises for you and being told "no" by your own keyboard
  * is not friction, it is a dead end.
+ *
+ * The word is the strong one because the effect is the strong one: from in here
+ * the topic is gone and does not come back. That the rows survive is a fact
+ * about the database and a decision about what is recoverable by hand — it is
+ * not a promise to make to somebody who is about to lose the topic, and the copy
+ * around this box does not make it.
  */
 const CONFIRM_WORD = "DELETE";
 
@@ -54,6 +60,9 @@ export default function EditTopicScreen(): ReactElement {
   const closeArchive = (): void => {
     setArchiving(false);
     setTyped("");
+    // Or the next open of the sheet paints the last failure under an empty box,
+    // describing a request that is not running.
+    archive.reset();
   };
 
   const header = (
@@ -110,7 +119,7 @@ export default function EditTopicScreen(): ReactElement {
           takes it off the list. */}
       <Choice
         title="Archive this topic"
-        body="It leaves your topics, and its review items stop coming up. Nothing is deleted, but there is no way back to it from inside the app."
+        body="It leaves your topics list for good, and its review items stop coming up. There is no way back to it from inside the app."
         label="Archive this topic"
         onPress={() => {
           setTyped("");
@@ -120,7 +129,11 @@ export default function EditTopicScreen(): ReactElement {
 
       <Sheet
         visible={archiving}
-        title={topic.data === undefined ? "Archive this topic" : `Archive “${topic.data.topic.title}”?`}
+        // No fallback title: both the pending and the error branch have already
+        // returned above, so the topic is loaded wherever this renders. The
+        // header higher up looks like this and does need one, because it is what
+        // those two branches show.
+        title={`Archive “${topic.data.topic.title}”?`}
         body="It goes from your topics list, its map and cards stop opening, and the recall items from it stop coming up in review. You cannot bring it back from inside the app."
         onClose={() => (archive.isPending ? undefined : closeArchive())}
       >
@@ -150,7 +163,15 @@ export default function EditTopicScreen(): ReactElement {
             })
           }
         />
-        <Button label="Keep it" tone="secondary" onPress={closeArchive} />
+        <Button
+          label="Keep it"
+          tone="secondary"
+          // Closing the sheet does not cancel the request, so while one is in
+          // flight this would hide the sheet and archive the topic regardless —
+          // the backdrop and Android's back button are held for the same reason.
+          disabled={archive.isPending}
+          onPress={closeArchive}
+        />
       </Sheet>
     </Screen>
   );

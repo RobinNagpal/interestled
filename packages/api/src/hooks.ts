@@ -138,14 +138,19 @@ export function useRegenerateTopic(
 }
 
 /**
- * Archive it. Three things go at once and none of them can wait for a refetch:
- * the topics list has one fewer, this topic's own entry now answers 404, and the
- * review batch was built partly out of its recall items.
+ * Archive it. Two things are wrong the moment it returns: the topics list has
+ * one fewer, and the review batch was built partly out of this topic's recall
+ * items.
  *
- * The topic's entry is removed rather than invalidated, because invalidating it
- * would refetch an address that no longer answers — the screen that archived it
- * is still mounted for the moment it takes to navigate away, and what it would
- * show in that moment is this topic's error state rather than the topics list.
+ * This topic's own entry is deliberately left alone, neither invalidated nor
+ * removed. The screen that archived it is still mounted while the navigation
+ * away runs, and it is observing that key — invalidating refetches it, and
+ * removing it is worse rather than better, because an observed query that is
+ * removed is rebuilt empty on the next render and fetched again. Either way the
+ * screen asks for an address that now answers 404 and paints the error for that
+ * instead of leaving. What is left behind is a cached map of a topic whose URL
+ * has stopped answering, which is what a stale entry always is here: opening it
+ * paints once and then says what happened, because the map's staleTime is 0.
  */
 export function useArchiveTopic(slug: string): UseMutationResult<void, Error, void> {
   const api = useApi();
@@ -153,7 +158,6 @@ export function useArchiveTopic(slug: string): UseMutationResult<void, Error, vo
   return useMutation({
     mutationFn: () => api.archiveTopic(slug),
     onSuccess: () => {
-      client.removeQueries({ queryKey: keys.topic(slug) });
       void client.invalidateQueries({ queryKey: keys.topics });
       void client.invalidateQueries({ queryKey: keys.review });
     },

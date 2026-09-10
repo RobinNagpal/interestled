@@ -13,6 +13,7 @@ import {
 } from "@interestled/schemas";
 import type { LearningNodeT, PublicMapPlanT, TopicT } from "@interestled/schemas";
 import { masteryDrill } from "@interestled/domain";
+import { NOT_ARCHIVED } from "./db";
 import type { Db } from "./db";
 import { NotFoundError } from "./errors";
 import { effectiveContentInstructions, effectiveMapInstructions } from "./llm";
@@ -20,7 +21,6 @@ import { newestCard } from "./learning";
 import { readNarration } from "./narration";
 import type { ObjectStore } from "./storage";
 import { toCardQuestion, toDrill, toNode, toTopic } from "./rows";
-import { NOT_ARCHIVED } from "./topics";
 
 /**
  * Everything anyone may read, addressed by the username of whoever made it.

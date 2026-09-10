@@ -3,10 +3,10 @@ import { zValidator } from "@hono/zod-validator";
 import { NodeStatusSchema, ReviewGrade, ReviewInput } from "@interestled/schemas";
 import { afterLapse, dueNow, reschedule } from "@interestled/domain";
 import type { AuthEnv } from "./auth";
+import { NOT_ARCHIVED } from "./db";
 import type { Db } from "./db";
 import { NotFoundError } from "./errors";
 import { toAtom } from "./rows";
-import { NOT_ARCHIVED } from "./topics";
 
 export function reviewRouter(db: Db): Hono<AuthEnv> {
   const router = new Hono<AuthEnv>();
@@ -33,7 +33,12 @@ export function reviewRouter(db: Db): Hono<AuthEnv> {
   router.post("/", zValidator("json", ReviewInput), async (c) => {
     const userId = c.get("userId");
     const input = c.req.valid("json");
-    const row = await db.atom.findFirst({ where: { id: input.atomId, userId } });
+    // Scoped the same way the batch above is: a device holding a batch from
+    // before the archive would otherwise grade an item from it, and a miss would
+    // walk a node's status back inside a topic the learner has taken away.
+    const row = await db.atom.findFirst({
+      where: { id: input.atomId, userId, node: { topic: NOT_ARCHIVED } },
+    });
     if (row === null) {
       throw new NotFoundError("Review item not found");
     }
